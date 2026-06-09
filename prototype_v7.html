@@ -81,7 +81,7 @@ body::before{
 
 /* ═══ App window ═══ */
 .app{
-  width:880px;
+  width:880px;height:600px;
   background:var(--srf);
   border:1px solid var(--brd);
   border-radius:12px;
@@ -89,7 +89,6 @@ body::before{
   display:flex;flex-direction:column;
   box-shadow:var(--shadow-lg), var(--ring);
   position:relative;
-  margin:24px 0;
   transition:background .3s ease, border-color .3s ease, box-shadow .3s ease;
 }
 
@@ -207,6 +206,14 @@ body::before{
 
 /* ═══ Main / Panels ═══ */
 .main{flex:1;display:flex;overflow:hidden}
+/* Mode switching */
+.app[data-mode="t"] .mode-s{display:none}
+.app[data-mode="s"] .mode-t{display:none}
+.ctr-inner{display:flex;flex-direction:column;flex:1;overflow:hidden}
+/* In TXT→面 mode, hide middle panel, expand left */
+.app[data-mode="t"] .pnl-m{display:none}
+.app[data-mode="t"] .pnl-l{width:300px}
+.app[data-mode="t"] .ctr{flex:1}
 
 .pnl{
   display:flex;flex-direction:column;overflow:hidden;
@@ -216,7 +223,7 @@ body::before{
 .pnl-l{width:220px;border-right:1px solid var(--brd);flex-shrink:0}
 .pnl-m{width:220px;border-right:1px solid var(--brd);flex-shrink:0}
 /* Compact middle panel — no scroll */
-.pnl-m .pnl-bd{padding:6px 10px}
+.pnl-m .pnl-bd{padding:6px 8px}
 .pnl-m .slabel{padding:4px 0 3px;font-size:11px}
 .pnl-m .fld{margin-bottom:4px}
 .pnl-m .fld label{margin-bottom:2px;font-size:10px}
@@ -256,7 +263,7 @@ body::before{
   display:flex;align-items:center;justify-content:center;transition:all .18s;
 }
 .pnl-tog:hover{background:var(--srf2);color:var(--ac)}
-.pnl-bd{flex:1;overflow-y:auto;padding:10px 12px}
+.pnl-bd{flex:1;overflow:hidden;padding:8px 10px}
 
 /* Center */
 .ctr{width:360px;flex-shrink:0;display:flex;flex-direction:column;overflow:hidden;min-width:0;background:var(--bg)}
@@ -295,7 +302,7 @@ body::before{
 .prog-txt{font-size:10.5px;color:var(--tx3);min-width:46px;text-align:right;font-family:"JetBrains Mono",monospace;font-weight:500;letter-spacing:.3px}
 
 /* Cards */
-.card{margin-bottom:10px}
+.card{margin-bottom:6px}
 .card-h{
   display:flex;align-items:center;gap:6px;padding:5px 0;
   cursor:pointer;user-select:none;font-size:11px;color:var(--tx2);
@@ -324,7 +331,7 @@ body::before{
 .fld input::placeholder{color:var(--tx3)}
 .fld-row{display:flex;gap:6px}
 .fld-row .fld{flex:1}
-.fgrid{display:grid;grid-template-columns:1fr 1fr;gap:3px 6px}
+.fgrid{display:grid;grid-template-columns:1fr 1fr;gap:2px 6px}
 .fcell label{display:block;font-size:10px;color:var(--tx3);margin-bottom:1px;font-weight:500;letter-spacing:0;white-space:nowrap}
 .fcell select,.fcell input{width:100%;padding:4px 6px;border:1px solid var(--brd);border-radius:4px;font-size:11px;line-height:1.5;background:var(--bg);color:var(--tx);outline:none;font-family:inherit}
 .fcell select:focus,.fcell input:focus{border-color:var(--ac)}
@@ -334,16 +341,16 @@ body::before{
 
 /* File drop */
 .drop{
-  border:1.5px dashed var(--brd);border-radius:7px;padding:14px 10px;
+  border:1.5px dashed var(--brd);border-radius:6px;padding:8px 10px;
   text-align:center;cursor:pointer;transition:all .2s;
   background:var(--bg);
 }
 :root[data-t="light"] .drop{background:#fff}
 .drop:hover{border-color:var(--ac);background:var(--acg);transform:translateY(-1px)}
 .drop-ic{
-  width:28px;height:28px;margin:0 auto 5px;border-radius:50%;
+  width:22px;height:22px;margin:0 auto 3px;border-radius:50%;
   background:var(--srf2);display:flex;align-items:center;justify-content:center;
-  color:var(--ac);font-size:14px;font-weight:300;
+  color:var(--ac);font-size:12px;font-weight:300;
   border:1px solid var(--brd);transition:all .25s;
 }
 .drop:hover .drop-ic{background:var(--ac);color:#1a1a1c;border-color:var(--ac);transform:rotate(90deg)}
@@ -510,21 +517,20 @@ body::before{
   <!-- ═══ Main ═══ -->
   <div class="main">
 
-    <!-- Left Panel: 输入设置 + 参数设置 -->
-    <div class="pnl pnl-l" id="L">
-      <div class="pnl-bd">
+    <!-- Left Panel -->
+    <div class="pnl pnl-l">
+      <!-- 面→TXT mode -->
+      <div class="mode-s pnl-bd">
         <div class="drop" id="dropZone">
           <div class="drop-ic">＋</div>
           <div class="drop-tx">选择 shp / gdb（可多选）</div>
         </div>
         <div class="file-list" id="fl"></div>
         <div style="text-align:right;margin-top:2px"><button class="btn" onclick="clearAllFiles()">清空全部</button></div>
-
         <div class="div"></div>
-
         <div class="card">
-          <div class="card-h" onclick="tg(this)"><span class="arr o">▶</span>字段映射</div>
-          <div class="card-b o">
+          <div class="card-h" onclick="tg(this)"><span class="arr">▶</span>字段映射</div>
+          <div class="card-b">
             <div class="fgrid">
               <div class="fcell"><label>地块名称</label><select id="fn"><option>DKMC</option><option>MC</option><option>NAME</option></select></div>
               <div class="fcell"><label>地块编号</label><select id="fi"><option>DKBH</option><option>BH</option><option>ID</option></select></div>
@@ -537,10 +543,21 @@ body::before{
           </div>
         </div>
       </div>
+      <!-- TXT→面 mode -->
+      <div class="mode-t pnl-bd">
+        <div class="drop" id="dropZoneTxt">
+          <div class="drop-ic">＋</div>
+          <div class="drop-tx">导入 TXT 文件（可多选）</div>
+        </div>
+        <div class="file-list" id="flT"></div>
+        <div style="text-align:right;margin-top:2px"><button class="btn" onclick="clearAllFilesTxt()">清空全部</button></div>
+      </div>
     </div>
 
-    <!-- Middle: 参数设置 -->
+    <!-- Middle -->
     <div class="pnl pnl-m">
+      <!-- 面→TXT mode -->
+      <div class="mode-s">
       <div class="pnl-h"><span class="pnl-label">参数设置</span></div>
       <div class="pnl-bd">
         <div class="slabel">转换选项</div>
@@ -577,18 +594,32 @@ body::before{
           <textarea class="hdr-textarea" id="hpi" oninput="up()"></textarea>
         </div>
       </div>
+      </div>
     </div>
 
-    <!-- Right: 预览区 + 运行栏 -->
+    <!-- Right -->
     <div class="ctr">
-      <div class="ctr-bd">
-        <div class="pv" id="pv"></div>
+      <!-- 面→TXT mode -->
+      <div class="mode-s ctr-inner">
+        <div class="ctr-bd">
+          <div class="pv" id="pv"></div>
+        </div>
+        <div class="ctr-ft">
+          <button class="btn-run" onclick="run()">开始转换</button>
+          <div class="prog"><div class="prog-fill" id="pf"></div></div>
+          <span class="prog-txt" id="ps">就绪</span>
+        </div>
       </div>
-
-      <div class="ctr-ft">
-        <button class="btn-run" onclick="run()">开始转换</button>
-        <div class="prog"><div class="prog-fill" id="pf"></div></div>
-        <span class="prog-txt" id="ps">就绪</span>
+      <!-- TXT→面 mode -->
+      <div class="mode-t ctr-inner">
+        <div class="ctr-bd">
+          <div class="pv" id="pvT"></div>
+        </div>
+        <div class="ctr-ft">
+          <button class="btn-run" onclick="runTxt()">开始转换</button>
+          <div class="prog"><div class="prog-fill" id="pfT"></div></div>
+          <span class="prog-txt" id="psT">就绪</span>
+        </div>
       </div>
     </div>
   </div>
@@ -675,6 +706,123 @@ function clearAllFiles(){
   loadedFiles.length=0;$('fl').innerHTML='';
   lastPreviewKey='';up();
   toast('已清空全部文件');
+}
+
+// ═══ TXT→面 mode (Task: txt import + parse) ═══
+let txtFiles=[]; // [{name, size, plots:[{count, area, name, coords:[[y,x],...]}]}]
+let txtImportInited=false;
+
+function initTxtImport(){
+  if(txtImportInited)return;txtImportInited=true;
+  const drop=document.getElementById('dropZoneTxt');
+  if(!drop)return;
+  drop.addEventListener('click',()=>{
+    const inp=document.createElement('input');
+    inp.type='file';inp.multiple=true;inp.accept='.txt';
+    inp.onchange=e=>handleTxtFiles(e.target.files);
+    inp.click();
+  });
+  drop.addEventListener('dragover',e=>{e.preventDefault();drop.style.borderColor='var(--ac)';});
+  drop.addEventListener('dragleave',()=>{drop.style.borderColor='';});
+  drop.addEventListener('drop',e=>{
+    e.preventDefault();drop.style.borderColor='';
+    handleTxtFiles(e.dataTransfer.files);
+  });
+}
+
+async function handleTxtFiles(fileList){
+  txtFiles.length=0;
+  for(const f of fileList){
+    if(!f.name.toLowerCase().endsWith('.txt')) continue;
+    const text=await f.text();
+    const info=parseTxtPreview(text);
+    txtFiles.push({name:f.name, size:f.size, ...info});
+  }
+  if(!txtFiles.length){toast('请选择 .txt 文件');return}
+  renderTxtFileList();
+  renderTxtParseLog();
+  updateTxtStats();
+}
+
+function parseTxtPreview(text){
+  const lines=text.split('\n').map(l=>l.trim()).filter(l=>l);
+  let inCoords=false, plots=[], currentPlot=null;
+  for(const line of lines){
+    if(line==='[地块坐标]'){inCoords=true;continue}
+    if(line.startsWith('[')){inCoords=false;continue}
+    if(!inCoords) continue;
+    if(line.includes(',@')||line.endsWith(',@')){
+      const parts=line.split(',');
+      const count=parseInt(parts[0])||0;
+      const area=parts[1]||'';
+      const name=parts[3]||'';
+      const tfh=parts[5]||'';
+      const use=parts[6]||'';
+      const dlbm=parts[7]||'';
+      currentPlot={count,area,name,tfh,use,dlbm,coords:[]};
+      plots.push(currentPlot);
+    }else if(currentPlot){
+      const m=line.match(/^J\d+,\d+,([\d.]+),([\d.]+)/);
+      if(m) currentPlot.coords.push([parseFloat(m[1]),parseFloat(m[2])]);
+    }
+  }
+  return {plots,totalPlots:plots.length};
+}
+
+function renderTxtFileList(){
+  const fl=document.getElementById('flT');fl.innerHTML='';
+  txtFiles.forEach((f,i)=>{
+    const size=(f.size/1024).toFixed(0)+'KB';
+    fl.innerHTML+=`<div class="fitem"><span class="fn">◈ ${f.name}</span><span class="fs">${size}</span><button onclick="removeTxtFile(${i})">×</button></div>`;
+  });
+}
+
+function removeTxtFile(i){
+  txtFiles.splice(i,1);
+  if(!txtFiles.length){document.getElementById('flT').innerHTML='';document.getElementById('pvT').textContent='';updateTxtStats();return}
+  renderTxtFileList();
+  renderTxtParseLog();
+  updateTxtStats();
+}
+
+function clearAllFilesTxt(){
+  if(!txtFiles.length)return;
+  txtFiles.length=0;document.getElementById('flT').innerHTML='';
+  document.getElementById('pvT').textContent='';updateTxtStats();
+  toast('已清空全部文件');
+}
+
+function updateTxtStats(){
+  const rows=document.querySelectorAll('#txtInfo span');
+  let totalPlots=0;
+  txtFiles.forEach(f=>totalPlots+=f.totalPlots);
+  if(rows[0]) rows[0].textContent='文件 '+txtFiles.length;
+  if(rows[1]) rows[1].textContent='地块 '+totalPlots;
+}
+
+function renderTxtParseLog(){
+  const pv=document.getElementById('pvT');if(!pv)return;
+  let txt='';
+  const MAX=10;
+  const shown=Math.min(txtFiles.length,MAX);
+  for(let i=0;i<shown;i++){
+    const f=txtFiles[i];
+    txt+=`◆ ${f.name}\n  地块: ${f.totalPlots}`;
+    if(f.plots.length){
+      const p=f.plots[0];
+      txt+=`  首地块: ${p.name||'?'}  坐标点: ${p.count||p.coords.length}  面积: ${p.area||'?'}`;
+    }
+    if(i<shown-1) txt+='\n\n';
+  }
+  if(txtFiles.length>MAX) txt+=`\n\n; 共 ${txtFiles.length} 个文件（此处仅显示前 ${MAX} 个）`;
+  pv.textContent=txt||'等待导入 TXT 文件…';
+}
+
+function runTxt(){
+  if(!txtFiles.length){toast('请先导入 TXT 文件');return}
+  const pf=document.getElementById('pfT'),ps=document.getElementById('psT');
+  pf.style.width='100%';ps.textContent='完成';
+  toast('✓ 转换完成 — '+txtFiles.length+' 个文件');
 }
 
 // ═══ Presets ═══
@@ -896,7 +1044,12 @@ function saveOnly(){
 
 function g(){return{id:cur,n:cfgs[cur]?.n||'默认',h:{c:$('hc').value,b:$('hb').value,j:$('hj').value,u:$('hu').value,z:$('hz').value,a:$('ha').value,t:$('ht').value},p:{pb:+($('pb')?.value||0),ox:$('ox').checked?1:0,oj:$('oj').checked?1:0,op:$('op').checked?1:0,on:$('on').checked?1:0,oo:$('oo').checked?1:0,om:$('om').checked?1:0},f:{fn:$('fn').value,fi:$('fi').value,fa:$('fa').value,fu:$('fu').value,fm:$('fm').value,fd:$('fd').value}}}
 
-function sw(t){document.querySelectorAll('.tab').forEach(e=>e.classList.remove('on'));document.querySelector(`[data-t="${t}"]`).classList.add('on')}
+function sw(t){
+  document.querySelectorAll('.tab').forEach(e=>e.classList.remove('on'));
+  document.querySelector(`[data-t="${t}"]`).classList.add('on');
+  document.querySelector('.app').setAttribute('data-mode',t);
+  if(t==='t'){lastPreviewKey='';initTxtImport();}
+}
 function tp(id){$(id).classList.toggle('hide')}
 function tg(h){const a=h.querySelector('.arr'),b=h.nextElementSibling;a.classList.toggle('o');b.classList.toggle('o')}
 function switchHdrTab(t){

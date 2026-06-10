@@ -302,6 +302,67 @@ fn pick_output_dir(app: tauri::AppHandle) -> Result<Option<String>, String> {
 }
 
 #[tauri::command]
+fn pick_shp_files_from_paths(paths: Vec<String>) -> Result<ShpImportResult, String> {
+    let mut items = Vec::new();
+    let base_dir = paths
+        .first()
+        .and_then(|p| Path::new(p).parent())
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_default();
+
+    for p in &paths {
+        let shp_path = PathBuf::from(p);
+        if shp_path.extension().map(|e| e != "shp").unwrap_or(true) {
+            continue;
+        }
+        match shp::read_shp_file_group(&shp_path) {
+            Ok(info) => items.push(ShpFileItem {
+                shp_path: info.shp_path,
+                dbf_path: info.dbf_path,
+                prj_path: info.prj_path,
+                name: info.name,
+                field_names: info.field_names,
+                num_features: info.num_features,
+                shape_type: info.shape_type,
+                prj_text: info.prj_text,
+                crs_info: info.crs_info,
+            }),
+            Err(e) => eprintln!("拖放读 SHP 失败: {}", e),
+        }
+    }
+    Ok(ShpImportResult { files: items, dir: base_dir })
+}
+
+#[tauri::command]
+fn pick_txt_files_from_paths(paths: Vec<String>) -> Result<TxtImportResult, String> {
+    let mut items = Vec::new();
+    for p in &paths {
+        let path = PathBuf::from(p);
+        let text = match std::fs::read_to_string(&path) {
+            Ok(t) => t,
+            Err(e) => { eprintln!("拖放读 TXT 失败: {}", e); continue; }
+        };
+        let parsed = txt::parse_txt(&text);
+        let total_points: usize = parsed.plots.iter().map(|p| p.coords.len()).sum();
+        let mut crs = HashMap::new();
+        for key in &["坐标系", "几度分带", "投影类型", "计量单位", "带号", "精度"] {
+            if let Some(v) = parsed.attrs.get(*key) { crs.insert(key.to_string(), v.clone()); }
+        }
+        let log = generate_parse_log(&path, &parsed, total_points);
+        items.push(TxtFileItem {
+            path: path.to_string_lossy().to_string(),
+            name: path.file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_default(),
+            size: std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0),
+            parse_log: log,
+            plot_count: parsed.plots.len(),
+            point_count: total_points,
+            crs_info: crs,
+        });
+    }
+    Ok(TxtImportResult { files: items })
+}
+
+#[tauri::command]
 fn read_txt_preview(path: String) -> Result<String, String> {
     let text = std::fs::read_to_string(&path).map_err(|e| format!("读 TXT 失败: {}", e))?;
     let parsed = txt::parse_txt(&text);
@@ -379,11 +440,14 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
             pick_shp_files,
             import_gdb,
             pick_txt_files,
             pick_output_dir,
+            pick_shp_files_from_paths,
+            pick_txt_files_from_paths,
             read_shp_to_txt_preview,
             read_txt_preview,
             run_shp_to_txt,

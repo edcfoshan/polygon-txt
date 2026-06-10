@@ -324,7 +324,7 @@ pub fn write_shapefile(
     Ok(shp_paths)
 }
 
-/// 手动写 DBF 文件
+/// 手动写 DBF 文件（支持 GBK 中文编码）
 fn write_dbf_manual(
     path: &Path,
     attributes: &[std::collections::HashMap<String, String>],
@@ -345,13 +345,14 @@ fn write_dbf_manual(
     let mut buf = Vec::new();
 
     // Header (32 bytes)
-    buf.push(0x03);
-    buf.push(26); buf.push(6); buf.push(10);
+    buf.push(0x03);         // version
+    buf.push(26); buf.push(6); buf.push(10);  // date
     let num_records = attributes.len() as u32;
     buf.extend_from_slice(&num_records.to_le_bytes());
     buf.extend_from_slice(&header_len.to_le_bytes());
     buf.extend_from_slice(&records_len.to_le_bytes());
-    buf.extend_from_slice(&[0u8; 20]);
+    buf.push(0x7C);         // language driver ID: GBK/Chinese Simplified
+    buf.extend_from_slice(&[0u8; 19]);
 
     let mut offset: u16 = 1;
     for &(name, ftype, len, decimals) in &field_defs {
@@ -380,7 +381,13 @@ fn write_dbf_manual(
             attr.get("DLBM").map(|s| s.as_str()).unwrap_or(""),
         ];
         for (i, &(_, _, len, _)) in field_defs.iter().enumerate() {
-            let vb = vals[i].as_bytes();
+            // Encode string to GBK; fallback to UTF-8 if encoding fails
+            let (encoded, _, had_errors) = encoding_rs::GBK.encode(vals[i]);
+            let vb = if had_errors {
+                vals[i].as_bytes().to_vec()
+            } else {
+                encoded.into_owned()
+            };
             for j in 0..len as usize {
                 buf.push(if j < vb.len() { vb[j] } else { b' ' });
             }

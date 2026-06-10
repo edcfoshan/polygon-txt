@@ -1,4 +1,5 @@
 import { defineConfig } from "vite";
+import { viteSingleFile } from "vite-plugin-singlefile";
 
 export default defineConfig({
   clearScreen: false,
@@ -11,4 +12,5 @@ export default defineConfig({
     target: "esnext",
     minify: false,
   },
+  plugins: [viteSingleFile()],
 });

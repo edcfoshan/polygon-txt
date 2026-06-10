@@ -100,7 +100,7 @@ body::before{
   padding:0 12px;gap:8px;flex-shrink:0;
   background:linear-gradient(180deg, var(--srf3), var(--srf));
   border-bottom:1px solid var(--brd);
-  -webkit-app-region:drag;user-select:none;
+  user-select:none;
 }
 
 /* Brand mark — geometric crosshair */
@@ -132,7 +132,7 @@ body::before{
   color:var(--tx3);cursor:pointer;
   display:flex;align-items:center;justify-content:center;
   transition:all .2s cubic-bezier(.4,0,.2,1);
-  -webkit-app-region:no-drag;position:relative;
+  position:relative;
 }
 .tbar-btn:hover{color:var(--tx2);background:var(--srf2);border-color:var(--brd)}
 .tbar-btn:active{transform:scale(.95)}
@@ -141,7 +141,7 @@ body::before{
 .tbar-btn.sponsor:hover{color:var(--ach);background:var(--acg);border-color:rgba(154,111,31,.25)}
 .tbar-btn:focus-visible{outline:2px solid var(--ac);outline-offset:2px;border-radius:6px}
 
-.cfg-area{display:flex;align-items:center;gap:5px;-webkit-app-region:no-drag}
+.cfg-area{display:flex;align-items:center;gap:5px}
 .cfg-area select{
   padding:4px 8px;border:1px solid var(--brd);border-radius:4px;
   font-size:11px;font-weight:500;background:var(--srf2);color:var(--tx2);outline:none;
@@ -183,7 +183,7 @@ body::before{
 [data-t="light"] .theme-toggle .sun{opacity:0;transform:rotate(90deg) scale(.5)}
 [data-t="light"] .theme-toggle .moon{opacity:1;transform:rotate(0) scale(1)}
 
-.win-ctls{display:flex;align-items:center;-webkit-app-region:no-drag;margin-left:6px}
+.win-ctls{display:flex;align-items:center;margin-left:6px}
 .win-btn{
   width:36px;height:28px;border:none;background:transparent;
   display:flex;align-items:center;justify-content:center;
@@ -583,18 +583,18 @@ body::before{
       <span class="brand-sub">V1.0</span>
     </div>
     <!-- GitHub button -->
-    <button class="tbar-btn" onclick="window.open('https://github.com/edcfoshan/txt-gdb-converter','_blank')" title="GitHub 仓库" aria-label="GitHub">
+    <button class="tbar-btn" id="btnGitHub" title="GitHub 仓库" aria-label="GitHub">
       <svg viewBox="0 0 24 24" fill="currentColor">
         <path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.17 6.839 9.49.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.604-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.463-1.11-1.463-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.831.092-.646.35-1.086.636-1.336-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0 1 12 6.836a9.59 9.59 0 0 1 2.504.337c1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.167 22 16.418 22 12c0-5.523-4.477-10-10-10z"/>
       </svg>
     </button>
     <!-- Sponsor button -->
-    <button class="tbar-btn sponsor" onclick="openSponsor()" title="赞赏支持" aria-label="赞赏">
+    <button class="tbar-btn sponsor" id="btnSponsor" title="赞赏支持" aria-label="赞赏">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
       </svg>
     </button>
-    <button class="theme-toggle" onclick="togTheme()" title="切换主题" aria-label="切换主题">
+    <button class="theme-toggle" id="btnTheme" title="切换主题" aria-label="切换主题">
       <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>
       </svg>
@@ -602,35 +602,24 @@ body::before{
         <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
       </svg>
     </button>
-    <button class="tbar-btn" onclick="openAbout()" title="关于" aria-label="关于">
+    <button class="tbar-btn" id="btnAbout" title="关于" aria-label="关于">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>
       </svg>
     </button>
     <div class="spacer"></div>
-    <div class="win-ctls">
-      <button class="win-btn" onclick="try{window.blur()}catch{}" title="最小化" aria-label="最小化">
-        <svg viewBox="0 0 10 10"><line x1="2" y1="8" x2="8" y2="8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-      </button>
-      <button class="win-btn" onclick="try{document.documentElement.requestFullscreen?.()||document.documentElement.webkitRequestFullscreen?.()}catch{}" title="最大化" aria-label="最大化">
-        <svg viewBox="0 0 10 10"><rect x="1.5" y="1.5" width="7" height="7" rx="0.5" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>
-      </button>
-      <button class="win-btn close" onclick="try{window.close()}catch{}" title="关闭" aria-label="关闭">
-        <svg viewBox="0 0 10 10"><line x1="1" y1="1" x2="9" y2="9"/><line x1="9" y1="1" x2="1" y2="9"/></svg>
-      </button>
-    </div>
   </div>
 
   <!-- ═══ Tab Bar ═══ -->
   <div class="tabbar">
-    <button class="tab on" data-t="s" onclick="sw('s')">面 → TXT</button>
-    <button class="tab" data-t="t" onclick="sw('t')">TXT → 面</button>
+    <button class="tab on" data-t="s">面 → TXT</button>
+    <button class="tab" data-t="t">TXT → 面</button>
     <div class="spacer"></div>
     <div class="chips" id="ch"></div>
     <div class="cfg-area">
       <span class="cfg-name" id="cn" contenteditable spellcheck="false"></span>
-      <button class="btn" onclick="saveOnly()" title="保存">保存</button>
-      <button class="btn" onclick="delCfg()" title="删除">删除</button>
+      <button class="btn" id="btnSave" title="保存">保存</button>
+      <button class="btn" id="btnDel" title="删除">删除</button>
     </div>
   </div>
 
@@ -641,19 +630,19 @@ body::before{
     <div class="pnl pnl-l">
       <!-- 面→TXT mode -->
       <div class="mode-s pnl-bd">
-        <div class="drop" id="dropZone" onclick="importShp()">
+        <div class="drop" id="dropZone">
           <div class="drop-ic">＋</div>
           <div class="drop-tx">选择 .shp 文件（可多选）</div>
         </div>
         <div style="margin-top:4px;display:flex;gap:4px">
-          <div class="drop" onclick="importGdb()" style="flex:1;padding:6px 8px">
+          <div class="drop" id="dropGdb" style="flex:1;padding:6px 8px">
             <div style="display:flex;align-items:center;justify-content:center;gap:6px;font-size:11px;color:var(--tx3)">
               <span style="font-size:13px;font-weight:300">📁</span> 导入 .gdb 文件夹
             </div>
           </div>
         </div>
         <div class="file-list" id="fl"></div>
-        <div style="text-align:right;margin-top:2px"><button class="btn" onclick="clearAllFiles()">清空全部</button></div>
+        <div style="text-align:right;margin-top:2px"><button class="btn" id="btnClearS">清空全部</button></div>
         <div class="div"></div>
         <div class="card">
           <div class="card-label">字段映射</div>
@@ -665,19 +654,19 @@ body::before{
               <div class="fcell"><label>用途</label><select id="fu"><option value="">无</option><option>DKYT</option></select></div>
               <div class="fcell"><label>图幅号</label><select id="fm"><option value="">无</option><option>TFH</option></select></div>
               <div class="fcell"><label>地类</label><select id="fd"><option value="">无</option><option>DLBM</option></select></div>
-              <div class="fcell-full"><label>输出目录</label><div style="display:flex;gap:4px"><input type="text" value="D:\output\txt" style="flex:1" class="fci"><button class="btn fci">浏览</button></div></div>
+              <div class="fcell-full"><label>输出目录</label><div style="display:flex;gap:4px"><input type="text" id="out_dir_s" readonly placeholder="选择输出文件夹…" style="flex:1" class="fci"><button class="btn fci" id="btnBrowseS">浏览</button></div></div>
             </div>
           </div>
         </div>
       </div>
       <!-- TXT→面 mode -->
       <div class="mode-t pnl-bd">
-        <div class="drop" id="dropZoneTxt" onclick="importTxt()">
+        <div class="drop" id="dropZoneTxt">
           <div class="drop-ic">＋</div>
           <div class="drop-tx">导入 TXT 文件（可多选）</div>
         </div>
         <div class="file-list" id="flT"></div>
-        <div style="text-align:right;margin-top:2px"><button class="btn" onclick="clearAllFilesTxt()">清空全部</button></div>
+        <div style="text-align:right;margin-top:2px"><button class="btn" id="btnClearT">清空全部</button></div>
         <div class="div"></div>
         <div class="slabel">输出设置</div>
         <div class="fld">
@@ -698,7 +687,7 @@ body::before{
           <label>输出目录</label>
           <div style="display:flex;gap:4px">
             <input type="text" id="out_dir" readonly placeholder="选择输出文件夹…" style="flex:1;min-width:0">
-            <button class="btn" id="out_btn" onclick="selectOutputDir()" style="white-space:nowrap">浏览…</button>
+            <button class="btn" id="out_btn" style="white-space:nowrap">浏览…</button>
           </div>
         </div>
       </div>
@@ -725,23 +714,23 @@ body::before{
 
         <div class="slabel">自定义表头</div>
         <div class="hdr-tabs">
-          <div class="hdr-tab on" onclick="switchHdrTab('attr')">属性描述</div>
-          <div class="hdr-tab" onclick="switchHdrTab('proj')">项目信息</div>
+          <div class="hdr-tab on" id="hdrTabAttr" data-tab="attr">属性描述</div>
+          <div class="hdr-tab" id="hdrTabProj" data-tab="proj">项目信息</div>
         </div>
         <div class="hdr-panel on" id="hdrAttr">
           <div class="hcfg">
-            <div class="hrow"><label>坐标系</label><input id="hc" value="2000国家大地坐标系" oninput="up()"></div>
-            <div class="hrow"><label>分带</label><select id="hb" onchange="up()"><option>3</option><option>6</option></select></div>
-            <div class="hrow"><label>投影</label><input id="hj" value="高斯克吕格" oninput="up()"></div>
-            <div class="hrow"><label>单位</label><input id="hu" value="米" oninput="up()"></div>
-            <div class="hrow"><label>带号</label><input id="hz" value="" placeholder="无" oninput="up()"></div>
-            <div class="hrow"><label>精度</label><select id="ha" onchange="up()"><option>1</option><option>0.1</option><option>0.01</option><option selected>0.001</option><option>0.0001</option></select></div>
-            <div class="hrow"><label>参数</label><input id="ht" value=",,,,,," oninput="up()"></div>
+            <div class="hrow"><label>坐标系</label><input id="hc" value="2000国家大地坐标系"></div>
+            <div class="hrow"><label>分带</label><select id="hb"><option>3</option><option>6</option></select></div>
+            <div class="hrow"><label>投影</label><input id="hj" value="高斯克吕格"></div>
+            <div class="hrow"><label>单位</label><input id="hu" value="米"></div>
+            <div class="hrow"><label>带号</label><input id="hz" value="" placeholder="无"></div>
+            <div class="hrow"><label>精度</label><select id="ha"><option>1</option><option>0.1</option><option>0.01</option><option selected>0.001</option><option>0.0001</option></select></div>
+            <div class="hrow"><label>参数</label><input id="ht" value=",,,,,,"></div>
           </div>
         </div>
         <div class="hdr-panel" id="hdrProj">
-          <div style="display:flex;justify-content:flex-end;margin-bottom:3px"><button class="btn" onclick="prefillProject()" style="font-size:9.5px;padding:2px 8px">预填写</button></div>
-          <textarea class="hdr-textarea" id="hpi" oninput="up()"></textarea>
+          <div style="display:flex;justify-content:flex-end;margin-bottom:3px"><button class="btn" id="btnPrefill" style="font-size:9.5px;padding:2px 8px">预填写</button></div>
+          <textarea class="hdr-textarea" id="hpi"></textarea>
         </div>
       </div>
       </div>
@@ -755,7 +744,7 @@ body::before{
           <div class="pv" id="pv">等待导入 SHP 文件…</div>
         </div>
         <div class="ctr-ft">
-          <button class="btn-run" onclick="runShpToTxt()">开始转换</button>
+          <button class="btn-run" id="btnRunStt">开始转换</button>
           <div class="prog"><div class="prog-fill" id="pf"></div></div>
           <span class="prog-txt" id="ps">就绪</span>
         </div>
@@ -766,7 +755,7 @@ body::before{
           <div class="pv" id="pvT">等待导入 TXT 文件…</div>
         </div>
         <div class="ctr-ft">
-          <button class="btn-run" onclick="runTxtToShp()">开始转换</button>
+          <button class="btn-run" id="btnRunTts">开始转换</button>
           <div class="prog"><div class="prog-fill" id="pfT"></div></div>
           <span class="prog-txt" id="psT">就绪</span>
         </div>
@@ -777,9 +766,9 @@ body::before{
 </div>
 
 <!-- About Modal -->
-<div class="modal-overlay" id="aboutModal" onclick="closeAbout(event)">
-  <div class="modal-card" onclick="event.stopPropagation()" style="max-width:360px;text-align:left">
-    <button class="modal-close" onclick="closeAbout()" aria-label="关闭">×</button>
+<div class="modal-overlay" id="aboutModal">
+  <div class="modal-card" style="max-width:360px;text-align:left">
+    <button class="modal-close" id="btnCloseAbout" aria-label="关闭">×</button>
     <h3 style="text-align:center;margin-bottom:8px">关于界址点互转工具</h3>
     <p class="modal-sub" style="text-align:center">由极思 G 提供技术支持</p>
     <div style="font-size:12px;color:var(--tx2);line-height:1.7;padding:0 4px;margin-bottom:10px">
@@ -805,9 +794,9 @@ body::before{
 </div>
 
 <!-- Sponsor Modal -->
-<div class="modal-overlay" id="sponsorModal" onclick="closeSponsor(event)">
-  <div class="modal-card" onclick="event.stopPropagation()">
-    <button class="modal-close" onclick="closeSponsor()" aria-label="关闭">×</button>
+<div class="modal-overlay" id="sponsorModal">
+  <div class="modal-card">
+    <button class="modal-close" id="btnCloseSponsor" aria-label="关闭">×</button>
     <h3>支持开发者</h3>
     <p class="modal-sub">如果这个工具对你有帮助</p>
     <img src="关注、赞赏码.png" alt="关注、赞赏码">
@@ -816,379 +805,6 @@ body::before{
 
 <div class="toast" id="toast"></div>
 
-<script>// 界址点互转工具 — 主 JS 模块 (Tauri v2)
-// 使用 window.__TAURI__ 运行时 API
-
-// Tauri IPC 调用（兼容生产环境和浏览器调试）
-async function tauriInvoke(cmd, args) {
-  try {
-    if (window.__TAURI__?.core?.invoke) {
-      return await window.__TAURI__.core.invoke(cmd, args);
-    }
-    // 浏览器调试模式：打印错误
-    console.warn('[Tauri] invoke not available:', cmd, args);
-    return { files: [], dir: '', success: true, message: '模拟模式' };
-  } catch (e) {
-    console.error('[Tauri] invoke error:', cmd, e);
-    throw e;
-  }
-}
-
-// ═══ State ═══
-let loadedFiles = [];
-let txtFiles = [];
-let cur = "basic";
-let cfgs = {};
-let headerManual = {};
-let lastPreviewKey = "";
-let previewTimer = null;
-let theme = "light";
-let gdbPath = null;
-
-const FIELD_MATCH_RULES = {
-  fn: ["DKMC", "MC", "NAME"],
-  fi: ["DKBH", "BH", "ID"],
-  fa: ["MJ", "AREA"],
-  fu: ["DKYT", "YT", "YONGTU"],
-  fm: ["TFH"],
-  fd: ["DLBM", "DL"],
-};
-
-const PP = [
-  { id: "basic", n: "基础地块", h: { c: "2000国家大地坐标系", b: "3", j: "高斯克吕格", u: "米", z: "", a: "0.001", t: ",,,,,," }, p: { pp: 3, pz: "auto", pb: 0, ox: 0, oj: 1, op: 0, on: 0, oo: 1, om: 0 }, f: { fn: "DKMC", fi: "DKBH", fa: "", fu: "", fm: "", fd: "" } },
-  { id: "gov", n: "规划审批", h: { c: "2000国家大地坐标系", b: "3", j: "高斯克吕格", u: "米", z: "", a: "0.001", t: ",,,,,," }, p: { pp: 3, pz: "auto", pb: 0, ox: 0, oj: 1, op: 0, on: 0, oo: 1, om: 0 }, f: { fn: "DKMC", fi: "DKBH", fa: "MJ", fu: "DKYT", fm: "TFH", fd: "DLBM" } },
-  { id: "usr", n: "自定义", h: { c: "2000国家大地坐标系", b: "3", j: "高斯克吕格", u: "米", z: "", a: "0.001", t: ",,,,,," }, p: { pp: 3, pz: "auto", pb: 0, ox: 0, oj: 1, op: 0, on: 0, oo: 1, om: 0 }, f: { fn: "DKMC", fi: "DKBH", fa: "", fu: "", fm: "", fd: "" } },
-];
-
-const $ = (id) => document.getElementById(id);
-
-// ═══ Toast ═══
-function toast(m) {
-  const t = $("toast");
-  if (!t) return;
-  t.textContent = m;
-  t.classList.add("on");
-  clearTimeout(t._h);
-  t._h = setTimeout(() => t.classList.remove("on"), 1500);
-}
-
-// ═══ Theme ═══
-window.togTheme = function () {
-  theme = theme === "light" ? "dark" : "light";
-  document.documentElement.setAttribute("data-t", theme);
-  localStorage.setItem("tg_theme", theme);
-};
-
-// ═══ SHP 导入 ═══
-window.importShp = async function () {
-  try {
-    const result = await tauriInvoke("pick_shp_files");
-    if (!result.files || result.files.length === 0) return;
-    loadedFiles = result.files;
-    gdbPath = null;
-    renderFileList();
-    processImport();
-  } catch (e) {
-    toast("导入失败: " + e);
-  }
-};
-
-// ═══ GDB 导入 ═══
-window.importGdb = async function () {
-  try {
-    const result = await tauriInvoke("import_gdb");
-    if (!result || !result.path) return;
-    gdbPath = result.path;
-    loadedFiles = [];
-    const fl = $("fl");
-    fl.innerHTML = `<div class="fitem"><span class="fn">◈ ${result.name}.gdb</span><span class="fs">${result.num_features}个要素</span></div>`;
-    autoMatchFields(result.field_names);
-    toast(`已导入 GDB: ${result.name} (${result.layers.length} 个图层)`);
-    updatePreview();
-  } catch (e) {
-    toast("导入 GDB 失败: " + e);
-  }
-};
-
-function renderFileList() {
-  const fl = $("fl");
-  fl.innerHTML = "";
-  loadedFiles.forEach((g) => {
-    fl.innerHTML += `<div class="fitem"><span class="fn">◈ ${g.name}.shp</span><span class="fs">${g.num_features}个</span></div>`;
-  });
-}
-
-function processImport() {
-  if (!loadedFiles.length) return;
-  const first = loadedFiles[0];
-  autoMatchFields(first.field_names || []);
-  if (first.crs_info) autoFillHeader(first.crs_info);
-  updatePreview();
-  toast("已导入 " + loadedFiles.length + " 个文件");
-}
-
-function autoMatchFields(fieldNames) {
-  for (const [key, rules] of Object.entries(FIELD_MATCH_RULES)) {
-    const sel = $(key);
-    if (!sel) continue;
-    let matched = "";
-    for (const r of rules) {
-      if (fieldNames.includes(r)) { matched = r; break; }
-    }
-    sel.innerHTML = "";
-    if (!matched) sel.innerHTML = '<option value="">无</option>';
-    fieldNames.forEach((fn) => {
-      sel.innerHTML += `<option value="${fn}"${fn === matched ? " selected" : ""}>${fn}</option>`;
-    });
-  }
-}
-
-function autoFillHeader(info) {
-  const map = { c: "hc", b: "hb", j: "hj", u: "hu", z: "hz" };
-  for (const [k, id] of Object.entries(map)) {
-    if (!headerManual[id] && info[k]) {
-      const el = $(id);
-      if (el) { el.value = info[k]; el.style.borderColor = "var(--ac)";
-        setTimeout(() => { el.style.borderColor = ""; }, 2000); }
-    }
-  }
-}
-
-// ═══ TXT 导入 ═══
-window.importTxt = async function () {
-  try {
-    const result = await tauriInvoke("pick_txt_files");
-    if (!result.files || result.files.length === 0) return;
-    txtFiles = result.files;
-    renderTxtFileList();
-    renderTxtParseLog();
-  } catch (e) {
-    toast("导入失败: " + e);
-  }
-};
-
-function renderTxtFileList() {
-  const fl = $("flT");
-  if (!fl) return;
-  fl.innerHTML = "";
-  txtFiles.forEach((f) => {
-    fl.innerHTML += `<div class="fitem"><span class="fn">◈ ${f.name}</span><span class="fs">${(f.size / 1024).toFixed(0)}KB</span></div>`;
-  });
-}
-
-function renderTxtParseLog() {
-  const pv = $("pvT");
-  if (!pv) return;
-  pv.textContent = txtFiles.length
-    ? txtFiles.map((f) => f.parse_log).join("\n\n")
-    : "等待导入 TXT 文件…";
-}
-
-function clearAllFiles() { loadedFiles = []; gdbPath = null; const fl = $("fl"); if (fl) fl.innerHTML = ""; toast("已清空"); }
-function clearAllFilesTxt() { txtFiles = []; const fl = $("flT"); if (fl) fl.innerHTML = ""; const pv = $("pvT"); if (pv) pv.textContent = "等待导入 TXT 文件…"; toast("已清空"); }
-
-// ═══ Preview ═══
-function updatePreview() {
-  clearTimeout(previewTimer);
-  previewTimer = setTimeout(up, 150);
-}
-
-async function up() {
-  const ha = $("ha")?.value || "0.001";
-  const hpi = $("hpi")?.value || "";
-  let out = "";
-  if (hpi.trim()) out += `[项目信息]\n${hpi.trim()}\n`;
-  out += `[属性描述]\n坐标系=${$("hc")?.value || ""}\n几度分带=${$("hb")?.value || ""}\n投影类型=${$("hj")?.value || ""}\n计量单位=${$("hu")?.value || ""}\n带号=${$("hz")?.value || ""}\n精度=${ha}\n转换参数=${$("ht")?.value || ""}\n[地块坐标]`;
-
-  const cfg = getConfig();
-  const opt = getOptions();
-  const shpPaths = loadedFiles.map((f) => f.shp_path).filter(Boolean);
-
-  if (shpPaths.length > 0 || gdbPath) {
-    try {
-      const txt = await tauriInvoke("read_shp_to_txt_preview", { shpPaths, gdbPath, headerCfg: cfg.h, fieldMapping: cfg.f, options: opt });
-      if (txt) { const pv = $("pv"); if (pv) pv.textContent = txt; return; }
-    } catch (e) { console.log("Preview error:", e); }
-  }
-  const pv = $("pv");
-  if (pv) pv.textContent = out || "等待导入 SHP 或 GDB 文件…";
-  lastPreviewKey = out;
-}
-
-// ═══ Run ═══
-window.runShpToTxt = async function () {
-  const shpPaths = loadedFiles.map((f) => f.shp_path).filter(Boolean);
-  if (!shpPaths.length && !gdbPath) { toast("请先导入 SHP 或 GDB 文件"); return; }
-
-  const outDir = await tauriInvoke("pick_output_dir");
-  if (!outDir) { toast("请选择输出目录"); return; }
-
-  const cfg = getConfig();
-  const opt = getOptions();
-  try {
-    const result = await tauriInvoke("run_shp_to_txt", { shpPaths, gdbPath, headerCfg: cfg.h, fieldMapping: cfg.f, options: opt, outputDir: outDir });
-    toast("✓ " + result.message);
-    const pf = $("pf"); const ps = $("ps");
-    if (pf) pf.style.width = "100%";
-    if (ps) ps.textContent = "完成";
-  } catch (e) { toast("转换失败: " + e); }
-};
-
-window.runTxtToShp = async function () {
-  if (!txtFiles.length) { toast("请先导入 TXT 文件"); return; }
-  const outDir = await tauriInvoke("pick_output_dir");
-  if (!outDir) { toast("请选择输出目录"); return; }
-
-  const outputShp = $("of_shp")?.checked || false;
-  const outputGdb = $("of_gdb")?.checked || false;
-  if (!outputShp && !outputGdb) { toast("请至少选择一种输出格式"); return; }
-
-  const txtPaths = txtFiles.map((f) => f.path);
-  const cfg = getConfig();
-  try {
-    const result = await tauriInvoke("run_txt_to_shp", {
-      txtPaths,
-      options: { output_shp: outputShp, output_gdb: outputGdb, merge: $("org_merge")?.checked || false, output_dir: outDir },
-      headerCfg: cfg.h,
-    });
-    toast("✓ " + result.message);
-    const pf = $("pfT");
-    if (pf) pf.style.width = "100%";
-  } catch (e) { toast("转换失败: " + e); }
-};
-
-// ═══ Config ═══
-function getConfig() {
-  return {
-    h: { c: $("hc")?.value || "", b: $("hb")?.value || "", j: $("hj")?.value || "", u: $("hu")?.value || "", z: $("hz")?.value || "", a: $("ha")?.value || "", t: $("ht")?.value || "", project_info: $("hpi")?.value || "" },
-    f: { name: $("fn")?.value || "", id: $("fi")?.value || "", area: $("fa")?.value || "", use_field: $("fu")?.value || "", tfh: $("fm")?.value || "", dlbm: $("fd")?.value || "" },
-  };
-}
-
-function getOptions() {
-  return { ox: $("ox")?.checked || false, oj: $("oj")?.checked || false, op: $("op")?.checked || false, on: $("on")?.checked || false, oo: $("oo")?.checked || false, om: $("om")?.checked || false };
-}
-
-// ═══ Tab switch ═══
-window.sw = function (t) {
-  document.querySelectorAll(".tab").forEach((e) => e.classList.remove("on"));
-  const tab = document.querySelector(`[data-tab="${t}"]`);
-  if (tab) tab.classList.add("on");
-  document.querySelector(".app").setAttribute("data-mode", t);
-};
-
-window.tg = function (h) {
-  const a = h.querySelector(".arr");
-  const b = h.nextElementSibling;
-  if (a) a.classList.toggle("o");
-  if (b) b.classList.toggle("o");
-};
-
-// ═══ Header tabs ═══
-window.switchHdrTab = function (t) {
-  document.querySelectorAll(".hdr-tab").forEach((e) => e.classList.toggle("on", e.dataset.tab === t));
-  $("hdrAttr")?.classList.toggle("on", t === "attr");
-  $("hdrProj")?.classList.toggle("on", t === "proj");
-};
-
-window.prefillProject = function () {
-  const hpi = $("hpi");
-  if (!hpi) return;
-  hpi.value = "项目名称=\n项目所在县区代码=\n项目所在市县名称=\n项目类别=\n开发用途=\n总用地面积=\n备注=";
-  updatePreview();
-};
-
-window.tp = function (id) { const el = $(id); if (el) el.classList.toggle("hide"); };
-
-window.selectOutputDir = async function () {
-  const dir = await tauriInvoke("pick_output_dir");
-  if (dir) { const inp = $("out_dir"); if (inp) inp.value = dir; }
-};
-
-// ═══ Presets ═══
-function renderChips() {
-  const ch = $("ch");
-  if (!ch) return;
-  ch.innerHTML = "";
-  Object.values(cfgs).forEach((c) => {
-    ch.innerHTML += `<span class="chip${c.id === cur ? " on" : ""}" onclick="ld('${c.id}')">${c.n}</span>`;
-  });
-}
-
-window.ld = function (id) {
-  if (!id) return;
-  const c = cfgs[id] || PP.find((p) => p.id === id);
-  if (!c) return;
-  cur = id;
-  if (c.h) { $("hc").value = c.h.c; $("hb").value = c.h.b; $("hj").value = c.h.j; $("hu").value = c.h.u; $("hz").value = c.h.z; $("ha").value = c.h.a; $("ht").value = c.h.t; }
-  if (c.p) { if ($("ox")) $("ox").checked = !!c.p.ox; if ($("oj")) $("oj").checked = !!c.p.oj; }
-  if (c.f) Object.keys(c.f).forEach((k) => { const e = $(k); if (e) e.value = c.f[k]; });
-  const cn = $("cn");
-  if (cn) cn.textContent = c.n || "基础地块";
-  document.querySelectorAll(".chip").forEach((e) => e.classList.remove("on"));
-  const cp = document.querySelector(`.chip[onclick*="${id}"]`);
-  if (cp) cp.classList.add("on");
-  localStorage.setItem("tg_last", id);
-  updatePreview();
-};
-
-window.saveOnly = function () {
-  const cn = $("cn");
-  if (!cn) return;
-  const newName = (cn.textContent || "").trim();
-  if (!newName) { toast("请输入配置名称"); return; }
-  let existing = null;
-  for (const [, v] of Object.entries(cfgs)) { if (v.n === newName) { existing = v; break; } }
-  const c = getConfig();
-  const cfgObj = { id: existing ? existing.id : "u" + Date.now(), n: newName, h: c.h, p: getOptions(), f: c.f };
-  cfgs[cfgObj.id] = cfgObj;
-  localStorage.setItem("tg_dark", JSON.stringify(cfgs));
-  cur = cfgObj.id;
-  cn.textContent = cfgObj.n;
-  renderChips();
-  toast("已保存 「" + cfgObj.n + "」");
-};
-
-window.delCfg = function () {
-  if (cur === "basic" || cur === "gov" || cur === "usr") { toast("内置预设不可删除"); return; }
-  if (!confirm("确定删除方案「" + ($("cn")?.textContent || "") + "」？")) return;
-  delete cfgs[cur];
-  localStorage.setItem("tg_dark", JSON.stringify(cfgs));
-  cur = "basic";
-  ld("basic");
-  renderChips();
-  toast("已删除");
-};
-
-// ═══ Modals ═══
-window.openSponsor = function () { const m = $("sponsorModal"); if (m) m.classList.add("on"); };
-window.closeSponsor = function (e) { if (e && e.target !== $("sponsorModal")) return; const m = $("sponsorModal"); if (m) m.classList.remove("on"); };
-window.openAbout = function () { const m = $("aboutModal"); if (m) m.classList.add("on"); };
-window.closeAbout = function (e) { if (e && e.target !== $("aboutModal")) return; const m = $("aboutModal"); if (m) m.classList.remove("on"); };
-document.addEventListener("keydown", function (e) {
-  if (e.key === "Escape") { const sm = $("sponsorModal"); const am = $("aboutModal"); if (sm) sm.classList.remove("on"); if (am) am.classList.remove("on"); }
-});
-
-// ═══ Init ═══
-function init() {
-  const savedTheme = localStorage.getItem("tg_theme") || "light";
-  theme = savedTheme;
-  document.documentElement.setAttribute("data-t", theme);
-
-  const s = localStorage.getItem("tg_dark");
-  if (s) cfgs = JSON.parse(s);
-  PP.forEach((p) => { if (!cfgs[p.id]) cfgs[p.id] = p; });
-  renderChips();
-  ld(localStorage.getItem("tg_last") || "basic");
-
-  document.querySelectorAll("input,select").forEach((el) => { el.addEventListener("input", updatePreview); el.addEventListener("change", updatePreview); });
-  document.querySelectorAll("#hc,#hb,#hj,#hu,#hz,#ha,#ht").forEach((el) => { el.addEventListener("input", () => { headerManual[el.id] = true; }); el.addEventListener("change", () => { headerManual[el.id] = true; }); });
-
-  up();
-}
-
-init();
-</script>
+<script type="module" src="src/main.js"></script>
 </body>
 </html>
-

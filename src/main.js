@@ -95,10 +95,17 @@ window.importGdb = async function () {
 function renderFileList() {
   const fl = $("fl");
   fl.innerHTML = "";
-  loadedFiles.forEach((g) => {
-    fl.innerHTML += `<div class="fitem"><span class="fn">◈ ${g.name}.shp</span><span class="fs">${g.num_features}个</span></div>`;
+  loadedFiles.forEach((g, i) => {
+    fl.innerHTML += `<div class="fitem"><span class="fn">◈ ${g.name}.shp</span><span class="fs">${g.num_features}个</span><button class="fitem-close" data-remove-file="${i}">×</button></div>`;
   });
 }
+
+window.removeFile = function (i) {
+  loadedFiles.splice(i, 1);
+  if (!loadedFiles.length) { const fl = $("fl"); if (fl) fl.innerHTML = ""; lastPreviewKey = ""; updatePreview(); return; }
+  renderFileList();
+  updatePreview();
+};
 
 function processImport() {
   if (!loadedFiles.length) return;
@@ -153,10 +160,21 @@ function renderTxtFileList() {
   const fl = $("flT");
   if (!fl) return;
   fl.innerHTML = "";
-  txtFiles.forEach((f) => {
-    fl.innerHTML += `<div class="fitem"><span class="fn">◈ ${f.name}</span><span class="fs">${(f.size / 1024).toFixed(0)}KB</span></div>`;
+  txtFiles.forEach((f, i) => {
+    fl.innerHTML += `<div class="fitem"><span class="fn">◈ ${f.name}</span><span class="fs">${(f.size / 1024).toFixed(0)}KB</span><button class="fitem-close" data-remove-txt="${i}">×</button></div>`;
   });
 }
+
+window.removeTxtFile = function (i) {
+  txtFiles.splice(i, 1);
+  if (!txtFiles.length) {
+    const fl = $("flT"); if (fl) fl.innerHTML = "";
+    const pv = $("pvT"); if (pv) pv.textContent = "等待导入 TXT 文件…";
+    return;
+  }
+  renderTxtFileList();
+  renderTxtParseLog();
+};
 
 function renderTxtParseLog() {
   const pv = $("pvT");
@@ -166,16 +184,16 @@ function renderTxtParseLog() {
     : "等待导入 TXT 文件…";
 }
 
-function clearAllFiles() { loadedFiles = []; gdbPath = null; const fl = $("fl"); if (fl) fl.innerHTML = ""; toast("已清空"); }
-function clearAllFilesTxt() { txtFiles = []; const fl = $("flT"); if (fl) fl.innerHTML = ""; const pv = $("pvT"); if (pv) pv.textContent = "等待导入 TXT 文件…"; toast("已清空"); }
+window.clearAllFiles = function () { loadedFiles = []; gdbPath = null; const fl = $("fl"); if (fl) fl.innerHTML = ""; toast("已清空"); };
+window.clearAllFilesTxt = function () { txtFiles = []; const fl = $("flT"); if (fl) fl.innerHTML = ""; const pv = $("pvT"); if (pv) pv.textContent = "等待导入 TXT 文件…"; toast("已清空"); };
 
 // ═══ Preview ═══
 function updatePreview() {
   clearTimeout(previewTimer);
-  previewTimer = setTimeout(up, 150);
+  previewTimer = setTimeout(() => window.up(), 150);
 }
 
-async function up() {
+window.up = async function () {
   const ha = $("ha")?.value || "0.001";
   const hpi = $("hpi")?.value || "";
   let out = "";
@@ -202,8 +220,13 @@ window.runShpToTxt = async function () {
   const shpPaths = loadedFiles.map((f) => f.shp_path).filter(Boolean);
   if (!shpPaths.length && !gdbPath) { toast("请先导入 SHP 或 GDB 文件"); return; }
 
-  const outDir = await tauriInvoke("pick_output_dir");
-  if (!outDir) { toast("请选择输出目录"); return; }
+  let outDir = $("out_dir_s")?.value || "";
+  if (!outDir) {
+    outDir = await tauriInvoke("pick_output_dir");
+    if (!outDir) { toast("请选择输出目录"); return; }
+    const inp = $("out_dir_s");
+    if (inp) inp.value = outDir;
+  }
 
   const cfg = getConfig();
   const opt = getOptions();
@@ -242,19 +265,19 @@ window.runTxtToShp = async function () {
 // ═══ Config ═══
 function getConfig() {
   return {
-    h: { c: $("hc")?.value || "", b: $("hb")?.value || "", j: $("hj")?.value || "", u: $("hu")?.value || "", z: $("hz")?.value || "", a: $("ha")?.value || "", t: $("ht")?.value || "", project_info: $("hpi")?.value || "" },
+    h: { crs: $("hc")?.value || "", band: $("hb")?.value || "", proj: $("hj")?.value || "", unit: $("hu")?.value || "", zone: $("hz")?.value || "", precision: $("ha")?.value || "", transform: $("ht")?.value || "", project_info: $("hpi")?.value || "" },
     f: { name: $("fn")?.value || "", id: $("fi")?.value || "", area: $("fa")?.value || "", use_field: $("fu")?.value || "", tfh: $("fm")?.value || "", dlbm: $("fd")?.value || "" },
   };
 }
 
 function getOptions() {
-  return { ox: $("ox")?.checked || false, oj: $("oj")?.checked || false, op: $("op")?.checked || false, on: $("on")?.checked || false, oo: $("oo")?.checked || false, om: $("om")?.checked || false };
+  return { ox: $("ox")?.checked || false, oj: $("oj")?.checked || false, op: $("op")?.checked || false, on: $("on")?.checked || false, oo: $("oo")?.checked || false, om: $("om")?.checked || false, buffer: parseFloat($("pb")?.value) || 0 };
 }
 
 // ═══ Tab switch ═══
 window.sw = function (t) {
   document.querySelectorAll(".tab").forEach((e) => e.classList.remove("on"));
-  const tab = document.querySelector(`[data-tab="${t}"]`);
+  const tab = document.querySelector(`[data-t="${t}"]`);
   if (tab) tab.classList.add("on");
   document.querySelector(".app").setAttribute("data-mode", t);
 };
@@ -276,7 +299,28 @@ window.switchHdrTab = function (t) {
 window.prefillProject = function () {
   const hpi = $("hpi");
   if (!hpi) return;
-  hpi.value = "项目名称=\n项目所在县区代码=\n项目所在市县名称=\n项目类别=\n开发用途=\n总用地面积=\n备注=";
+  hpi.value = `项目名称=
+项目所在县区代码=
+项目所在市县名称=
+项目类别=
+项目投资额=
+开发用途=
+总用地面积=
+占用基本农田面积=
+农用地面积=
+耕地面积=
+园地面积=
+林地面积=
+养殖水面面积=
+其他农用地面积=
+带K地类面积=
+建设用地面积=
+未利用地面积=
+围填海面积=
+是否增减挂钩项目=否
+是否属于增减挂钩中发展改革小城镇试点项目=否
+是否属于建设用地指标调整项目=否
+备注=`;
   updatePreview();
 };
 
@@ -287,13 +331,18 @@ window.selectOutputDir = async function () {
   if (dir) { const inp = $("out_dir"); if (inp) inp.value = dir; }
 };
 
+window.selectOutputDirS = async function () {
+  const dir = await tauriInvoke("pick_output_dir");
+  if (dir) { const inp = $("out_dir_s"); if (inp) inp.value = dir; }
+};
+
 // ═══ Presets ═══
 function renderChips() {
   const ch = $("ch");
   if (!ch) return;
   ch.innerHTML = "";
   Object.values(cfgs).forEach((c) => {
-    ch.innerHTML += `<span class="chip${c.id === cur ? " on" : ""}" onclick="ld('${c.id}')">${c.n}</span>`;
+    ch.innerHTML += `<span class="chip${c.id === cur ? " on" : ""}" data-chip="${c.id}">${c.n}</span>`;
   });
 }
 
@@ -303,12 +352,20 @@ window.ld = function (id) {
   if (!c) return;
   cur = id;
   if (c.h) { $("hc").value = c.h.c; $("hb").value = c.h.b; $("hj").value = c.h.j; $("hu").value = c.h.u; $("hz").value = c.h.z; $("ha").value = c.h.a; $("ht").value = c.h.t; }
-  if (c.p) { if ($("ox")) $("ox").checked = !!c.p.ox; if ($("oj")) $("oj").checked = !!c.p.oj; }
+  if (c.p) {
+    if ($("pb")) $("pb").value = c.p.pb ?? 0;
+    if ($("ox")) $("ox").checked = !!c.p.ox;
+    if ($("oj")) $("oj").checked = !!c.p.oj;
+    if ($("op")) $("op").checked = !!c.p.op;
+    if ($("on")) $("on").checked = !!c.p.on;
+    if ($("oo")) $("oo").checked = !!c.p.oo;
+    if ($("om")) $("om").checked = !!c.p.om;
+  }
   if (c.f) Object.keys(c.f).forEach((k) => { const e = $(k); if (e) e.value = c.f[k]; });
   const cn = $("cn");
   if (cn) cn.textContent = c.n || "基础地块";
   document.querySelectorAll(".chip").forEach((e) => e.classList.remove("on"));
-  const cp = document.querySelector(`.chip[onclick*="${id}"]`);
+  const cp = document.querySelector(`.chip[data-chip="${id}"]`);
   if (cp) cp.classList.add("on");
   localStorage.setItem("tg_last", id);
   updatePreview();
@@ -342,6 +399,17 @@ window.delCfg = function () {
   toast("已删除");
 };
 
+// ═══ Open GitHub ═══
+window.openGitHub = async function () {
+  try {
+    if (window.__TAURI__?.shell?.open) {
+      await window.__TAURI__.shell.open("https://github.com/edcfoshan/txt-gdb-converter");
+    } else {
+      window.open("https://github.com/edcfoshan/txt-gdb-converter", "_blank");
+    }
+  } catch (e) { console.error("openGitHub:", e); }
+};
+
 // ═══ Modals ═══
 window.openSponsor = function () { const m = $("sponsorModal"); if (m) m.classList.add("on"); };
 window.closeSponsor = function (e) { if (e && e.target !== $("sponsorModal")) return; const m = $("sponsorModal"); if (m) m.classList.remove("on"); };
@@ -363,8 +431,116 @@ function init() {
   renderChips();
   ld(localStorage.getItem("tg_last") || "basic");
 
-  document.querySelectorAll("input,select").forEach((el) => { el.addEventListener("input", updatePreview); el.addEventListener("change", updatePreview); });
-  document.querySelectorAll("#hc,#hb,#hj,#hu,#hz,#ha,#ht").forEach((el) => { el.addEventListener("input", () => { headerManual[el.id] = true; }); el.addEventListener("change", () => { headerManual[el.id] = true; }); });
+  // ─── Bind click events (replaces inline onclick) ───
+  const bind = (id, fn) => { const el = $(id); if (el) el.addEventListener("click", fn); };
+  bind("btnGitHub", () => openGitHub());
+  bind("btnSponsor", () => openSponsor());
+  bind("btnTheme", () => togTheme());
+  bind("btnAbout", () => openAbout());
+  bind("btnSave", () => saveOnly());
+  bind("btnDel", () => delCfg());
+  bind("dropZone", () => importShp());
+  bind("dropGdb", () => importGdb());
+  bind("btnClearS", () => clearAllFiles());
+  bind("btnBrowseS", () => selectOutputDirS());
+  bind("dropZoneTxt", () => importTxt());
+  bind("btnClearT", () => clearAllFilesTxt());
+  bind("out_btn", () => selectOutputDir());
+  bind("hdrTabAttr", () => switchHdrTab("attr"));
+  bind("hdrTabProj", () => switchHdrTab("proj"));
+  bind("btnPrefill", () => prefillProject());
+  bind("btnRunStt", () => runShpToTxt());
+  bind("btnRunTts", () => runTxtToShp());
+  bind("btnCloseAbout", () => closeAbout());
+  bind("btnCloseSponsor", () => closeSponsor());
+
+  // Tab bar switching
+  document.querySelectorAll(".tab[data-t]").forEach((tab) => {
+    tab.addEventListener("click", () => sw(tab.dataset.t));
+  });
+
+  // Modal overlay click-to-close
+  const aboutModal = $("aboutModal");
+  if (aboutModal) aboutModal.addEventListener("click", (e) => { if (e.target === aboutModal) closeAbout(); });
+  const sponsorModal = $("sponsorModal");
+  if (sponsorModal) sponsorModal.addEventListener("click", (e) => { if (e.target === sponsorModal) closeSponsor(); });
+  // Prevent modal card click from closing
+  document.querySelectorAll(".modal-card").forEach((card) => {
+    card.addEventListener("click", (e) => e.stopPropagation());
+  });
+
+  // ─── Bind input/change events (replaces inline oninput/onchange) ───
+  ["hc", "hj", "hu", "hz", "ht"].forEach((id) => {
+    const el = $(id); if (el) el.addEventListener("input", () => { headerManual[id] = true; updatePreview(); });
+  });
+  ["hb", "ha"].forEach((id) => {
+    const el = $(id); if (el) el.addEventListener("change", () => { headerManual[id] = true; updatePreview(); });
+  });
+  const hpi = $("hpi");
+  if (hpi) hpi.addEventListener("input", updatePreview);
+
+  // All other inputs/selects trigger preview update
+  document.querySelectorAll("input,select").forEach((el) => {
+    el.addEventListener("input", updatePreview);
+    el.addEventListener("change", updatePreview);
+  });
+
+  // ─── Event delegation for dynamic elements ───
+  // File list remove buttons
+  const fl = $("fl");
+  if (fl) fl.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-remove-file]");
+    if (btn) removeFile(parseInt(btn.dataset.removeFile, 10));
+  });
+  // TXT file list remove buttons
+  const flT = $("flT");
+  if (flT) flT.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-remove-txt]");
+    if (btn) removeTxtFile(parseInt(btn.dataset.removeTxt, 10));
+  });
+  // Config chips
+  const ch = $("ch");
+  if (ch) ch.addEventListener("click", (e) => {
+    const chip = e.target.closest("[data-chip]");
+    if (chip) ld(chip.dataset.chip);
+  });
+
+  // Drag & Drop — SHP
+  const dz = $("dropZone");
+  if (dz) {
+    dz.addEventListener("dragover", (e) => { e.preventDefault(); dz.style.borderColor = "var(--ac)"; dz.style.background = "var(--acg)"; });
+    dz.addEventListener("dragleave", () => { dz.style.borderColor = ""; dz.style.background = ""; });
+    dz.addEventListener("drop", async (e) => {
+      e.preventDefault(); dz.style.borderColor = ""; dz.style.background = "";
+      const files = Array.from(e.dataTransfer?.files || []).filter((f) => f.name.toLowerCase().endsWith(".shp"));
+      if (!files.length) { toast("请拖入 .shp 文件"); return; }
+      try {
+        const paths = files.map((f) => f.path || f.name);
+        const result = await tauriInvoke("pick_shp_files_from_paths", { paths });
+        if (result.files && result.files.length > 0) {
+          loadedFiles = result.files; gdbPath = null; renderFileList(); processImport();
+        }
+      } catch (err) { toast("拖放导入失败: " + err); }
+    });
+  }
+  // Drag & Drop — TXT
+  const dzT = $("dropZoneTxt");
+  if (dzT) {
+    dzT.addEventListener("dragover", (e) => { e.preventDefault(); dzT.style.borderColor = "var(--ac)"; dzT.style.background = "var(--acg)"; });
+    dzT.addEventListener("dragleave", () => { dzT.style.borderColor = ""; dzT.style.background = ""; });
+    dzT.addEventListener("drop", async (e) => {
+      e.preventDefault(); dzT.style.borderColor = ""; dzT.style.background = "";
+      const files = Array.from(e.dataTransfer?.files || []).filter((f) => f.name.toLowerCase().endsWith(".txt"));
+      if (!files.length) { toast("请拖入 .txt 文件"); return; }
+      try {
+        const paths = files.map((f) => f.path || f.name);
+        const result = await tauriInvoke("pick_txt_files_from_paths", { paths });
+        if (result.files && result.files.length > 0) {
+          txtFiles = result.files; renderTxtFileList(); renderTxtParseLog();
+        }
+      } catch (err) { toast("拖放导入失败: " + err); }
+    });
+  }
 
   up();
 }

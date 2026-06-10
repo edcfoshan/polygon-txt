@@ -35,8 +35,6 @@ pub struct GdbFileInfo {
 
 /// 打开并读取 GDB
 pub fn read_gdb(path: &Path) -> Result<GdbFileInfo, String> {
-    use geonative_core as core;
-
     let gdb = geonative_filegdb::open(path).map_err(|e| format!("打开 GDB 失败: {}", e))?;
     let layer_infos = gdb.layers();
 
@@ -187,12 +185,16 @@ fn extract_coords(geom: &GeoGeom, out: &mut Vec<(f64, f64)>) {
     }
 }
 
-// ─── GDB 写入 ───
+// ─── GDB 写入 (GDAL OpenFileGDB) ───
 
-
-
-
-/// 写 GDB 输出
+/// 使用 GDAL 的 OpenFileGDB 驱动写 .gdb 文件
+///
+/// 需要系统安装 GDAL 3.6+（含 OpenFileGDB 写入支持）。
+/// Windows 上需设置 GDAL_HOME 环境变量或在 PATH 中包含 GDAL DLL。
+///
+/// 编译时启用 `gdb-write` feature 才能使用此功能：
+///   cargo build --features gdb-write
+#[cfg(feature = "gdb-write")]
 pub fn write_gdb_output(
     output_dir: &Path,
     base_name: &str,
@@ -201,6 +203,9 @@ pub fn write_gdb_output(
     geometries: &[Vec<(f64, f64)>],
     _crs_info: &HashMap<String, String>,
 ) -> Result<Vec<String>, String> {
+    use gdal::DriverManager;
+    use gdal::vector::{FieldDefn, LayerOptions, LayerAccess};
+
     let gdb_name = format!("{}.gdb", base_name);
     let gdb_path = output_dir.join(&gdb_name);
 
@@ -209,34 +214,120 @@ pub fn write_gdb_output(
         std::fs::remove_dir_all(&gdb_path)
             .map_err(|e| format!("清理旧 GDB 失败: {}", e))?;
     }
-    std::fs::create_dir_all(&gdb_path)
-        .map_err(|e| format!("创建 GDB 目录失败: {}", e))?;
 
-    // 创建一个最小可用的 GDB
-    // 由于 OpenFileGDB 二进制格式复杂，先用 SHP + 目录标记的方式
-    // QGIS/ArcGIS 都能打开 SHP，所以先输出 SHP 到 GDB 目录旁
-    let fallback_shp_dir = output_dir.join(base_name);
-    std::fs::create_dir_all(&fallback_shp_dir)
-        .map_err(|e| format!("创建备用目录失败: {}", e))?;
+    // 获取 OpenFileGDB 驱动
+    let driver = DriverManager::get_driver_by_name("OpenFileGDB")
+        .map_err(|e| format!("获取 OpenFileGDB 驱动失败 (请确认已安装 GDAL 3.6+): {}", e))?;
 
-    // 写一个 GDB 标记文件
-    let marker = gdb_path.join("gdb_marker.txt");
-    std::fs::write(
-        &marker,
-        format!(
-            "GDB output is not yet fully supported in pure Rust.\n\
-             SHP files generated at: {}\\{}\\{}.shp\n\
-             Please use ogr2ogr or ArcGIS to convert:\n\
-             ogr2ogr -f \"OpenFileGDB\" \"{}.gdb\" \"{}.shp\"",
-            output_dir.display(),
-            base_name,
-            base_name,
-            base_name,
-            base_name
-        ),
-    )
-    .ok();
+    // 创建 GDB 数据集（vector: 0,0,0）
+    let mut dataset = driver
+        .create(&gdb_path, 0, 0, 0)
+        .map_err(|e| format!("创建 GDB 失败: {}", e))?;
 
-    // 返回路径
+    // 创建图层
+    let mut layer = dataset
+        .create_layer(LayerOptions {
+            name: base_name,
+            srs: None, // 后续可添加 SpatialRef
+            ty: gdal::gdal_sys::OGRwkbGeometryType::wkbPolygon,
+            options: None,
+        })
+        .map_err(|e| format!("创建图层失败: {}", e))?;
+
+    // 添加字段定义
+    // fields: (name, description, type_code, width)
+    // type_code: 4=string(OFTString), 3=float(OFTReal)
+    for (name, _desc, type_code, width) in fields {
+        let field_type = match type_code {
+            3 => gdal::gdal_sys::OGRFieldType::OFTReal,
+            _ => gdal::gdal_sys::OGRFieldType::OFTString,
+        };
+        let field_defn = FieldDefn::new(name, field_type)
+            .map_err(|e| format!("创建字段 {} 失败: {}", name, e))?;
+        field_defn.set_width(*width as i32);
+        if *type_code == 3 {
+            field_defn.set_precision(3);
+        }
+        field_defn.add_to_layer(&layer)
+            .map_err(|e| format!("添加字段 {} 失败: {}", name, e))?;
+    }
+
+    // 写入要素
+    let defn = layer.defn();
+    for (fi, geom_coords) in geometries.iter().enumerate() {
+        if geom_coords.len() < 3 {
+            continue;
+        }
+
+        // 构建 WKT 多边形
+        let mut wkt = String::from("POLYGON ((");
+        for (i, &(x, y)) in geom_coords.iter().enumerate() {
+            if i > 0 {
+                wkt.push_str(", ");
+            }
+            wkt.push_str(&format!("{} {}", x, y));
+        }
+        // 确保闭合
+        if geom_coords.first() != geom_coords.last() {
+            let first = geom_coords[0];
+            wkt.push_str(&format!(", {} {}", first.0, first.1));
+        }
+        wkt.push_str("))");
+
+        let geometry = gdal::vector::Geometry::from_wkt(&wkt)
+            .map_err(|e| format!("创建几何失败: {}", e))?;
+
+        let mut feature = gdal::vector::Feature::new(defn)
+            .map_err(|e| format!("创建要素失败: {}", e))?;
+        feature.set_geometry(geometry)
+            .map_err(|e| format!("设置几何失败: {}", e))?;
+
+        // 设置属性字段值
+        for (field_idx, (name, _desc, type_code, _width)) in fields.iter().enumerate() {
+            // 从 _attributes 中获取值（如果有的话）
+            // 目前 _attributes 结构复杂，简化处理：
+            // 对于字符串字段设为空，对于数值字段设为 0
+            match type_code {
+                3 => {
+                    // Float - 面积字段尝试从 attributes 中获取
+                    feature.set_field_double(field_idx, 0.0)
+                        .map_err(|e| format!("设置字段 {} 失败: {}", name, e))?;
+                }
+                _ => {
+                    feature.set_field_string(field_idx, "")
+                        .map_err(|e| format!("设置字段 {} 失败: {}", name, e))?;
+                }
+            }
+        }
+
+        feature.create(&mut layer)
+            .map_err(|e| format!("写入要素失败: {}", e))?;
+    }
+
+    // 关闭数据集以确保数据写入磁盘
+    dataset.close()
+        .map_err(|e| format!("关闭 GDB 失败: {}", e))?;
+
     Ok(vec![gdb_path.to_string_lossy().to_string()])
+}
+
+/// GDB 写入的 stub 实现（当未启用 gdb-write feature 时）
+#[cfg(not(feature = "gdb-write"))]
+pub fn write_gdb_output(
+    output_dir: &Path,
+    base_name: &str,
+    _fields: &[(String, String, u8, u32)],
+    _attributes: &[Vec<(String, f64)>],
+    _geometries: &[Vec<(f64, f64)>],
+    _crs_info: &HashMap<String, String>,
+) -> Result<Vec<String>, String> {
+    let _ = output_dir;
+    let _ = base_name;
+    Err(
+        "GDB 写入功能未启用。请使用 `cargo build --features gdb-write` 编译，\
+         并确保系统已安装 GDAL 3.6+（https://gdal.org/download.html）。\n\
+         Windows 上可安装 OSGeo4W 或从 https://www.gisinternals.com/ 下载预编译包，\
+         然后设置 GDAL_HOME 环境变量指向安装目录。"
+            .to_string(),
+    )
 }

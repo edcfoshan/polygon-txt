@@ -26,7 +26,6 @@ pub struct TxtParseResult {
 
 /// 解析 TXT 内容
 pub fn parse_txt(text: &str) -> TxtParseResult {
-    let mut project_info = String::new();
     let mut attrs = HashMap::new();
     let mut plots = Vec::new();
 
@@ -130,12 +129,36 @@ pub fn parse_txt(text: &str) -> TxtParseResult {
         plots.push(plot);
     }
 
-    project_info = proj_lines.join("\n");
+    let project_info = proj_lines.join("\n");
 
     TxtParseResult {
         project_info,
         attrs,
         plots,
+    }
+}
+
+/// 精度字符串 → 小数位数
+fn precision_to_decimals(precision: &str) -> u32 {
+    match precision {
+        "1" => 0,
+        "0.1" => 1,
+        "0.01" => 2,
+        "0.001" => 3,
+        "0.0001" => 4,
+        _ => 3,
+    }
+}
+
+/// 按指定小数位数格式化浮点数
+fn format_coord(val: f64, decimals: u32) -> String {
+    match decimals {
+        0 => format!("{:.0}", val),
+        1 => format!("{:.1}", val),
+        2 => format!("{:.2}", val),
+        3 => format!("{:.3}", val),
+        4 => format!("{:.4}", val),
+        _ => format!("{:.3}", val),
     }
 }
 
@@ -146,6 +169,10 @@ pub fn generate_txt(
     features: &[PlotData],
 ) -> String {
     let mut out = String::new();
+
+    // 从属性中读取精度配置
+    let precision_str = attrs.get("精度").map(|s| s.as_str()).unwrap_or("0.001");
+    let decimals = precision_to_decimals(precision_str);
 
     if !project_info.is_empty() {
         out.push_str("[项目信息]\n");
@@ -185,7 +212,12 @@ pub fn generate_txt(
         );
         out.push_str(&meta);
         for (i, (y, x)) in plot.coords.iter().enumerate() {
-            out.push_str(&format!("J{},1,{:.3},{:.3}\n", i + 1, y, x));
+            out.push_str(&format!(
+                "J{},1,{},{}\n",
+                i + 1,
+                format_coord(*y, decimals),
+                format_coord(*x, decimals),
+            ));
         }
     }
 

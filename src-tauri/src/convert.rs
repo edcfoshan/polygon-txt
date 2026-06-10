@@ -33,12 +33,13 @@ pub struct HeaderConfig {
 /// SHP→TXT 选项
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ShpToTxtOptions {
-    pub ox: bool,  // 坐标互换
-    pub oj: bool,  // J 编号
-    pub op: bool,
-    pub on: bool,
-    pub oo: bool,
-    pub om: bool,
+    pub ox: bool,     // 坐标互换
+    pub oj: bool,     // J 编号
+    pub op: bool,     // 部件号从 1 开始
+    pub on: bool,     // 起始点西北角
+    pub oo: bool,     // 首末点重合
+    pub om: bool,     // 合并到一个 TXT
+    pub buffer: f64,  // 缓冲区（米），预留
 }
 
 /// TXT→SHP/GDB 选项
@@ -208,6 +209,22 @@ pub fn convert_shp_to_txt(
         std::fs::write(&txt_path, &txt_content)
             .map_err(|e| format!("写 TXT 失败: {}", e))?;
         output_files.push(txt_path.to_string_lossy().to_string());
+    } else if options.om {
+        // om: 合并到一个 TXT — 收集所有 SHP 的 plots 输出单个文件
+        let mut all_plots = Vec::new();
+        for shp_path in shp_paths {
+            let plots = single_shp_to_plots(shp_path, field_mapping, options)?;
+            all_plots.extend(plots);
+        }
+        let txt_content = txt::generate_txt(
+            &header_cfg.project_info,
+            &make_header_attrs(header_cfg),
+            &all_plots,
+        );
+        let txt_path = output_dir.join("merged_output.txt");
+        std::fs::write(&txt_path, &txt_content)
+            .map_err(|e| format!("写 TXT 失败: {}", e))?;
+        output_files.push(txt_path.to_string_lossy().to_string());
     } else {
         for shp_path in shp_paths {
             let plots = single_shp_to_plots(shp_path, field_mapping, options)?;
@@ -345,7 +362,8 @@ fn single_shp_to_plots(
 ) -> Result<Vec<txt::PlotData>, String> {
     let info = shp::read_shp_file_group(shp_path)?;
     let features = shp::read_shp(shp_path)?;
-    let prec = parse_precision(&"0.001");
+    // TODO: 缓冲区处理 — 当 options.buffer > 0 时，对多边形进行膨胀/收缩
+    // 需要引入计算几何库（如 geo crate），后续版本实现
 
     let mut plots = Vec::new();
     for (fi, feat) in features.iter().enumerate() {
@@ -357,7 +375,7 @@ fn single_shp_to_plots(
         let plot_tfh = get_field_value(&field_mapping.tfh, &info.field_names, &record);
         let plot_dlbm = get_field_value(&field_mapping.dlbm, &info.field_names, &record);
 
-        let coords: Vec<(f64, f64)> = feat
+        let mut coords: Vec<(f64, f64)> = feat
             .points
             .iter()
             .map(|&(x, y)| {
@@ -368,6 +386,33 @@ fn single_shp_to_plots(
                 }
             })
             .collect();
+
+        // on: 起始点西北角 — 找到 Y 最大（最北）且 X 最小（最西）的点，旋转使其成为起点
+        if options.on && coords.len() > 2 {
+            let mut best_idx = 0;
+            let mut best_y = f64::NEG_INFINITY;
+            let mut best_x = f64::INFINITY;
+            for (i, &(y, x)) in coords.iter().enumerate() {
+                // 优先选 Y 最大（最北），同等 Y 时选 X 最小（最西）
+                if y > best_y || (y == best_y && x < best_x) {
+                    best_y = y;
+                    best_x = x;
+                    best_idx = i;
+                }
+            }
+            if best_idx > 0 {
+                coords.rotate_left(best_idx);
+            }
+        }
+
+        // oo: 首末点重合 — 确保多边形首尾坐标相同
+        if options.oo && coords.len() >= 2 {
+            let first = coords[0];
+            let last = coords[coords.len() - 1];
+            if (first.0 - last.0).abs() > 1e-9 || (first.1 - last.1).abs() > 1e-9 {
+                coords.push(first);
+            }
+        }
 
         plots.push(txt::PlotData {
             point_count: coords.len() as u32,
@@ -390,12 +435,12 @@ fn gdb_features_to_plots(
     info: &gdb::GdbFileInfo,
     field_mapping: &FieldMapping,
     options: &ShpToTxtOptions,
-    header_cfg: &HeaderConfig,
+    _header_cfg: &HeaderConfig,
 ) -> Result<Vec<txt::PlotData>, String> {
     let mut all_plots = Vec::new();
 
     for (layer_idx, features) in info.all_features.iter().enumerate() {
-        let field_names = info
+        let _field_names = info
             .all_field_names
             .get(layer_idx)
             .cloned()
@@ -408,7 +453,7 @@ fn gdb_features_to_plots(
             let plot_tfh = get_field_value_map(&field_mapping.tfh, &feat.attributes).to_string();
             let plot_dlbm = get_field_value_map(&field_mapping.dlbm, &feat.attributes).to_string();
 
-            let coords: Vec<(f64, f64)> = feat
+            let mut coords: Vec<(f64, f64)> = feat
                 .points
                 .iter()
                 .map(|&(x, y)| {
@@ -419,6 +464,32 @@ fn gdb_features_to_plots(
                     }
                 })
                 .collect();
+
+            // on: 起始点西北角
+            if options.on && coords.len() > 2 {
+                let mut best_idx = 0;
+                let mut best_y = f64::NEG_INFINITY;
+                let mut best_x = f64::INFINITY;
+                for (i, &(y, x)) in coords.iter().enumerate() {
+                    if y > best_y || (y == best_y && x < best_x) {
+                        best_y = y;
+                        best_x = x;
+                        best_idx = i;
+                    }
+                }
+                if best_idx > 0 {
+                    coords.rotate_left(best_idx);
+                }
+            }
+
+            // oo: 首末点重合
+            if options.oo && coords.len() >= 2 {
+                let first = coords[0];
+                let last = coords[coords.len() - 1];
+                if (first.0 - last.0).abs() > 1e-9 || (first.1 - last.1).abs() > 1e-9 {
+                    coords.push(first);
+                }
+            }
 
             all_plots.push(txt::PlotData {
                 point_count: coords.len() as u32,
@@ -505,16 +576,4 @@ fn make_header_attrs(cfg: &HeaderConfig) -> HashMap<String, String> {
     m.insert("精度".to_string(), cfg.precision.clone());
     m.insert("转换参数".to_string(), cfg.transform.clone());
     m
-}
-
-/// 精度字符串 → 小数位数
-fn parse_precision(precision: &str) -> u32 {
-    match precision {
-        "1" => 0,
-        "0.1" => 1,
-        "0.01" => 2,
-        "0.001" => 3,
-        "0.0001" => 4,
-        _ => 3,
-    }
 }

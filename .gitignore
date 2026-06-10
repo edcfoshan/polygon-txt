@@ -10,4 +10,16 @@ extract_*.py
 tbx_decoded.txt
 prototype.html
 prototype_v[0-6].html
+prototype_v[7-9].html
 *.png
+
+# Build artifacts
+node_modules/
+dist/
+src-tauri/target/
+# Generated test files
+test_data/
+test_arcpy/
+cargo_err.txt
+gen_icons.py
+test_arcpy*.py

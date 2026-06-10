@@ -1,25 +1,13 @@
-_reference_project/
-.playwright-mcp/
-_archive/
-A8SHP与txt互转软件(最终版本)/
-*.tbx
-*.zip
-*.exe
-analyze_*.py
-extract_*.py
-tbx_decoded.txt
-prototype.html
-prototype_v[0-6].html
-prototype_v[7-9].html
-*.png
-
-# Build artifacts
+# 依赖
 node_modules/
+
+# 构建输出
 dist/
 src-tauri/target/
-# Generated test files
-test_data/
-test_arcpy/
-cargo_err.txt
-gen_icons.py
-test_arcpy*.py
+
+# 打包文件
+*.exe
+*.zip
+
+# 浏览器测试缓存
+.playwright-mcp/

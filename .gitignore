@@ -1,5 +1,6 @@
 _reference_project/
 .playwright-mcp/
+A8SHP与txt互转软件(最终版本)/
 *.tbx
 *.zip
 *.exe
@@ -7,9 +8,5 @@ analyze_*.py
 extract_*.py
 tbx_decoded.txt
 prototype.html
-prototype_v2.html
-prototype_v3.html
-prototype_v4.html
-prototype_v5.html
+prototype_v[0-6].html
 *.png
-.playwright-mcp/

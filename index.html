@@ -422,13 +422,13 @@ body::before{
 
 /* File drop */
 .drop{
-  border:1.5px dashed var(--brd);border-radius:6px;padding:10px;
+  border:1.5px dashed var(--brd);border-radius:6px;padding:6px;
   text-align:center;cursor:pointer;transition:all .2s;
   background:var(--bg);
 }
 .drop:hover{border-color:var(--ac);background:var(--acg);transform:translateY(-1px)}
 .drop-ic{
-  width:22px;height:22px;margin:0 auto 4px;border-radius:50%;
+  width:16px;height:16px;margin:0 auto 2px;border-radius:50%;
   background:var(--srf2);display:flex;align-items:center;justify-content:center;
   color:var(--ac);font-size:12px;font-weight:300;
   border:1px solid var(--brd);transition:all .25s;
@@ -439,7 +439,7 @@ body::before{
 .file-list:empty::after{
   content:'暂无文件';
   display:flex;align-items:center;justify-content:center;
-  height:180px;font-size:10.5px;color:var(--tx3);
+  height:60px;font-size:10.5px;color:var(--tx3);
 }
 .fitem{
   display:flex;align-items:center;gap:6px;padding:5px 8px;

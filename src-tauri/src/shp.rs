@@ -38,13 +38,13 @@ pub fn read_shp(path: &Path) -> Result<Vec<ShpFeature>, String> {
         match shape {
             shapefile::Shape::Polygon(poly) => {
                 for ring in poly.rings() {
-                    match ring {
-                        shapefile::PolygonRing::Outer(pts) | shapefile::PolygonRing::Inner(pts) => {
-                            let points: Vec<(f64, f64)> =
-                                pts.iter().map(|p| (p.x, p.y)).collect();
-                            if !points.is_empty() {
-                                features.push(ShpFeature { points });
-                            }
+                    // Only extract outer rings; inner rings (holes) are skipped
+                    // because the TXT format uses single-ring plots
+                    if let shapefile::PolygonRing::Outer(pts) = ring {
+                        let points: Vec<(f64, f64)> =
+                            pts.iter().map(|p| (p.x, p.y)).collect();
+                        if !points.is_empty() {
+                            features.push(ShpFeature { points });
                         }
                     }
                 }
@@ -254,15 +254,41 @@ pub fn read_shp_file_group(shp_path: &Path) -> Result<ShpFileInfo, String> {
 }
 
 /// 写 .prj 文件
-pub fn write_prj(path: &Path, _crs: &str, zone: &str) -> Result<(), String> {
+pub fn write_prj(path: &Path, crs: &str, band: &str, zone: &str) -> Result<(), String> {
     let zval: f64 = zone.parse().unwrap_or(38.0);
-    let false_easting = 38_000_000.0 + zval * 1_000_000.0;
-    let cm = zval * 3.0;
+    let band_val: f64 = band.parse().unwrap_or(3.0);
+
+    let (central_meridian, false_easting) = if (band_val - 3.0).abs() < 0.1 {
+        // 3-degree Gauss-Kruger
+        (zval * 3.0, zval * 1_000_000.0 + 500_000.0)
+    } else {
+        // 6-degree Gauss-Kruger
+        (zval * 6.0 - 3.0, zval * 1_000_000.0 + 500_000.0)
+    };
+
+    let (geogcs_name, datum_name, spheroid_name, semi_major, inv_flattening) =
+        if crs.contains("2000") || crs.contains("CGCS") {
+            ("GCS_China_Geodetic_Coordinate_System_2000", "D_China_2000",
+             "CGCS2000", 6378137.0, 298.257222101)
+        } else if crs.contains("西安") || crs.contains("Xian") {
+            ("GCS_Xian_1980", "D_Xian_1980",
+             "Xian_1980", 6378140.0, 298.257)
+        } else if crs.contains("北京") || crs.contains("Beijing") {
+            ("GCS_Beijing_1954", "D_Beijing_1954",
+             "Krasovsky_1940", 6378245.0, 298.3)
+        } else {
+            ("GCS_WGS_1984", "D_WGS_1984",
+             "WGS_1984", 6378137.0, 298.257223563)
+        };
+
+    let band_label = if (band_val - 3.0).abs() < 0.1 { "3_Degree" } else { "6_Degree" };
+    let zone_int = zval as i32;
+
     let wkt = format!(
-        "PROJCS[\"CGCS2000_3_Degree_GK_Zone_{z}\",GEOGCS[\"GCS_China_Geodetic_Coordinate_System_2000\",DATUM[\"D_China_2000\",SPHEROID[\"CGCS2000\",6378137.0,298.257222101]],PRIMEM[\"Greenwich\",0.0],UNIT[\"Degree\",0.0174532925199433]],PROJECTION[\"Gauss_Kruger\"],PARAMETER[\"False_Easting\",{fe}],PARAMETER[\"False_Northing\",0.0],PARAMETER[\"Central_Meridian\",{cm}],PARAMETER[\"Scale_Factor\",1.0],PARAMETER[\"Latitude_Of_Origin\",0.0],UNIT[\"Meter\",1.0]]",
-        z = zone,
-        fe = false_easting,
-        cm = cm
+        "PROJCS[\"CGCS2000_{}_GK_Zone_{}\",GEOGCS[\"{}\",DATUM[\"{}\",SPHEROID[\"{}\",{},{}]],PRIMEM[\"Greenwich\",0.0],UNIT[\"Degree\",0.0174532925199433]],PROJECTION[\"Gauss_Kruger\"],PARAMETER[\"False_Easting\",{}],PARAMETER[\"False_Northing\",0.0],PARAMETER[\"Central_Meridian\",{}],PARAMETER[\"Scale_Factor\",1.0],PARAMETER[\"Latitude_Of_Origin\",0.0],UNIT[\"Meter\",1.0]]",
+        band_label, zone_int,
+        geogcs_name, datum_name, spheroid_name, semi_major, inv_flattening,
+        false_easting, central_meridian
     );
     std::fs::write(path, wkt).map_err(|e| format!("写 PRJ 失败: {}", e))
 }
@@ -274,6 +300,7 @@ pub fn write_shapefile(
     geometries: &[Vec<(f64, f64)>],
     attributes: &[std::collections::HashMap<String, String>],
     crs: &str,
+    band: &str,
     zone: &str,
 ) -> Result<Vec<String>, String> {
     use shapefile::{ShapeWriter as ShpShapeWriter, PolygonRing, Point as ShpPoint, Polygon as ShpPolygon};
@@ -318,7 +345,7 @@ pub fn write_shapefile(
 
     // 3. Write .prj
     let prj_path = output_dir.join(format!("{}.prj", stem));
-    write_prj(&prj_path, crs, zone)?;
+    write_prj(&prj_path, crs, band, zone)?;
     shp_paths.push(prj_path.to_string_lossy().to_string());
 
     Ok(shp_paths)

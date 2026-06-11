@@ -141,11 +141,13 @@ fn import_gdb(app: tauri::AppHandle) -> Result<GdbImportResult, String> {
         }
     };
 
-    if !gdb_path
+    // Validate: either has .gdb extension, or contains GDB system catalog file
+    let has_gdb_ext = gdb_path
         .extension()
         .map(|e| e.to_string_lossy().to_lowercase() == "gdb")
-        .unwrap_or(false)
-    {
+        .unwrap_or(false);
+    let has_gdb_catalog = gdb_path.join("a00000001.gdbtable").exists();
+    if !has_gdb_ext && !has_gdb_catalog {
         return Err("请选择 .gdb 文件夹".to_string());
     }
 

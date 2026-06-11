@@ -14,7 +14,6 @@ tauri-build = { version = "2", features = [] }
 
 [features]
 default = []
-gdb-write = ["gdal"]
 
 [dependencies]
 tauri = { version = "2", features = [] }
@@ -30,4 +29,3 @@ encoding_rs = "0.8"
 geonative-core = "0.2"
 geonative-filegdb = "0.2"
 geonative-shapefile = "0.2"
-gdal = { version = "0.18", optional = true }

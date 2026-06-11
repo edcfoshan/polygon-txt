@@ -156,6 +156,7 @@ pub fn shp_to_txt_preview(
             &header_cfg.project_info,
             &make_header_attrs(header_cfg),
             &plots,
+            options.oj,
         );
         // 只截取前 200 行作为预览
         let trimmed: Vec<&str> = result.lines().take(200).collect();
@@ -179,6 +180,7 @@ fn shp_files_to_txt_preview(
         &header_cfg.project_info,
         &make_header_attrs(header_cfg),
         &plots,
+        options.oj,
     ))
 }
 
@@ -200,6 +202,7 @@ pub fn convert_shp_to_txt(
             &header_cfg.project_info,
             &make_header_attrs(header_cfg),
             &plots,
+            options.oj,
         );
         let stem = gdb
             .file_stem()
@@ -220,6 +223,7 @@ pub fn convert_shp_to_txt(
             &header_cfg.project_info,
             &make_header_attrs(header_cfg),
             &all_plots,
+            options.oj,
         );
         let txt_path = output_dir.join("merged_output.txt");
         std::fs::write(&txt_path, &txt_content)
@@ -232,6 +236,7 @@ pub fn convert_shp_to_txt(
                 &header_cfg.project_info,
                 &make_header_attrs(header_cfg),
                 &plots,
+                options.oj,
             );
             let stem = shp_path
                 .file_stem()
@@ -283,6 +288,7 @@ pub fn convert_txt_to_shp(
                 &geometries,
                 &attributes,
                 &header_cfg.crs,
+                &header_cfg.band,
                 &header_cfg.zone,
             )?;
             output_files.extend(shp_files);
@@ -301,27 +307,16 @@ pub fn convert_txt_to_shp(
                 ("DLBM".into(), "地类编码".into(), 4u8, 10u32),
             ];
 
-            let mut attribute_values: Vec<Vec<(String, f64)>> = Vec::new();
-            for attr in &attributes {
-                let mut vals = Vec::new();
-                for (k, v) in attr {
-                    if k == "MJ" {
-                        vals.push((v.clone(), v.parse().unwrap_or(0.0)));
-                    } else {
-                        vals.push((v.clone(), 0.0));
-                    }
-                }
-                attribute_values.push(vals);
-            }
-
             let mut crs_info = HashMap::new();
+            crs_info.insert("c".to_string(), header_cfg.crs.clone());
+            crs_info.insert("b".to_string(), header_cfg.band.clone());
             crs_info.insert("z".to_string(), header_cfg.zone.clone());
 
             let gdb_files = gdb::write_gdb_output(
                 output_dir,
                 &stem,
                 &fields,
-                &attribute_values,
+                &attributes,
                 &geometries,
                 &crs_info,
             )?;
@@ -330,9 +325,10 @@ pub fn convert_txt_to_shp(
     }
 
     let count = txt_paths.len();
+    let message = format!("成功转换 {} 个 TXT 文件", count);
     Ok(ConvertResult {
         success: true,
-        message: format!("成功转换 {} 个 TXT 文件", count),
+        message,
         output_files,
         processed_count: count,
     })
@@ -522,16 +518,17 @@ fn plots_to_shp_data(
 
         if coords.len() >= 3 {
             geometries.push(coords);
-        }
 
-        let mut attr = HashMap::new();
-        attr.insert("DKMC".to_string(), plot.name.clone());
-        attr.insert("DKBH".to_string(), String::new());
-        attr.insert("MJ".to_string(), plot.area.clone());
-        attr.insert("DKYT".to_string(), plot.use_field.clone());
-        attr.insert("TFH".to_string(), plot.tfh.clone());
-        attr.insert("DLBM".to_string(), plot.dlbm.clone());
-        attributes.push(attr);
+            let mut attr = HashMap::new();
+            attr.insert("DKMC".to_string(), plot.name.clone());
+            attr.insert("DKBH".to_string(), String::new());
+            attr.insert("MJ".to_string(), plot.area.clone());
+            attr.insert("DKYT".to_string(), plot.use_field.clone());
+            attr.insert("TFH".to_string(), plot.tfh.clone());
+            attr.insert("DLBM".to_string(), plot.dlbm.clone());
+            attributes.push(attr);
+        }
+        // 坐标点 < 3 的地块直接跳过（既不 push geometry 也不 push attribute）
     }
 
     (geometries, attributes)

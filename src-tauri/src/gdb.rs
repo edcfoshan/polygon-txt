@@ -1,11 +1,12 @@
 // GDB 读写模块 — 纯 Rust 实现
-// 读取: 使用 geonative-filegdb
-// 写入: 最小化 OpenFileGDB 写入
+// 读取: geonative-filegdb (优先) + 手动回退
+// 写入: 最小化 OpenFileGDB (仅 Polygon)
 
 use geonative_core::{Geometry as GeoGeom, Value};
+use geonative_filegdb as fgdb;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// GDB 中的要素信息
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -33,90 +34,134 @@ pub struct GdbFileInfo {
     pub all_field_names: Vec<Vec<String>>,
 }
 
-/// 打开并读取 GDB
+// ─── 手动回退用图层条目 ───
+
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+struct LayerEntry {
+    name: String,
+    fid: i64,
+    physical_filename: String,
+}
+
+impl LayerEntry {
+    fn table_path(&self, gdb_dir: &Path) -> PathBuf {
+        gdb_dir.join(&self.physical_filename)
+    }
+    fn tablx_path(&self, gdb_dir: &Path) -> PathBuf {
+        let mut p = self.table_path(gdb_dir);
+        p.set_extension("gdbtablx");
+        p
+    }
+}
+
+// ─── 读取 ───
+
+/// 打开并读取 GDB（双层策略：库优先 → 手动回退）
 pub fn read_gdb(path: &Path) -> Result<GdbFileInfo, String> {
-    let gdb = geonative_filegdb::open(path).map_err(|e| format!("打开 GDB 失败: {}", e))?;
+    if !path.exists() {
+        return Err(format!("GDB 路径不存在: {}", path.display()));
+    }
+    if !path.join("a00000001.gdbtable").exists() {
+        return Err(format!(
+            "不是有效的 FileGDB 目录（缺少 a00000001.gdbtable）: {}",
+            path.display()
+        ));
+    }
+
+    // 快速路径：优先使用 geonative-filegdb 库
+    match fgdb::open(path) {
+        Ok(gdb) => read_gdb_via_library(gdb, path),
+        Err(e) => {
+            let err_msg = e.to_string();
+            // 若因 version / malformed 错误失败，回退到手动解析
+            if err_msg.contains("version") || err_msg.contains("malformed") {
+                eprintln!(
+                    "GDB 库打开失败({})，切换到手动解析回退方案…",
+                    err_msg
+                );
+                read_gdb_fallback(path)
+            } else {
+                Err(format!(
+                    "打开 GDB 失败: {}。\n请确认 .gdb 目录完整且版本受支持（FGDB 10.x / ArcGIS Pro）。",
+                    err_msg
+                ))
+            }
+        }
+    }
+}
+
+/// 库路径：通过 geonative-filegdb 正常读取
+fn read_gdb_via_library(
+    gdb: fgdb::Geodatabase,
+    path: &Path,
+) -> Result<GdbFileInfo, String> {
     let layer_infos = gdb.layers();
+
+    if layer_infos.is_empty() {
+        return Err("GDB 中未找到可用图层".to_string());
+    }
 
     let mut layers = Vec::new();
     let mut all_features = Vec::new();
     let mut all_field_names = Vec::new();
 
     for info in layer_infos.iter() {
-        let layer = gdb
-            .layer(&info.name)
-            .map_err(|e| format!("读取图层 {} 失败: {}", info.name, e))?;
+        match gdb.layer(&info.name) {
+            Ok(layer) => {
+                let schema = layer.schema();
+                let field_names: Vec<String> =
+                    schema.fields.iter().map(|f| f.name.clone()).collect();
 
-        let schema = layer.schema();
-        let field_names: Vec<String> = schema
-            .fields
-            .iter()
-            .map(|f| f.name.clone())
-            .collect();
-
-        let mut features = Vec::new();
-
-        // Layer::read() returns a FeatureIter which implements Iterator
-        for result in layer.read() {
-            let feature = match result {
-                Ok(f) => f,
-                Err(e) => {
-                    eprintln!("读取要素记录失败: {:?}", e);
-                    continue;
-                }
-            };
-
-            let mut gdb_feat = GdbFeature {
-                points: Vec::new(),
-                attributes: HashMap::new(),
-            };
-
-            // 提取几何
-            if let Some(ref geom) = feature.geometry {
-                extract_coords(geom, &mut gdb_feat.points);
-            }
-
-            // 提取属性
-            for (i, val) in feature.attributes.iter().enumerate() {
-                if i < field_names.len() {
-                    let attr_str = match val {
-                        Value::String(s) => s.clone(),
-                        Value::Int32(n) => n.to_string(),
-                        Value::Int64(n) => n.to_string(),
-                        Value::Float32(f) => f.to_string(),
-                        Value::Float64(f) => f.to_string(),
-                        Value::Bool(b) => {
-                            if *b { "是".to_string() } else { "否".to_string() }
+                let mut features = Vec::new();
+                for result in layer.read() {
+                    let feature = match result {
+                        Ok(f) => f,
+                        Err(e) => {
+                            eprintln!("读取要素记录失败: {:?}", e);
+                            continue;
                         }
-                        _ => String::new(),
                     };
-                    gdb_feat
-                        .attributes
-                        .insert(field_names[i].clone(), attr_str);
+
+                    let mut gdb_feat = GdbFeature {
+                        points: Vec::new(),
+                        attributes: HashMap::new(),
+                    };
+
+                    if let Some(ref geom) = feature.geometry {
+                        extract_coords(geom, &mut gdb_feat.points);
+                    }
+
+                    for (i, val) in feature.attributes.iter().enumerate() {
+                        if i < field_names.len() {
+                            let attr_str = value_to_string(val);
+                            gdb_feat
+                                .attributes
+                                .insert(field_names[i].clone(), attr_str);
+                        }
+                    }
+                    features.push(gdb_feat);
                 }
+
+                let geom_type = infer_geom_type(&features);
+
+                layers.push(GdbLayerInfo {
+                    name: info.name.clone(),
+                    field_names: field_names.clone(),
+                    num_features: features.len(),
+                    geometry_type: geom_type.to_string(),
+                });
+                all_features.push(features);
+                all_field_names.push(field_names);
             }
-            features.push(gdb_feat);
+            Err(e) => {
+                eprintln!("跳过图层 {}: {}", info.name, e);
+            }
         }
+    }
 
-        let geom_type = if features.is_empty() {
-            "Unknown"
-        } else {
-            match &features[0].points.len() {
-                0 => "Unknown",
-                1 => "Point",
-                n if *n > 2 => "Polygon",
-                _ => "PolyLine",
-            }
-        };
-
-        layers.push(GdbLayerInfo {
-            name: info.name.clone(),
-            field_names: field_names.clone(),
-            num_features: features.len(),
-            geometry_type: geom_type.to_string(),
-        });
-        all_features.push(features);
-        all_field_names.push(field_names);
+    if layers.is_empty() {
+        return Err("GDB 中所有图层均无法读取".to_string());
     }
 
     let name = path
@@ -133,7 +178,200 @@ pub fn read_gdb(path: &Path) -> Result<GdbFileInfo, String> {
     })
 }
 
-/// 从 Geometry 树中提取坐标
+// ─── 手动回退路径 ───
+
+/// 回退路径：手动解析 catalog + 逐层安全打开
+fn read_gdb_fallback(path: &Path) -> Result<GdbFileInfo, String> {
+    let entries = parse_catalog_manual(path)?;
+
+    if entries.is_empty() {
+        return Err("GDB 中未找到可用图层（手动解析）".to_string());
+    }
+
+    let mut layers = Vec::new();
+    let mut all_features = Vec::new();
+    let mut all_field_names = Vec::new();
+
+    for entry in &entries {
+        match read_layer_manual(path, entry) {
+            Ok((layer_info, features, field_names)) => {
+                layers.push(layer_info);
+                all_features.push(features);
+                all_field_names.push(field_names);
+            }
+            Err(e) => {
+                eprintln!("跳过图层 {}: {}", entry.name, e);
+            }
+        }
+    }
+
+    if layers.is_empty() {
+        return Err("GDB 中所有图层均无法读取（手动解析）".to_string());
+    }
+
+    let name = path
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_default();
+
+    Ok(GdbFileInfo {
+        path: path.to_string_lossy().to_string(),
+        name,
+        layers,
+        all_features,
+        all_field_names,
+    })
+}
+
+/// Task 1: 手动解析 GDB 系统目录（a00000001.gdbtable）
+fn parse_catalog_manual(dir: &Path) -> Result<Vec<LayerEntry>, String> {
+    let cat_bytes = std::fs::read(dir.join("a00000001.gdbtable"))
+        .map_err(|e| format!("读取 catalog table 失败: {}", e))?;
+    let tx_bytes = std::fs::read(dir.join("a00000001.gdbtablx"))
+        .map_err(|e| format!("读取 catalog index 失败: {}", e))?;
+
+    // 使用库的 read_catalog 公开 API 解析目录（a00000001 版本应为 3，库能正常处理）
+    let layer_infos = fgdb::read_catalog(&cat_bytes, &tx_bytes)
+        .map_err(|e| format!("解析 GDB 系统目录失败: {}", e))?;
+
+    Ok(layer_infos
+        .into_iter()
+        .map(|li| LayerEntry {
+            name: li.name,
+            fid: li.fid,
+            physical_filename: li.physical_filename,
+        })
+        .collect())
+}
+
+/// Task 2: 逐层安全打开 — 使用库底层 API，失败不阻塞其他图层
+fn read_layer_manual(
+    dir: &Path,
+    entry: &LayerEntry,
+) -> Result<(GdbLayerInfo, Vec<GdbFeature>, Vec<String>), String> {
+    let table_bytes = std::fs::read(entry.table_path(dir))
+        .map_err(|e| format!("读取图层文件失败: {}", e))?;
+    let tx_bytes = std::fs::read(entry.tablx_path(dir))
+        .map_err(|e| format!("读取图层索引失败: {}", e))?;
+
+    let table = fgdb::Table::parse(&table_bytes)
+        .map_err(|e| format!("解析图层表结构失败: {}", e))?;
+    let tablx = fgdb::Tablx::parse(&tx_bytes)
+        .map_err(|e| format!("解析图层索引失败: {}", e))?;
+
+    let schema = &table.field_section;
+
+    // 用户字段名（排除 OBJECTID 和 Geometry）
+    let field_names: Vec<String> = schema
+        .fields
+        .iter()
+        .filter(|f| {
+            f.ty != fgdb::FieldTypeCode::ObjectId && f.ty != fgdb::FieldTypeCode::Geometry
+        })
+        .map(|f| f.name.clone())
+        .collect();
+
+    let geom_field_idx = schema.geometry_field_index();
+
+    let mut features = Vec::new();
+    for (row_idx, offset) in tablx.iter_present() {
+        let fid = (row_idx as i64) + 1;
+
+        let blob = match fgdb::slice_row_blob(&table_bytes, offset) {
+            Ok(b) => b,
+            Err(e) => {
+                eprintln!("跳过图层 {} 行 {}: {}", entry.name, row_idx, e);
+                continue;
+            }
+        };
+
+        let row = match fgdb::decode_row_blob(blob, fid, schema) {
+            Ok(r) => r,
+            Err(e) => {
+                eprintln!("跳过图层 {} 行 {}: {}", entry.name, row_idx, e);
+                continue;
+            }
+        };
+
+        let mut gdb_feat = GdbFeature {
+            points: Vec::new(),
+            attributes: HashMap::new(),
+        };
+
+        // 解码几何
+        if let (Some(geom_blob), Some(gidx)) = (&row.geometry_blob, geom_field_idx) {
+            if let Some(meta) = schema.fields[gidx].geometry.as_ref() {
+                if let Ok(geom) = fgdb::decode_shape_buffer(geom_blob, meta) {
+                    extract_coords(&geom, &mut gdb_feat.points);
+                }
+            }
+        }
+
+        // 解码属性
+        for (i, val) in row.values.iter().enumerate() {
+            if Some(i) == geom_field_idx
+                || schema.fields[i].ty == fgdb::FieldTypeCode::ObjectId
+            {
+                continue;
+            }
+            let field_name = &schema.fields[i].name;
+            gdb_feat
+                .attributes
+                .insert(field_name.clone(), value_to_string(val));
+        }
+
+        features.push(gdb_feat);
+    }
+
+    let geom_type = infer_geom_type(&features);
+
+    let layer_info = GdbLayerInfo {
+        name: entry.name.clone(),
+        field_names: field_names.clone(),
+        num_features: features.len(),
+        geometry_type: geom_type.to_string(),
+    };
+
+    Ok((layer_info, features, field_names))
+}
+
+// ─── 通用辅助 ───
+
+/// 将 geonative_core::Value 转为字符串
+fn value_to_string(val: &Value) -> String {
+    match val {
+        Value::String(s) => s.clone(),
+        Value::Int32(n) => n.to_string(),
+        Value::Int64(n) => n.to_string(),
+        Value::Int16(n) => n.to_string(),
+        Value::Float32(f) => f.to_string(),
+        Value::Float64(f) => f.to_string(),
+        Value::Bool(b) => {
+            if *b {
+                "是".to_string()
+            } else {
+                "否".to_string()
+            }
+        }
+        Value::DateTime(d) => d.to_string(),
+        _ => String::new(),
+    }
+}
+
+/// 根据要素列表推断几何类型
+fn infer_geom_type(features: &[GdbFeature]) -> &str {
+    if features.is_empty() {
+        return "Unknown";
+    }
+    match features[0].points.len() {
+        0 => "Unknown",
+        1 => "Point",
+        n if n > 2 => "Polygon",
+        _ => "PolyLine",
+    }
+}
+
+/// 从 Geometry 树中提取坐标（仅外环）
 fn extract_coords(geom: &GeoGeom, out: &mut Vec<(f64, f64)>) {
     match geom {
         GeoGeom::Point(c) => out.push((c.x, c.y)),
@@ -158,21 +396,11 @@ fn extract_coords(geom: &GeoGeom, out: &mut Vec<(f64, f64)>) {
             for c in &poly.exterior.coords {
                 out.push((c.x, c.y));
             }
-            for hole in &poly.holes {
-                for c in &hole.coords {
-                    out.push((c.x, c.y));
-                }
-            }
         }
         GeoGeom::MultiPolygon(mp) => {
             for poly in mp {
                 for c in &poly.exterior.coords {
                     out.push((c.x, c.y));
-                }
-                for hole in &poly.holes {
-                    for c in &hole.coords {
-                        out.push((c.x, c.y));
-                    }
                 }
             }
         }
@@ -185,149 +413,777 @@ fn extract_coords(geom: &GeoGeom, out: &mut Vec<(f64, f64)>) {
     }
 }
 
-// ─── GDB 写入 (GDAL OpenFileGDB) ───
+// ─── 编码工具 ───
 
-/// 使用 GDAL 的 OpenFileGDB 驱动写 .gdb 文件
-///
-/// 需要系统安装 GDAL 3.6+（含 OpenFileGDB 写入支持）。
-/// Windows 上需设置 GDAL_HOME 环境变量或在 PATH 中包含 GDAL DLL。
-///
-/// 编译时启用 `gdb-write` feature 才能使用此功能：
-///   cargo build --features gdb-write
-#[cfg(feature = "gdb-write")]
+/// LEB128 无符号变长整数
+fn enc_varuint(buf: &mut Vec<u8>, mut v: u64) {
+    while v >= 0x80 {
+        buf.push(((v & 0x7F) as u8) | 0x80);
+        v >>= 7;
+    }
+    buf.push(v as u8);
+}
+
+/// FileGDB 有符号变长整数（首字节 bit6 = 符号位）
+fn enc_varint(buf: &mut Vec<u8>, v: i64) {
+    let (mag, sign_bit) = if v < 0 {
+        ((-v) as u64, 0x40u8)
+    } else {
+        (v as u64, 0u8)
+    };
+    let lo6 = (mag & 0x3F) as u8;
+    let rest = mag >> 6;
+    if rest == 0 {
+        buf.push(lo6 | sign_bit);
+    } else {
+        buf.push(lo6 | sign_bit | 0x80);
+        let mut x = rest;
+        while x >= 0x80 {
+            buf.push(((x & 0x7F) as u8) | 0x80);
+            x >>= 7;
+        }
+        buf.push(x as u8);
+    }
+}
+
+fn w_i32(buf: &mut Vec<u8>, v: i32) {
+    buf.extend_from_slice(&v.to_le_bytes());
+}
+fn w_u32(buf: &mut Vec<u8>, v: u32) {
+    buf.extend_from_slice(&v.to_le_bytes());
+}
+fn w_i16(buf: &mut Vec<u8>, v: i16) {
+    buf.extend_from_slice(&v.to_le_bytes());
+}
+fn w_f64(buf: &mut Vec<u8>, v: f64) {
+    buf.extend_from_slice(&v.to_le_bytes());
+}
+fn w_u8(buf: &mut Vec<u8>, v: u8) {
+    buf.push(v);
+}
+
+/// 写 u32 LE 到 buf 指定偏移
+#[allow(dead_code)]
+fn patch_u32(buf: &mut [u8], offset: usize, v: u32) {
+    buf[offset..offset + 4].copy_from_slice(&v.to_le_bytes());
+}
+fn patch_i64(buf: &mut [u8], offset: usize, v: i64) {
+    buf[offset..offset + 8].copy_from_slice(&v.to_le_bytes());
+}
+
+/// UTF-16LE 编码，返回字节数
+fn enc_utf16le(buf: &mut Vec<u8>, s: &str) -> usize {
+    let u16s: Vec<u16> = s.encode_utf16().collect();
+    for c in &u16s {
+        buf.extend_from_slice(&c.to_le_bytes());
+    }
+    u16s.len() * 2
+}
+
+// ─── Polygon Shape Buffer 编码 ───
+
+/// 编码单个 Polygon 的 shape buffer（Esri CW 外环约定）
+fn encode_polygon_shape(coords: &[(f64, f64)], xyscale: f64, xorigin: f64, yorigin: f64) -> Vec<u8> {
+    // 去掉闭合点（与首点相同）
+    let pts: Vec<(f64, f64)> = if coords.len() >= 2
+        && (coords[0].0 - coords.last().unwrap().0).abs() < 1e-12
+        && (coords[0].1 - coords.last().unwrap().1).abs() < 1e-12
+    {
+        coords[..coords.len() - 1].to_vec()
+    } else {
+        coords.to_vec()
+    };
+
+    if pts.len() < 3 {
+        return Vec::new();
+    }
+
+    // 确保 Esri 外环 = CW（有向面积 < 0）
+    let area = signed_area_2d(&pts);
+    let ring = if area >= 0.0 {
+        pts.iter().rev().copied().collect::<Vec<_>>()
+    } else {
+        pts
+    };
+
+    let n = ring.len();
+    let mut buf = Vec::with_capacity(n * 6);
+
+    enc_varuint(&mut buf, 5); // Polygon type
+    enc_varuint(&mut buf, n as u64); // nPoints
+    enc_varuint(&mut buf, 1); // nParts = 1
+
+    // BBox (4 × varuint): xmin_q, ymin_q, dx_q, dy_q
+    let qx: Vec<i64> = ring.iter().map(|p| ((p.0 - xorigin) * xyscale).round() as i64).collect();
+    let qy: Vec<i64> = ring.iter().map(|p| ((p.1 - yorigin) * xyscale).round() as i64).collect();
+    let (xmin_q, xmax_q) = qx.iter().copied().fold((i64::MAX, i64::MIN), |a, v| (a.0.min(v), a.1.max(v)));
+    let (ymin_q, ymax_q) = qy.iter().copied().fold((i64::MAX, i64::MIN), |a, v| (a.0.min(v), a.1.max(v)));
+    enc_varuint(&mut buf, xmin_q.max(0) as u64);
+    enc_varuint(&mut buf, ymin_q.max(0) as u64);
+    enc_varuint(&mut buf, (xmax_q - xmin_q) as u64);
+    enc_varuint(&mut buf, (ymax_q - ymin_q) as u64);
+
+    // 单 part → 无 part count 字段（nParts-1 = 0）
+    // Delta 编码坐标
+    let mut px = 0i64;
+    let mut py = 0i64;
+    for i in 0..n {
+        let dx = qx[i] - px;
+        let dy = qy[i] - py;
+        enc_varint(&mut buf, dx);
+        enc_varint(&mut buf, dy);
+        px = qx[i];
+        py = qy[i];
+    }
+    buf
+}
+
+fn signed_area_2d(pts: &[(f64, f64)]) -> f64 {
+    let n = pts.len();
+    if n < 3 { return 0.0; }
+    let mut s = 0.0;
+    for i in 0..n {
+        let j = (i + 1) % n;
+        s += pts[i].0 * pts[j].1 - pts[j].0 * pts[i].1;
+    }
+    s * 0.5
+}
+
+// ─── 字段描述符写入 ───
+
+/// 写 ObjectId 字段描述
+fn write_fd_objectid(buf: &mut Vec<u8>, name: &str) {
+    let n16 = enc_utf16le(&mut Vec::new(), name);
+    w_u8(buf, (n16 / 2) as u8);
+    enc_utf16le(buf, name);
+    w_u8(buf, 0); // alias len
+    w_u8(buf, 6); // type = ObjectId
+    w_u8(buf, 4); // width = 4 (32-bit)
+    w_u8(buf, 2); // flag = constant 2
+}
+
+/// 写 Geometry 字段描述（Polygon，无 Z/M）
+fn write_fd_geometry(buf: &mut Vec<u8>, name: &str, wkt: &str, xorigin: f64, yorigin: f64, xyscale: f64) {
+    let n16 = enc_utf16le(&mut Vec::new(), name);
+    w_u8(buf, (n16 / 2) as u8);
+    enc_utf16le(buf, name);
+    w_u8(buf, 0);
+    w_u8(buf, 7); // type = Geometry
+    // GeomFieldMeta
+    w_u8(buf, 0); // zero byte
+    w_u8(buf, 7); // flag
+    let wkt_buf: Vec<u16> = wkt.encode_utf16().collect();
+    let wkt_byte_len = wkt_buf.len() * 2;
+    buf.extend_from_slice(&(wkt_byte_len as u16).to_le_bytes());
+    for c in &wkt_buf {
+        buf.extend_from_slice(&c.to_le_bytes());
+    }
+    w_u8(buf, 0x01); // sub-flags (bit0 set)
+    w_f64(buf, xorigin);
+    w_f64(buf, yorigin);
+    w_f64(buf, xyscale);
+    w_f64(buf, 0.001); // xytolerance
+    // extent xy (4 × f64)
+    for _ in 0..4 { w_f64(buf, 0.0); }
+    // grid resolutions
+    w_u8(buf, 0); // zero byte
+    w_u32(buf, 1); // 1 grid
+    w_f64(buf, 1.0); // resolution
+}
+
+/// 写 String 字段描述
+fn write_fd_string(buf: &mut Vec<u8>, name: &str, max_len: u32) {
+    let n16 = enc_utf16le(&mut Vec::new(), name);
+    w_u8(buf, (n16 / 2) as u8);
+    enc_utf16le(buf, name);
+    w_u8(buf, 0);
+    w_u8(buf, 4); // type = String
+    w_u32(buf, max_len);
+    w_u8(buf, 0x01); // flag = nullable
+    w_u8(buf, 0); // default len = 0
+}
+
+/// 写 Float64 字段描述
+fn write_fd_float64(buf: &mut Vec<u8>, name: &str) {
+    let n16 = enc_utf16le(&mut Vec::new(), name);
+    w_u8(buf, (n16 / 2) as u8);
+    enc_utf16le(buf, name);
+    w_u8(buf, 0);
+    w_u8(buf, 3); // type = Float64
+    w_u8(buf, 8); // width
+    w_u8(buf, 0x01); // nullable
+    w_u8(buf, 0); // no default
+}
+
+// ─── null bitmap 辅助 ───
+
+#[allow(dead_code)]
+fn test_bit(bitmap: &[u8], idx: usize) -> bool {
+    bitmap[idx / 8] & (1u8 << (idx % 8)) != 0
+}
+
+// ─── gdbtablx 索引写入 ───
+
+fn build_gdbtablx(row_offsets: &[u64]) -> Vec<u8> {
+    let n = row_offsets.len();
+    let osz = 4u32;
+    let mut buf = Vec::new();
+    w_u32(&mut buf, 3); // version
+    w_u32(&mut buf, 1); // n_1024_blocks
+    w_i32(&mut buf, n as i32); // total_records
+    w_u32(&mut buf, osz); // offset_size
+    for i in 0..1024 {
+        let v = if i < n { row_offsets[i] } else { 0 };
+        buf.extend_from_slice(&(v as u32).to_le_bytes());
+    }
+    // trailer
+    w_u32(&mut buf, 0); // nBitmapInt32Words
+    w_u32(&mut buf, 1); // nBitsForBlockMap
+    w_u32(&mut buf, 1); // n1024BlocksBis
+    w_u32(&mut buf, 0); // nLeadingNonZero
+    buf
+}
+
+// ─── 系统目录写入 ───
+
+fn write_system_catalog(gdb_path: &Path, fc_name: &str) -> Result<(), String> {
+    let items = vec![
+        (1i16, "GDB_SystemCatalog".to_string()),
+        (2i16, fc_name.to_string()),
+    ];
+
+    let _strings_utf8 = true;
+    let flags = 0x100u32; // UTF-8 strings, no geometry
+
+    // Field descriptors (OBJECTID + Name)
+    let mut field_sec = Vec::new();
+    w_u32(&mut field_sec, 4); // format_version
+    w_u32(&mut field_sec, flags);
+    w_i16(&mut field_sec, 2); // 2 fields
+    write_fd_objectid(&mut field_sec, "OBJECTID");
+    write_fd_string(&mut field_sec, "Name", 256);
+
+    let section_size = field_sec.len() as i32;
+    let mut fs_with_size = Vec::new();
+    w_i32(&mut fs_with_size, section_size);
+    fs_with_size.extend_from_slice(&field_sec);
+
+    // Encode rows
+    let n_nullable = 1usize; // Name is nullable
+    let bitmap_size = (n_nullable + 7) / 8;
+
+    let mut rows_data = Vec::new();
+    let mut offsets: Vec<u64> = Vec::new();
+
+    for (_id, name) in &items {
+        offsets.push((40 + fs_with_size.len() + rows_data.len()) as u64);
+        let mut rb = Vec::new();
+        rb.extend_from_slice(&vec![0u8; bitmap_size]); // null bitmap (all present)
+        // Name: varuint byte_len + UTF-8
+        let nb = name.as_bytes();
+        enc_varuint(&mut rb, nb.len() as u64);
+        rb.extend_from_slice(nb);
+
+        w_i32(&mut rows_data, rb.len() as i32);
+        rows_data.extend_from_slice(&rb);
+    }
+
+    // Assemble table
+    let mut table = Vec::new();
+    w_i32(&mut table, 3); // version
+    w_i32(&mut table, items.len() as i32); // valid_record_count
+    w_i32(&mut table, 1024); // max_row_size
+    w_i32(&mut table, 5); // const_5
+    table.extend_from_slice(&0i64.to_le_bytes()); // unused
+    let file_size_off = table.len();
+    table.extend_from_slice(&0i64.to_le_bytes()); // file_size (patch later)
+    table.extend_from_slice(&40i64.to_le_bytes()); // field_desc_offset
+    table.extend_from_slice(&fs_with_size);
+    table.extend_from_slice(&rows_data);
+
+    let fsz = table.len() as i64;
+    patch_i64(&mut table, file_size_off, fsz);
+
+    // Write files
+    let tbl_path = gdb_path.join("a00000001.gdbtable");
+    std::fs::write(&tbl_path, &table).map_err(|e| format!("写 catalog table 失败: {}", e))?;
+
+    let tx = build_gdbtablx(&offsets);
+    let tx_path = gdb_path.join("a00000001.gdbtablx");
+    std::fs::write(&tx_path, &tx).map_err(|e| format!("写 catalog index 失败: {}", e))?;
+
+    Ok(())
+}
+
+// ─── CRS WKT 构建 ───
+
+/// 根据 CRS 参数动态构建 PROJCS WKT 字符串
+/// 返回 (projcs_wkt, geogcs_wkt)
+fn build_crs_wkt(crs_name: &str, band: &str, zone: &str) -> (String, String) {
+    let zval: f64 = zone.parse().unwrap_or(38.0);
+    let band_val: f64 = band.parse().unwrap_or(3.0);
+
+    let (central_meridian, false_easting) = if (band_val - 3.0).abs() < 0.1 {
+        // 3-degree Gauss-Kruger
+        (zval * 3.0, zval * 1_000_000.0 + 500_000.0)
+    } else {
+        // 6-degree Gauss-Kruger
+        (zval * 6.0 - 3.0, zval * 1_000_000.0 + 500_000.0)
+    };
+
+    let (geogcs_name, datum_name, spheroid_name, semi_major, inv_flattening) =
+        if crs_name.contains("2000") || crs_name.contains("CGCS") {
+            ("GCS_China_Geodetic_Coordinate_System_2000", "D_China_2000",
+             "CGCS2000", 6378137.0, 298.257222101)
+        } else if crs_name.contains("西安") || crs_name.contains("Xian") || crs_name.contains("1980") {
+            ("GCS_Xian_1980", "D_Xian_1980",
+             "Xian_1980", 6378140.0, 298.257)
+        } else if crs_name.contains("北京") || crs_name.contains("Beijing") || crs_name.contains("1954") {
+            ("GCS_Beijing_1954", "D_Beijing_1954",
+             "Krasovsky_1940", 6378245.0, 298.3)
+        } else {
+            // WGS84 or default (assumed geographic if no projection)
+            ("GCS_WGS_1984", "D_WGS_1984",
+             "WGS_1984", 6378137.0, 298.257223563)
+        };
+
+    let band_label = if (band_val - 3.0).abs() < 0.1 { "3_Degree" } else { "6_Degree" };
+    let zone_int = zval as i32;
+
+    // Use CGCS2000 naming convention for all CRS types (保持一致)
+    let projcs = format!(
+        "PROJCS[\"CGCS2000_{}_GK_Zone_{}\",GEOGCS[\"{}\",DATUM[\"{}\",SPHEROID[\"{}\",{},{}]],PRIMEM[\"Greenwich\",0.0],UNIT[\"Degree\",0.0174532925199433]],PROJECTION[\"Gauss_Kruger\"],PARAMETER[\"False_Easting\",{}],PARAMETER[\"False_Northing\",0.0],PARAMETER[\"Central_Meridian\",{}],PARAMETER[\"Scale_Factor\",1.0],PARAMETER[\"Latitude_Of_Origin\",0.0],UNIT[\"Meter\",1.0]]",
+        band_label, zone_int,
+        geogcs_name, datum_name, spheroid_name, semi_major, inv_flattening,
+        false_easting, central_meridian
+    );
+
+    let geogcs = format!(
+        "GEOGCS[\"{}\",DATUM[\"{}\",SPHEROID[\"{}\",{},{}]],PRIMEM[\"Greenwich\",0.0],UNIT[\"Degree\",0.0174532925199433]]",
+        geogcs_name, datum_name, spheroid_name, semi_major, inv_flattening
+    );
+
+    (projcs, geogcs)
+}
+
+// ─── spTimestamps 系统表 (a00000003) ───
+
+/// 写入 spTimestamps 系统表 (a00000003)
+fn write_sp_timestamps(gdb_path: &Path) -> Result<(), String> {
+    let items = vec![
+        ("a00000001".to_string(), "GDB_SystemCatalog".to_string()),
+        ("a00000002".to_string(), "GDB_FeatureClass".to_string()),
+    ];
+
+    let flags = 0x100u32;
+    let n_nullable = 3usize;
+    let bitmap_size = (n_nullable + 7) / 8;
+
+    // Field descriptors: OBJECTID + TableName + CreationTime + LastModifiedTime
+    let mut field_sec = Vec::new();
+    w_u32(&mut field_sec, 4);
+    w_u32(&mut field_sec, flags);
+    w_i16(&mut field_sec, 4);
+    write_fd_objectid(&mut field_sec, "OBJECTID");
+    write_fd_string(&mut field_sec, "TableName", 160);
+    // CreationTime (Float64 for OLE Automation date)
+    let n16 = enc_utf16le(&mut Vec::new(), "CreationTime");
+    w_u8(&mut field_sec, (n16 / 2) as u8);
+    enc_utf16le(&mut field_sec, "CreationTime");
+    w_u8(&mut field_sec, 0);
+    w_u8(&mut field_sec, 3); // Float64
+    w_u8(&mut field_sec, 8);
+    w_u8(&mut field_sec, 0x01);
+    // LastModifiedTime (Float64)
+    let n16 = enc_utf16le(&mut Vec::new(), "LastModifiedTime");
+    w_u8(&mut field_sec, (n16 / 2) as u8);
+    enc_utf16le(&mut field_sec, "LastModifiedTime");
+    w_u8(&mut field_sec, 0);
+    w_u8(&mut field_sec, 3);
+    w_u8(&mut field_sec, 8);
+    w_u8(&mut field_sec, 0x01);
+
+    let section_size = field_sec.len() as i32;
+    let mut fs_with_size = Vec::new();
+    w_i32(&mut fs_with_size, section_size);
+    fs_with_size.extend_from_slice(&field_sec);
+
+    // OLE Automation date: 2026-06-10 ≈ 46180.0
+    let now_ole: f64 = 46180.0;
+
+    let mut rows_data = Vec::new();
+    let mut offsets: Vec<u64> = Vec::new();
+
+    for (_id, name) in &items {
+        offsets.push((40 + fs_with_size.len() + rows_data.len()) as u64);
+        let mut rb = Vec::new();
+        rb.extend_from_slice(&vec![0u8; bitmap_size]);
+        let nb = name.as_bytes();
+        enc_varuint(&mut rb, nb.len() as u64);
+        rb.extend_from_slice(nb);
+        w_f64(&mut rb, now_ole);
+        w_f64(&mut rb, now_ole);
+
+        w_i32(&mut rows_data, rb.len() as i32);
+        rows_data.extend_from_slice(&rb);
+    }
+
+    let mut table = Vec::new();
+    w_i32(&mut table, 3);
+    w_i32(&mut table, items.len() as i32);
+    w_i32(&mut table, 1024);
+    w_i32(&mut table, 5);
+    table.extend_from_slice(&0i64.to_le_bytes());
+    let file_size_off = table.len();
+    table.extend_from_slice(&0i64.to_le_bytes());
+    table.extend_from_slice(&40i64.to_le_bytes());
+    table.extend_from_slice(&fs_with_size);
+    table.extend_from_slice(&rows_data);
+    let fsz = table.len() as i64;
+    patch_i64(&mut table, file_size_off, fsz);
+
+    let tbl_path = gdb_path.join("a00000003.gdbtable");
+    std::fs::write(&tbl_path, &table)
+        .map_err(|e| format!("写 spTimestamps table 失败: {}", e))?;
+    let tx = build_gdbtablx(&offsets);
+    let tx_path = gdb_path.join("a00000003.gdbtablx");
+    std::fs::write(&tx_path, &tx)
+        .map_err(|e| format!("写 spTimestamps index 失败: {}", e))?;
+
+    Ok(())
+}
+
+// ─── GDB_Items 系统表 (a00000004) ───
+
+/// 从字符串生成确定性 UUID
+fn simple_uuid_from(s: &str) -> [u8; 16] {
+    let mut buf = [0u8; 16];
+    let bytes = s.as_bytes();
+    for (i, &b) in bytes.iter().enumerate() {
+        buf[i % 16] ^= b;
+    }
+    // Set version 4 UUID bits
+    buf[6] = (buf[6] & 0x0F) | 0x40;
+    buf[8] = (buf[8] & 0x3F) | 0x80;
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    for i in 0..8 {
+        buf[8 + i] ^= ((ts >> (i * 8)) & 0xFF) as u8;
+    }
+    buf
+}
+
+/// 写入 GDB_Items 系统表 (a00000004) -- 最小化实现
+fn write_gdb_items(gdb_path: &Path, fc_name: &str, wkt: &str) -> Result<(), String> {
+    // Esri FileGDB Type UUIDs
+    let workspace_type_uuid: [u8; 16] = [
+        0x59, 0x96, 0x3A, 0x71, 0xEF, 0x0D, 0x9A, 0x41,
+        0xA7, 0xBB, 0x3B, 0x3E, 0xF8, 0x30, 0x99, 0x55,
+    ];
+    let fc_type_uuid: [u8; 16] = [
+        0xF0, 0xA0, 0x0E, 0xE2, 0x1C, 0x9B, 0x1D, 0x4C,
+        0xA4, 0xDB, 0xB2, 0x2A, 0x73, 0xBD, 0xC1, 0x92,
+    ];
+
+    let root_uuid = simple_uuid_from("ROOT");
+    let fc_uuid = simple_uuid_from(fc_name);
+    let zero_uuid = [0u8; 16];
+
+    let flags = 0x104u32;
+    let n_nullable = 16usize;
+    let bitmap_size = (n_nullable + 7) / 8;
+
+    // Field descriptors: 17 fields for GDB_Items
+    let mut field_sec = Vec::new();
+    w_u32(&mut field_sec, 4);
+    w_u32(&mut field_sec, flags);
+    w_i16(&mut field_sec, 17);
+
+    write_fd_objectid(&mut field_sec, "OBJECTID");
+
+    // UUID (Guid type)
+    {
+        let n16 = enc_utf16le(&mut Vec::new(), "UUID");
+        w_u8(&mut field_sec, (n16 / 2) as u8);
+        enc_utf16le(&mut field_sec, "UUID");
+        w_u8(&mut field_sec, 0);
+        w_u8(&mut field_sec, 8); // Guid
+        w_u8(&mut field_sec, 16);
+        w_u8(&mut field_sec, 0x01);
+    }
+    // ParentId (Guid)
+    {
+        let n16 = enc_utf16le(&mut Vec::new(), "ParentId");
+        w_u8(&mut field_sec, (n16 / 2) as u8);
+        enc_utf16le(&mut field_sec, "ParentId");
+        w_u8(&mut field_sec, 0);
+        w_u8(&mut field_sec, 8);
+        w_u8(&mut field_sec, 16);
+        w_u8(&mut field_sec, 0x01);
+    }
+    // Type (UUID)
+    {
+        let n16 = enc_utf16le(&mut Vec::new(), "Type");
+        w_u8(&mut field_sec, (n16 / 2) as u8);
+        enc_utf16le(&mut field_sec, "Type");
+        w_u8(&mut field_sec, 0);
+        w_u8(&mut field_sec, 8);
+        w_u8(&mut field_sec, 16);
+        w_u8(&mut field_sec, 0x01);
+    }
+
+    // Name, PhysicalName, Path (String)
+    for fname in &["Name", "PhysicalName", "Path"] {
+        write_fd_string(&mut field_sec, fname, 512);
+    }
+
+    // DatasetSubtype1, DatasetSubtype2 (Int32)
+    for fname in &["DatasetSubtype1", "DatasetSubtype2"] {
+        let n16 = enc_utf16le(&mut Vec::new(), fname);
+        w_u8(&mut field_sec, (n16 / 2) as u8);
+        enc_utf16le(&mut field_sec, fname);
+        w_u8(&mut field_sec, 0);
+        w_u8(&mut field_sec, 1); // Int32
+        w_u8(&mut field_sec, 4);
+        w_u8(&mut field_sec, 0x01);
+    }
+
+    // String fields (DatasetInfo1, DatasetInfo2, URL, Definition, Documentation, ItemInfo)
+    for fname in &["DatasetInfo1", "DatasetInfo2", "URL", "Definition", "Documentation", "ItemInfo"] {
+        write_fd_string(&mut field_sec, fname, 4096);
+    }
+
+    // Shape (Geometry)
+    write_fd_geometry(&mut field_sec, "Shape", wkt, -400.0, -400.0, 10000.0);
+
+    let section_size = field_sec.len() as i32;
+    let mut fs_with_size = Vec::new();
+    w_i32(&mut fs_with_size, section_size);
+    fs_with_size.extend_from_slice(&field_sec);
+
+    let items: Vec<(Vec<u8>, Vec<u8>, Vec<u8>, String, String, String)> = vec![
+        (
+            root_uuid.to_vec(),
+            zero_uuid.to_vec(),
+            workspace_type_uuid.to_vec(),
+            "ROOT".to_string(),
+            "ROOT".to_string(),
+            "\\".to_string(),
+        ),
+        (
+            fc_uuid.to_vec(),
+            root_uuid.to_vec(),
+            fc_type_uuid.to_vec(),
+            fc_name.to_string(),
+            fc_name.to_string(),
+            format!("\\{}", fc_name),
+        ),
+    ];
+
+    let mut rows_data = Vec::new();
+    let mut offsets: Vec<u64> = Vec::new();
+
+    for (uuid, parent_id, typ, name, phys_name, path) in &items {
+        offsets.push((40 + fs_with_size.len() + rows_data.len()) as u64);
+        let mut rb = Vec::new();
+        rb.extend_from_slice(&vec![0u8; bitmap_size]);
+
+        rb.extend_from_slice(uuid);
+        rb.extend_from_slice(parent_id);
+        rb.extend_from_slice(typ);
+        for s in &[name, phys_name, path] {
+            let nb = s.as_bytes();
+            enc_varuint(&mut rb, nb.len() as u64);
+            rb.extend_from_slice(nb);
+        }
+        // DatasetSubtype1, DatasetSubtype2 = 0
+        for _ in 0..2 {
+            w_i32(&mut rb, 0);
+        }
+        // Empty strings for DatasetInfo1, DatasetInfo2, URL, Definition, Documentation, ItemInfo
+        for _ in 0..6 {
+            enc_varuint(&mut rb, 0);
+        }
+        // Empty shape
+        enc_varuint(&mut rb, 0);
+
+        w_i32(&mut rows_data, rb.len() as i32);
+        rows_data.extend_from_slice(&rb);
+    }
+
+    let mut table = Vec::new();
+    w_i32(&mut table, 3);
+    w_i32(&mut table, items.len() as i32);
+    w_i32(&mut table, 65536);
+    w_i32(&mut table, 5);
+    table.extend_from_slice(&0i64.to_le_bytes());
+    let file_size_off = table.len();
+    table.extend_from_slice(&0i64.to_le_bytes());
+    table.extend_from_slice(&40i64.to_le_bytes());
+    table.extend_from_slice(&fs_with_size);
+    table.extend_from_slice(&rows_data);
+    let fsz = table.len() as i64;
+    patch_i64(&mut table, file_size_off, fsz);
+
+    let tbl_path = gdb_path.join("a00000004.gdbtable");
+    std::fs::write(&tbl_path, &table)
+        .map_err(|e| format!("写 GDB_Items table 失败: {}", e))?;
+    let tx = build_gdbtablx(&offsets);
+    let tx_path = gdb_path.join("a00000004.gdbtablx");
+    std::fs::write(&tx_path, &tx)
+        .map_err(|e| format!("写 GDB_Items index 失败: {}", e))?;
+
+    Ok(())
+}
+
+// ─── GDB 写入（纯 Rust OpenFileGDB，仅 Polygon）───
+
+/// 写 .gdb 目录（纯 Rust 实现，不依赖 GDAL）
 pub fn write_gdb_output(
     output_dir: &Path,
     base_name: &str,
     fields: &[(String, String, u8, u32)],
-    _attributes: &[Vec<(String, f64)>],
+    attributes: &[HashMap<String, String>],
     geometries: &[Vec<(f64, f64)>],
-    _crs_info: &HashMap<String, String>,
+    crs_info: &HashMap<String, String>,
 ) -> Result<Vec<String>, String> {
-    use gdal::DriverManager;
-    use gdal::vector::{FieldDefn, LayerOptions, LayerAccess};
-
     let gdb_name = format!("{}.gdb", base_name);
     let gdb_path = output_dir.join(&gdb_name);
 
-    // 清理旧目录
     if gdb_path.exists() {
         std::fs::remove_dir_all(&gdb_path)
             .map_err(|e| format!("清理旧 GDB 失败: {}", e))?;
     }
+    std::fs::create_dir_all(&gdb_path)
+        .map_err(|e| format!("创建 GDB 目录失败: {}", e))?;
 
-    // 获取 OpenFileGDB 驱动
-    let driver = DriverManager::get_driver_by_name("OpenFileGDB")
-        .map_err(|e| format!("获取 OpenFileGDB 驱动失败 (请确认已安装 GDAL 3.6+): {}", e))?;
+    // Geometry parameters
+    let xorigin = -400.0;
+    let yorigin = -400.0;
+    let xyscale = 10000.0; // 0.1mm precision
 
-    // 创建 GDB 数据集（vector: 0,0,0）
-    let mut dataset = driver
-        .create(&gdb_path, 0, 0, 0)
-        .map_err(|e| format!("创建 GDB 失败: {}", e))?;
+    // 根据 CRS 参数动态生成 PROJCS WKT（修复：原来错误使用 GEOGCS）
+    let crs_name = crs_info.get("c").map(|s| s.as_str()).unwrap_or("CGCS2000");
+    let band = crs_info.get("b").map(|s| s.as_str()).unwrap_or("3");
+    let zone = crs_info.get("z").map(|s| s.as_str()).unwrap_or("38");
+    let (wkt, _geogcs_wkt) = build_crs_wkt(crs_name, band, zone);
 
-    // 创建图层
-    let mut layer = dataset
-        .create_layer(LayerOptions {
-            name: base_name,
-            srs: None, // 后续可添加 SpatialRef
-            ty: gdal::gdal_sys::OGRwkbGeometryType::wkbPolygon,
-            options: None,
-        })
-        .map_err(|e| format!("创建图层失败: {}", e))?;
+    let layer_flags = 0x104u32; // polygon(4) + UTF-8(bit8)
+    let _strings_utf8 = true;
 
-    // 添加字段定义
-    // fields: (name, description, type_code, width)
-    // type_code: 4=string(OFTString), 3=float(OFTReal)
+    // Field descriptors
+    let mut field_sec = Vec::new();
+    w_u32(&mut field_sec, 4); // format_version
+    w_u32(&mut field_sec, layer_flags);
+    w_i16(&mut field_sec, (2 + fields.len()) as i16);
+    write_fd_objectid(&mut field_sec, "OBJECTID");
+    write_fd_geometry(&mut field_sec, "Shape", &wkt, xorigin, yorigin, xyscale);
     for (name, _desc, type_code, width) in fields {
-        let field_type = match type_code {
-            3 => gdal::gdal_sys::OGRFieldType::OFTReal,
-            _ => gdal::gdal_sys::OGRFieldType::OFTString,
-        };
-        let field_defn = FieldDefn::new(name, field_type)
-            .map_err(|e| format!("创建字段 {} 失败: {}", name, e))?;
-        field_defn.set_width(*width as i32);
-        if *type_code == 3 {
-            field_defn.set_precision(3);
+        match type_code {
+            3 => write_fd_float64(&mut field_sec, name),
+            _ => write_fd_string(&mut field_sec, name, *width),
         }
-        field_defn.add_to_layer(&layer)
-            .map_err(|e| format!("添加字段 {} 失败: {}", name, e))?;
     }
 
-    // 写入要素
-    let defn = layer.defn();
-    for (fi, geom_coords) in geometries.iter().enumerate() {
-        if geom_coords.len() < 3 {
+    let section_size = field_sec.len() as i32;
+    let mut fs_with_size = Vec::new();
+    w_i32(&mut fs_with_size, section_size);
+    fs_with_size.extend_from_slice(&field_sec);
+
+    // Null bitmap: 1(Shape) + user_field_count nullable fields
+    let n_nullable = 1 + fields.len();
+    let bitmap_size = (n_nullable + 7) / 8;
+
+    // Encode rows
+    let mut rows_data = Vec::new();
+    let mut row_offsets = Vec::new();
+
+    for (fi, coords) in geometries.iter().enumerate() {
+        if coords.len() < 3 {
             continue;
         }
 
-        // 构建 WKT 多边形
-        let mut wkt = String::from("POLYGON ((");
-        for (i, &(x, y)) in geom_coords.iter().enumerate() {
-            if i > 0 {
-                wkt.push_str(", ");
-            }
-            wkt.push_str(&format!("{} {}", x, y));
+        let offset = 40 + fs_with_size.len() + rows_data.len();
+        row_offsets.push(offset as u64);
+
+        let mut rb = Vec::new();
+        // null bitmap (all present)
+        rb.extend_from_slice(&vec![0u8; bitmap_size]);
+
+        // Shape: varuint(len) + shape_buffer
+        let shape = encode_polygon_shape(coords, xyscale, xorigin, yorigin);
+        if shape.is_empty() {
+            continue;
         }
-        // 确保闭合
-        if geom_coords.first() != geom_coords.last() {
-            let first = geom_coords[0];
-            wkt.push_str(&format!(", {} {}", first.0, first.1));
-        }
-        wkt.push_str("))");
+        enc_varuint(&mut rb, shape.len() as u64);
+        rb.extend_from_slice(&shape);
 
-        let geometry = gdal::vector::Geometry::from_wkt(&wkt)
-            .map_err(|e| format!("创建几何失败: {}", e))?;
+        // User fields
+        for (name, _desc, type_code, _width) in fields {
+            let str_val = attributes
+                .get(fi)
+                .and_then(|a| a.get(name.as_str()))
+                .map(|s| s.as_str())
+                .unwrap_or("");
 
-        let mut feature = gdal::vector::Feature::new(defn)
-            .map_err(|e| format!("创建要素失败: {}", e))?;
-        feature.set_geometry(geometry)
-            .map_err(|e| format!("设置几何失败: {}", e))?;
-
-        // 设置属性字段值
-        for (field_idx, (name, _desc, type_code, _width)) in fields.iter().enumerate() {
-            // 从 _attributes 中获取值（如果有的话）
-            // 目前 _attributes 结构复杂，简化处理：
-            // 对于字符串字段设为空，对于数值字段设为 0
             match type_code {
                 3 => {
-                    // Float - 面积字段尝试从 attributes 中获取
-                    feature.set_field_double(field_idx, 0.0)
-                        .map_err(|e| format!("设置字段 {} 失败: {}", name, e))?;
+                    // Float64
+                    let fval = str_val.parse::<f64>().unwrap_or(0.0);
+                    w_f64(&mut rb, fval);
                 }
                 _ => {
-                    feature.set_field_string(field_idx, "")
-                        .map_err(|e| format!("设置字段 {} 失败: {}", name, e))?;
+                    // String: varuint byte_len + UTF-8 bytes
+                    let nb = str_val.as_bytes();
+                    enc_varuint(&mut rb, nb.len() as u64);
+                    rb.extend_from_slice(nb);
                 }
             }
         }
 
-        feature.create(&mut layer)
-            .map_err(|e| format!("写入要素失败: {}", e))?;
+        w_i32(&mut rows_data, rb.len() as i32);
+        rows_data.extend_from_slice(&rb);
     }
 
-    // 关闭数据集以确保数据写入磁盘
-    dataset.close()
-        .map_err(|e| format!("关闭 GDB 失败: {}", e))?;
+    // Assemble feature class table
+    let mut table = Vec::new();
+    w_i32(&mut table, 3); // version
+    w_i32(&mut table, row_offsets.len() as i32);
+    w_i32(&mut table, 65536); // max_row_size
+    w_i32(&mut table, 5);
+    table.extend_from_slice(&0i64.to_le_bytes());
+    let file_size_off = table.len();
+    table.extend_from_slice(&0i64.to_le_bytes()); // file_size (patch later)
+    table.extend_from_slice(&40i64.to_le_bytes());
+    table.extend_from_slice(&fs_with_size);
+    table.extend_from_slice(&rows_data);
+
+    let fsz = table.len() as i64;
+    patch_i64(&mut table, file_size_off, fsz);
+
+    let tbl_path = gdb_path.join("a00000002.gdbtable");
+    std::fs::write(&tbl_path, &table)
+        .map_err(|e| format!("写 feature class table 失败: {}", e))?;
+
+    let tx = build_gdbtablx(&row_offsets);
+    let tx_path = gdb_path.join("a00000002.gdbtablx");
+    std::fs::write(&tx_path, &tx)
+        .map_err(|e| format!("写 feature class index 失败: {}", e))?;
+
+    // System catalog
+    write_system_catalog(&gdb_path, base_name)?;
+
+    // spTimestamps
+    write_sp_timestamps(&gdb_path)?;
+
+    // GDB_Items
+    write_gdb_items(&gdb_path, base_name, &wkt)?;
+
+    // Marker file
+    std::fs::write(gdb_path.join("gdb"), b"")
+        .map_err(|e| format!("写 gdb marker 失败: {}", e))?;
 
     Ok(vec![gdb_path.to_string_lossy().to_string()])
-}
-
-/// GDB 写入的 stub 实现（当未启用 gdb-write feature 时）
-#[cfg(not(feature = "gdb-write"))]
-pub fn write_gdb_output(
-    output_dir: &Path,
-    base_name: &str,
-    _fields: &[(String, String, u8, u32)],
-    _attributes: &[Vec<(String, f64)>],
-    _geometries: &[Vec<(f64, f64)>],
-    _crs_info: &HashMap<String, String>,
-) -> Result<Vec<String>, String> {
-    let _ = output_dir;
-    let _ = base_name;
-    Err(
-        "GDB 写入功能未启用。请使用 `cargo build --features gdb-write` 编译，\
-         并确保系统已安装 GDAL 3.6+（https://gdal.org/download.html）。\n\
-         Windows 上可安装 OSGeo4W 或从 https://www.gisinternals.com/ 下载预编译包，\
-         然后设置 GDAL_HOME 环境变量指向安装目录。"
-            .to_string(),
-    )
 }

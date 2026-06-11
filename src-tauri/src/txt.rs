@@ -167,6 +167,7 @@ pub fn generate_txt(
     project_info: &str,
     attrs: &HashMap<String, String>,
     features: &[PlotData],
+    oj: bool,
 ) -> String {
     let mut out = String::new();
 
@@ -212,12 +213,21 @@ pub fn generate_txt(
         );
         out.push_str(&meta);
         for (i, (y, x)) in plot.coords.iter().enumerate() {
-            out.push_str(&format!(
-                "J{},1,{},{}\n",
-                i + 1,
-                format_coord(*y, decimals),
-                format_coord(*x, decimals),
-            ));
+            if oj {
+                out.push_str(&format!(
+                    "J{},1,{},{}\n",
+                    i + 1,
+                    format_coord(*y, decimals),
+                    format_coord(*x, decimals),
+                ));
+            } else {
+                out.push_str(&format!(
+                    "{},1,{},{}\n",
+                    i + 1,
+                    format_coord(*y, decimals),
+                    format_coord(*x, decimals),
+                ));
+            }
         }
     }
 

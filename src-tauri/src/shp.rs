@@ -284,9 +284,20 @@ pub fn write_prj(path: &Path, crs: &str, band: &str, zone: &str) -> Result<(), S
     let band_label = if (band_val - 3.0).abs() < 0.1 { "3_Degree" } else { "6_Degree" };
     let zone_int = zval as i32;
 
+    // CRS label for PROJCS name (instead of hardcoded "CGCS2000_")
+    let crs_label = if crs.contains("2000") || crs.contains("CGCS") {
+        "CGCS2000"
+    } else if crs.contains("西安") || crs.contains("Xian") {
+        "Xian_1980"
+    } else if crs.contains("北京") || crs.contains("Beijing") {
+        "Beijing_1954"
+    } else {
+        "WGS_1984"
+    };
+
     let wkt = format!(
-        "PROJCS[\"CGCS2000_{}_GK_Zone_{}\",GEOGCS[\"{}\",DATUM[\"{}\",SPHEROID[\"{}\",{},{}]],PRIMEM[\"Greenwich\",0.0],UNIT[\"Degree\",0.0174532925199433]],PROJECTION[\"Gauss_Kruger\"],PARAMETER[\"False_Easting\",{}],PARAMETER[\"False_Northing\",0.0],PARAMETER[\"Central_Meridian\",{}],PARAMETER[\"Scale_Factor\",1.0],PARAMETER[\"Latitude_Of_Origin\",0.0],UNIT[\"Meter\",1.0]]",
-        band_label, zone_int,
+        "PROJCS[\"{}_{}_GK_Zone_{}\",GEOGCS[\"{}\",DATUM[\"{}\",SPHEROID[\"{}\",{},{}]],PRIMEM[\"Greenwich\",0.0],UNIT[\"Degree\",0.0174532925199433]],PROJECTION[\"Gauss_Kruger\"],PARAMETER[\"False_Easting\",{}],PARAMETER[\"False_Northing\",0.0],PARAMETER[\"Central_Meridian\",{}],PARAMETER[\"Scale_Factor\",1.0],PARAMETER[\"Latitude_Of_Origin\",0.0],UNIT[\"Meter\",1.0]]",
+        crs_label, band_label, zone_int,
         geogcs_name, datum_name, spheroid_name, semi_major, inv_flattening,
         false_easting, central_meridian
     );
@@ -348,6 +359,11 @@ pub fn write_shapefile(
     write_prj(&prj_path, crs, band, zone)?;
     shp_paths.push(prj_path.to_string_lossy().to_string());
 
+    // 4. Write .cpg (code page for ArcGIS Pro encoding detection)
+    let cpg_path = output_dir.join(format!("{}.cpg", stem));
+    std::fs::write(&cpg_path, "OEM 936").ok(); // GBK Chinese Simplified
+    shp_paths.push(cpg_path.to_string_lossy().to_string());
+
     Ok(shp_paths)
 }
 
@@ -378,8 +394,10 @@ fn write_dbf_manual(
     buf.extend_from_slice(&num_records.to_le_bytes());
     buf.extend_from_slice(&header_len.to_le_bytes());
     buf.extend_from_slice(&records_len.to_le_bytes());
-    buf.push(0x7C);         // language driver ID: GBK/Chinese Simplified
-    buf.extend_from_slice(&[0u8; 19]);
+    // Bytes 12-28: reserved (17 bytes)
+    buf.extend_from_slice(&[0u8; 17]);
+    buf.push(0x7C);         // byte 29: language driver ID (GBK/Chinese Simplified)
+    buf.extend_from_slice(&[0u8; 2]);  // bytes 30-31: reserved
 
     let mut offset: u16 = 1;
     for &(name, ftype, len, decimals) in &field_defs {

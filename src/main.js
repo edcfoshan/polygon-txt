@@ -65,6 +65,7 @@ window.importShp = async function () {
     gdbPath = null;
     renderFileList();
     processImport();
+    autoSetOutputDirS(loadedFiles[0]?.shp_path);
   } catch (e) {
     toast("导入失败: " + e);
   }
@@ -80,6 +81,7 @@ window.importGdb = async function () {
     const fl = $("fl");
     fl.innerHTML = `<div class="fitem"><span class="fn">◈ ${result.name}.gdb</span><span class="fs">${result.num_features}个要素</span></div>`;
     autoMatchFields(result.field_names);
+    autoSetOutputDirS(result.path);
     toast(`已导入 GDB: ${result.name} (${result.layers.length} 个图层)`);
     updatePreview();
   } catch (e) {
@@ -109,6 +111,26 @@ function processImport() {
   if (first.crs_info) autoFillHeader(first.crs_info);
   updatePreview();
   toast("已导入 " + loadedFiles.length + " 个文件");
+}
+
+function autoSetOutputDirS(filePath) {
+  if (!filePath) return;
+  const sep = filePath.includes("\\") ? "\\" : "/";
+  const parts = filePath.split(sep);
+  parts.pop();
+  const dir = parts.join(sep) + sep + "临时数据";
+  const inp = $("out_dir_s");
+  if (inp && !inp.value) inp.value = dir;
+}
+
+function autoSetOutputDirT(filePath) {
+  if (!filePath) return;
+  const sep = filePath.includes("\\") ? "\\" : "/";
+  const parts = filePath.split(sep);
+  parts.pop();
+  const dir = parts.join(sep) + sep + "临时数据";
+  const inp = $("out_dir");
+  if (inp && !inp.value) inp.value = dir;
 }
 
 function autoMatchFields(fieldNames) {
@@ -146,6 +168,7 @@ window.importTxt = async function () {
     txtFiles = result.files;
     renderTxtFileList();
     renderTxtParseLog();
+    autoSetOutputDirT(txtFiles[0]?.path);
   } catch (e) {
     toast("导入失败: " + e);
   }
@@ -215,13 +238,8 @@ window.runShpToTxt = async function () {
   const shpPaths = loadedFiles.map((f) => f.shp_path).filter(Boolean);
   if (!shpPaths.length && !gdbPath) { toast("请先导入 SHP 或 GDB 文件"); return; }
 
-  let outDir = $("out_dir_s")?.value || "";
-  if (!outDir) {
-    outDir = await tauriInvoke("pick_output_dir");
-    if (!outDir) { toast("请选择输出目录"); return; }
-    const inp = $("out_dir_s");
-    if (inp) inp.value = outDir;
-  }
+  const outDir = $("out_dir_s")?.value || "";
+  if (!outDir) { toast("请先导入文件以设置输出路径"); return; }
 
   const cfg = getConfig();
   const opt = getOptions();

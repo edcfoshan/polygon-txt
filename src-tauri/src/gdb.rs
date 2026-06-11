@@ -650,6 +650,9 @@ fn write_system_catalog(gdb_path: &Path, fc_name: &str) -> Result<(), String> {
     let items = vec![
         (1i16, "GDB_SystemCatalog".to_string()),
         (2i16, fc_name.to_string()),
+        (3i16, "spTimestamps".to_string()),
+        (4i16, "GDB_Items".to_string()),
+        (5i16, "GDB_ItemTypes".to_string()),
     ];
 
     let _strings_utf8 = true;
@@ -773,6 +776,9 @@ fn write_sp_timestamps(gdb_path: &Path) -> Result<(), String> {
     let items = vec![
         ("a00000001".to_string(), "GDB_SystemCatalog".to_string()),
         ("a00000002".to_string(), "GDB_FeatureClass".to_string()),
+        ("a00000003".to_string(), "spTimestamps".to_string()),
+        ("a00000004".to_string(), "GDB_Items".to_string()),
+        ("a00000005".to_string(), "GDB_ItemTypes".to_string()),
     ];
 
     let flags = 0x100u32;
@@ -982,6 +988,9 @@ fn write_gdb_items(gdb_path: &Path, fc_name: &str, wkt: &str) -> Result<(), Stri
         ),
     ];
 
+    // We need to write 2 rows but the spTimestamps has 5 entries now
+    // The GDB_Items table only needs workspace + feature class entries
+
     let mut rows_data = Vec::new();
     let mut offsets: Vec<u64> = Vec::new();
 
@@ -1034,6 +1043,211 @@ fn write_gdb_items(gdb_path: &Path, fc_name: &str, wkt: &str) -> Result<(), Stri
     let tx_path = gdb_path.join("a00000004.gdbtablx");
     std::fs::write(&tx_path, &tx)
         .map_err(|e| format!("写 GDB_Items index 失败: {}", e))?;
+
+    Ok(())
+}
+
+// ─── timestamps 文件 (400 bytes) ───
+
+fn write_timestamps_file(gdb_path: &Path) -> Result<(), String> {
+    let mut buf = vec![0u8; 400];
+    // Header
+    buf[0..4].copy_from_slice(&0xFFFFFFFFu32.to_le_bytes()); // sentinel
+    buf[4..8].copy_from_slice(&20u32.to_le_bytes()); // version = 20
+    buf[8..12].copy_from_slice(&0xFFFFFFFFu32.to_le_bytes()); // sentinel
+    buf[12..16].copy_from_slice(&0u32.to_le_bytes()); // flags
+    buf[16..20].copy_from_slice(&50u32.to_le_bytes()); // hash
+    buf[20..24].copy_from_slice(&2u32.to_le_bytes()); // record_count
+    buf[24..28].copy_from_slice(&14u32.to_le_bytes()); // count
+    buf[28..32].copy_from_slice(&2u32.to_le_bytes()); // count
+    // Rest is 0xff padding
+    for i in 32..400 {
+        buf[i] = 0xFF;
+    }
+    std::fs::write(gdb_path.join("timestamps"), &buf)
+        .map_err(|e| format!("写 timestamps 失败: {}", e))
+}
+
+// ─── .gdbindexes 文件 ───
+
+fn write_gdb_indexes_file(gdb_path: &Path, table_num: &str, indexes: &[(String, Vec<String>)]) -> Result<(), String> {
+    let mut buf = Vec::new();
+    w_u32(&mut buf, indexes.len() as u32);
+    for (idx_name, field_names) in indexes {
+        w_u32(&mut buf, idx_name.len() as u32 * 2);
+        enc_utf16le(&mut buf, idx_name);
+        w_u32(&mut buf, 0); // unknown
+        w_u32(&mut buf, field_names.len() as u32);
+        for fn_name in field_names {
+            w_u32(&mut buf, fn_name.len() as u32 * 2);
+            enc_utf16le(&mut buf, fn_name);
+        }
+    }
+    let path = gdb_path.join(format!("{}.gdbindexes", table_num));
+    std::fs::write(&path, &buf)
+        .map_err(|e| format!("写 {}gdbindexes 失败: {}", table_num, e))
+}
+
+// ─── .horizon 文件 (32 bytes) ───
+
+fn write_horizon_file(gdb_path: &Path, table_num: &str) -> Result<(), String> {
+    let mut buf = Vec::with_capacity(32);
+    // 4 entries: xmin, ymin, xmax, ymax — each u32(2) + f64
+    let bounds: [(u32, f64); 4] = [
+        (2, -400.0),
+        (2, -90.0),
+        (2, 400.0),
+        (2, 90.0),
+    ];
+    for (flag, val) in &bounds {
+        w_u32(&mut buf, *flag);
+        w_f64(&mut buf, *val);
+    }
+    let path = gdb_path.join(format!("{}.horizon", table_num));
+    std::fs::write(&path, &buf)
+        .map_err(|e| format!("写 {}horizon 失败: {}", table_num, e))
+}
+
+// ─── .spx 文件 (空空间索引) ───
+
+fn write_spx_file(gdb_path: &Path, table_num: &str) -> Result<(), String> {
+    // Empty spatial index: 4118 bytes of zeros (standard size)
+    let buf = vec![0u8; 4118];
+    let path = gdb_path.join(format!("{}.spx", table_num));
+    std::fs::write(&path, &buf)
+        .map_err(|e| format!("写 {}spx 失败: {}", table_num, e))
+}
+
+// ─── .atx 文件 (属性索引) ───
+
+fn write_atx_file(gdb_path: &Path, table_num: &str, index_name: &str, num_records: u32) -> Result<(), String> {
+    // B-tree attribute index: 4118 bytes
+    let mut buf = vec![0u8; 4118];
+    // Header: version=0, num_records, ...
+    buf[0..4].copy_from_slice(&0u32.to_le_bytes()); // version
+    buf[4..8].copy_from_slice(&num_records.to_le_bytes()); // record count
+    // Fill with sorted record indices (1-based)
+    for i in 0..num_records.min(1023) {
+        let off = 8 + (i as usize) * 4;
+        if off + 4 <= 4118 {
+            buf[off..off + 4].copy_from_slice(&(i + 1).to_le_bytes());
+        }
+    }
+    // Write attribute values (UTF-16LE padded to 256 bytes each)
+    // For simplicity, write empty attribute blocks
+    let path = gdb_path.join(format!("{}.{}.atx", table_num, index_name));
+    std::fs::write(&path, &buf)
+        .map_err(|e| format!("写 {}{}.atx 失败: {}", table_num, index_name, e))
+}
+
+// ─── GDB_ItemTypes 系统表 (a00000005) ───
+
+fn write_gdb_item_types(gdb_path: &Path) -> Result<(), String> {
+    // Standard Esri type UUIDs
+    let type_uuids: Vec<([u8; 16], String)> = vec![
+        // Feature Class
+        ([
+            0xF0, 0xA0, 0x0E, 0xE2, 0x1C, 0x9B, 0x1D, 0x4C,
+            0xA4, 0xDB, 0xB2, 0x2A, 0x73, 0xBD, 0xC1, 0x92,
+        ], "Feature Class".to_string()),
+        // Workspace
+        ([
+            0x59, 0x96, 0x3A, 0x71, 0xEF, 0x0D, 0x9A, 0x41,
+            0xA7, 0xBB, 0x3B, 0x3E, 0xF8, 0x30, 0x99, 0x55,
+        ], "Workspace".to_string()),
+        // Feature Dataset
+        ([
+            0x69, 0x42, 0x47, 0x9E, 0x4A, 0x1E, 0x9D, 0xC3,
+            0xA0, 0xF5, 0xC0, 0x5B, 0x1F, 0x49, 0x1C, 0xFB,
+        ], "Feature Dataset".to_string()),
+        // Topology
+        ([
+            0x53, 0x16, 0x98, 0xFA, 0x06, 0x4C, 0x4D, 0xD0,
+            0xA0, 0x39, 0x60, 0xD3, 0x5F, 0x5B, 0x02, 0x3F,
+        ], "Topology".to_string()),
+        // Network Dataset
+        ([
+            0x4B, 0x06, 0x0B, 0x0E, 0x6D, 0x5F, 0x41, 0xE4,
+            0xA0, 0x57, 0xE3, 0x2D, 0x7C, 0x2B, 0x4E, 0x0D,
+        ], "Network Dataset".to_string()),
+    ];
+
+    let flags = 0x100u32;
+    let n_nullable = 3usize;
+    let bitmap_size = (n_nullable + 7) / 8;
+
+    // Field descriptors: OBJECTID + UUID + ParentTypeID + Name
+    let mut field_sec = Vec::new();
+    w_u32(&mut field_sec, 4);
+    w_u32(&mut field_sec, flags);
+    w_i16(&mut field_sec, 4);
+    write_fd_objectid(&mut field_sec, "OBJECTID");
+    // UUID (Guid)
+    {
+        let n16 = enc_utf16le(&mut Vec::new(), "UUID");
+        w_u8(&mut field_sec, (n16 / 2) as u8);
+        enc_utf16le(&mut field_sec, "UUID");
+        w_u8(&mut field_sec, 0);
+        w_u8(&mut field_sec, 8); // Guid
+        w_u8(&mut field_sec, 16);
+        w_u8(&mut field_sec, 0x01);
+    }
+    // ParentTypeID (Guid)
+    {
+        let n16 = enc_utf16le(&mut Vec::new(), "ParentTypeID");
+        w_u8(&mut field_sec, (n16 / 2) as u8);
+        enc_utf16le(&mut field_sec, "ParentTypeID");
+        w_u8(&mut field_sec, 0);
+        w_u8(&mut field_sec, 8);
+        w_u8(&mut field_sec, 16);
+        w_u8(&mut field_sec, 0x01);
+    }
+    // Name
+    write_fd_string(&mut field_sec, "Name", 64);
+
+    let section_size = field_sec.len() as i32;
+    let mut fs_with_size = Vec::new();
+    w_i32(&mut fs_with_size, section_size);
+    fs_with_size.extend_from_slice(&field_sec);
+
+    // Encode rows
+    let mut rows_data = Vec::new();
+    let mut offsets: Vec<u64> = Vec::new();
+
+    for (uuid, name) in &type_uuids {
+        offsets.push((40 + fs_with_size.len() + rows_data.len()) as u64);
+        let mut rb = Vec::new();
+        rb.extend_from_slice(&vec![0u8; bitmap_size]);
+        rb.extend_from_slice(uuid);
+        rb.extend_from_slice(&[0u8; 16]); // ParentTypeID = zero
+        let nb = name.as_bytes();
+        enc_varuint(&mut rb, nb.len() as u64);
+        rb.extend_from_slice(nb);
+        w_i32(&mut rows_data, rb.len() as i32);
+        rows_data.extend_from_slice(&rb);
+    }
+
+    let mut table = Vec::new();
+    w_i32(&mut table, 3);
+    w_i32(&mut table, type_uuids.len() as i32);
+    w_i32(&mut table, 1024);
+    w_i32(&mut table, 5);
+    table.extend_from_slice(&0i64.to_le_bytes());
+    let file_size_off = table.len();
+    table.extend_from_slice(&0i64.to_le_bytes());
+    table.extend_from_slice(&40i64.to_le_bytes());
+    table.extend_from_slice(&fs_with_size);
+    table.extend_from_slice(&rows_data);
+    let fsz = table.len() as i64;
+    patch_i64(&mut table, file_size_off, fsz);
+
+    let tbl_path = gdb_path.join("a00000005.gdbtable");
+    std::fs::write(&tbl_path, &table)
+        .map_err(|e| format!("写 GDB_ItemTypes table 失败: {}", e))?;
+    let tx = build_gdbtablx(&offsets);
+    let tx_path = gdb_path.join("a00000005.gdbtablx");
+    std::fs::write(&tx_path, &tx)
+        .map_err(|e| format!("写 GDB_ItemTypes index 失败: {}", e))?;
 
     Ok(())
 }
@@ -1180,6 +1394,56 @@ pub fn write_gdb_output(
 
     // GDB_Items
     write_gdb_items(&gdb_path, base_name, &wkt)?;
+
+    // GDB_ItemTypes 系统表
+    write_gdb_item_types(&gdb_path)?;
+
+    // timestamps 文件
+    write_timestamps_file(&gdb_path)?;
+
+    // .gdbindexes 文件
+    write_gdb_indexes_file(&gdb_path, "a00000001", &[
+        ("FDO_ID".to_string(), vec!["OBJECTID".to_string()]),
+        ("TablesByName".to_string(), vec!["Name".to_string()]),
+    ])?;
+    write_gdb_indexes_file(&gdb_path, "a00000003", &[
+        ("FDO_ID".to_string(), vec!["OBJECTID".to_string()]),
+    ])?;
+    write_gdb_indexes_file(&gdb_path, "a00000004", &[
+        ("FDO_ObjectID".to_string(), vec!["OBJECTID".to_string()]),
+        ("ObjectID".to_string(), vec!["OBJECTID".to_string()]),
+        ("FDO_Shape".to_string(), vec!["Shape".to_string()]),
+        ("FDO_UUID".to_string(), vec!["UUID".to_string()]),
+        ("CatItemsByType".to_string(), vec!["Type".to_string()]),
+        ("CatItemsByPhysicalName".to_string(), vec!["PhysicalName".to_string()]),
+    ])?;
+    write_gdb_indexes_file(&gdb_path, "a00000005", &[
+        ("FDO_ObjectID".to_string(), vec!["OBJECTID".to_string()]),
+        ("CatItemTypesByUUID".to_string(), vec!["UUID".to_string()]),
+        ("CatItemTypesByParentTypeID".to_string(), vec!["ParentTypeID".to_string()]),
+        ("CatItemTypesByName".to_string(), vec!["Name".to_string()]),
+    ])?;
+    write_gdb_indexes_file(&gdb_path, "a00000002", &[
+        ("FDO_ObjectID".to_string(), vec!["OBJECTID".to_string()]),
+        ("FDO_Shape".to_string(), vec!["Shape".to_string()]),
+    ])?;
+
+    // .horizon 文件（空间表）
+    write_horizon_file(&gdb_path, "a00000004")?;
+    write_horizon_file(&gdb_path, "a00000002")?;
+
+    // .spx 文件（空间索引）
+    write_spx_file(&gdb_path, "a00000004")?;
+    write_spx_file(&gdb_path, "a00000002")?;
+
+    // .atx 文件（属性索引）
+    write_atx_file(&gdb_path, "a00000001", "TablesByName", 2)?;
+    write_atx_file(&gdb_path, "a00000004", "CatItemsByPhysicalName", 2)?;
+    write_atx_file(&gdb_path, "a00000004", "CatItemsByType", 2)?;
+    write_atx_file(&gdb_path, "a00000004", "FDO_UUID", 2)?;
+    write_atx_file(&gdb_path, "a00000005", "CatItemTypesByName", 5)?;
+    write_atx_file(&gdb_path, "a00000005", "CatItemTypesByUUID", 5)?;
+    write_atx_file(&gdb_path, "a00000005", "CatItemTypesByParentTypeID", 5)?;
 
     // Marker file
     std::fs::write(gdb_path.join("gdb"), b"")

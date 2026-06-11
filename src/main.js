@@ -1,15 +1,10 @@
-// 界址点互转工具 — 主 JS 模块 (Tauri v2)
-// 使用 window.__TAURI__ 运行时 API
+import { invoke } from '@tauri-apps/api/core';
+import { open as shellOpen } from '@tauri-apps/plugin-shell';
 
-// Tauri IPC 调用（兼容生产环境和浏览器调试）
+// Tauri IPC 调用
 async function tauriInvoke(cmd, args) {
   try {
-    if (window.__TAURI__?.core?.invoke) {
-      return await window.__TAURI__.core.invoke(cmd, args);
-    }
-    // 浏览器调试模式：打印错误
-    console.warn('[Tauri] invoke not available:', cmd, args);
-    return { files: [], dir: '', success: true, message: '模拟模式' };
+    return await invoke(cmd, args);
   } catch (e) {
     console.error('[Tauri] invoke error:', cmd, e);
     throw e;
@@ -402,11 +397,7 @@ window.delCfg = function () {
 // ═══ Open GitHub ═══
 window.openGitHub = async function () {
   try {
-    if (window.__TAURI__?.shell?.open) {
-      await window.__TAURI__.shell.open("https://github.com/edcfoshan/txt-gdb-converter");
-    } else {
-      window.open("https://github.com/edcfoshan/txt-gdb-converter", "_blank");
-    }
+    await shellOpen("https://github.com/edcfoshan/txt-gdb-converter");
   } catch (e) { console.error("openGitHub:", e); }
 };
 

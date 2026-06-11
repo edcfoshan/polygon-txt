@@ -642,6 +642,11 @@ body::before{
           <div class="drop-tx">选择 .shp 文件（可多选）</div>
         </div>
         <div style="margin-top:4px;display:flex;gap:4px">
+          <div class="drop" id="dropGpkg" style="flex:1;padding:6px 8px">
+            <div style="display:flex;align-items:center;justify-content:center;gap:6px;font-size:11px;color:var(--tx3)">
+              <span style="font-size:13px;font-weight:300">◈</span> 导入 .gpkg 文件
+            </div>
+          </div>
           <div class="drop" id="dropGdb" style="flex:1;padding:6px 8px">
             <div style="display:flex;align-items:center;justify-content:center;gap:6px;font-size:11px;color:var(--tx3)">
               <span style="font-size:13px;font-weight:300">📁</span> 导入 .gdb 文件夹
@@ -679,7 +684,7 @@ body::before{
         <div class="os-h">
           <span style="font-size:10.5px;color:var(--tx3);font-weight:500">格式</span>
           <label class="ck"><input type="checkbox" id="of_shp" checked>SHP</label>
-          <label class="ck"><input type="checkbox" id="of_gdb">GDB</label>
+          <label class="ck"><input type="checkbox" id="of_gpkg">GPKG</label>
         </div>
         <div class="os-h" style="padding-top:0">
           <span style="font-size:10.5px;color:var(--tx3);font-weight:500">组织</span>
@@ -748,7 +753,7 @@ body::before{
             <div class="slabel">GDB 图层（勾选要转换的）</div>
             <div id="gdbLayers" style="border:1px solid var(--brd);border-radius:6px;padding:4px;max-height:180px;overflow-y:auto"></div>
           </div>
-          <div class="pv" id="pv">等待导入 SHP 文件…</div>
+          <div class="pv" id="pv">等待导入 SHP、GPKG 或 GDB 文件…</div>
         </div>
         <div class="ctr-ft">
           <button class="btn-run" id="btnRunStt">开始转换</button>
@@ -779,11 +784,11 @@ body::before{
     <h3 style="text-align:center;margin-bottom:8px">关于界址点互转工具</h3>
     <p class="modal-sub" style="text-align:center">由极思 G 提供技术支持</p>
     <div style="font-size:12px;color:var(--tx2);line-height:1.7;padding:0 4px;margin-bottom:10px">
-      <p style="margin-bottom:6px"><strong>界址点互转工具</strong> 是一款轻量级 GIS 实用工具，专为测绘与国土行业设计，支持 SHP/GDB 与 TXT 文件的双向转换。</p>
+      <p style="margin-bottom:6px"><strong>界址点互转工具</strong> 是一款轻量级 GIS 实用工具，专为测绘与国土行业设计，支持常见面数据与标准界址点 TXT 文件之间的双向转换。</p>
       <p style="margin-bottom:4px"><strong>主要功能：</strong></p>
       <ul style="margin:0 0 8px 16px;padding:0">
-        <li>面→TXT：导入 SHP/GDB，输出标准界址点 TXT 文件</li>
-        <li>TXT→面：解析 TXT 文件，生成 SHP/GDB 矢量面数据</li>
+        <li>面→TXT：导入 SHP、GPKG、GDB，输出标准界址点 TXT 文件</li>
+        <li>TXT→面：解析 TXT 文件，生成 SHP、GPKG 矢量面数据</li>
         <li>支持 2000国家大地坐标系 / 1980西安 / 1954北京 / WGS84</li>
         <li>支持高斯克吕格投影，3度/6度分带</li>
         <li>字段自动匹配，智能识别坐标系</li>

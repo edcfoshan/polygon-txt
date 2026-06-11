@@ -180,6 +180,58 @@ fn import_gdb(app: tauri::AppHandle) -> Result<GdbImportResult, String> {
 }
 
 #[tauri::command]
+fn import_gpkg(app: tauri::AppHandle) -> Result<GdbImportResult, String> {
+    use tauri_plugin_dialog::DialogExt;
+
+    let file = app
+        .dialog()
+        .file()
+        .add_filter("GeoPackage 文件", &["gpkg"])
+        .blocking_pick_file();
+
+    let gpkg_path = match file.and_then(|f| f.as_path().map(|p| p.to_path_buf())) {
+        Some(p) => p,
+        None => {
+            return Err("未选择文件".to_string());
+        }
+    };
+
+    if gpkg_path
+        .extension()
+        .map(|e| e.to_string_lossy().to_lowercase() != "gpkg")
+        .unwrap_or(true)
+    {
+        return Err("请选择 .gpkg 文件".to_string());
+    }
+
+    let info = gpkg::read_gpkg(&gpkg_path)?;
+    let name = gpkg_path
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_default();
+
+    let field_names = info.all_field_names.first().cloned().unwrap_or_default();
+    let num_features = info.layers.first().map(|l| l.num_features).unwrap_or(0);
+    let layers = info
+        .layers
+        .iter()
+        .map(|l| GdbLayerItem {
+            name: l.name.clone(),
+            field_names: l.field_names.clone(),
+            num_features: l.num_features,
+        })
+        .collect();
+
+    Ok(GdbImportResult {
+        path: gpkg_path.to_string_lossy().to_string(),
+        name,
+        layers,
+        field_names,
+        num_features,
+    })
+}
+
+#[tauri::command]
 fn pick_txt_files(app: tauri::AppHandle) -> Result<TxtImportResult, String> {
     use tauri_plugin_dialog::DialogExt;
 
@@ -241,22 +293,32 @@ fn pick_txt_files(app: tauri::AppHandle) -> Result<TxtImportResult, String> {
 #[tauri::command]
 fn read_shp_to_txt_preview(
     shp_paths: Vec<String>,
-    gdb_path: Option<String>,
+    source_type: Option<String>,
+    source_path: Option<String>,
     header_cfg: HeaderConfig,
     field_mapping: FieldMapping,
     options: ShpToTxtOptions,
     selected_layers: Option<Vec<String>>,
 ) -> Result<String, String> {
     let shp_bufs: Vec<PathBuf> = shp_paths.iter().map(PathBuf::from).collect();
-    let gdb_buf = gdb_path.as_ref().map(PathBuf::from);
+    let source_buf = source_path.as_ref().map(PathBuf::from);
 
-    convert::shp_to_txt_preview(&shp_bufs, gdb_buf.as_ref(), &header_cfg, &field_mapping, &options, selected_layers.as_deref())
+    convert::shp_to_txt_preview(
+        &shp_bufs,
+        source_type.as_deref(),
+        source_buf.as_ref(),
+        &header_cfg,
+        &field_mapping,
+        &options,
+        selected_layers.as_deref(),
+    )
 }
 
 #[tauri::command]
 fn run_shp_to_txt(
     shp_paths: Vec<String>,
-    gdb_path: Option<String>,
+    source_type: Option<String>,
+    source_path: Option<String>,
     header_cfg: HeaderConfig,
     field_mapping: FieldMapping,
     options: ShpToTxtOptions,
@@ -265,11 +327,12 @@ fn run_shp_to_txt(
 ) -> Result<ConvertResultPayload, String> {
     let out_dir = PathBuf::from(&output_dir);
     let shp_bufs: Vec<PathBuf> = shp_paths.iter().map(PathBuf::from).collect();
-    let gdb_buf = gdb_path.as_ref().map(PathBuf::from);
+    let source_buf = source_path.as_ref().map(PathBuf::from);
 
     let result = convert::convert_shp_to_txt(
         &shp_bufs,
-        gdb_buf.as_ref(),
+        source_type.as_deref(),
+        source_buf.as_ref(),
         &header_cfg,
         &field_mapping,
         &options,
@@ -450,6 +513,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             pick_shp_files,
             import_gdb,
+            import_gpkg,
             pick_txt_files,
             pick_output_dir,
             pick_shp_files_from_paths,

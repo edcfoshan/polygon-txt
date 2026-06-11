@@ -156,7 +156,7 @@ pub fn read_gpkg(path: &Path) -> Result<GpkgFileInfo, String> {
 
     // 查询 feature 表
     let mut stmt = conn.prepare(
-        "SELECT table_name, geometry_column_name, srs_id FROM gpkg_geometry_columns"
+        "SELECT table_name, column_name, srs_id FROM gpkg_geometry_columns"
     ).map_err(|e| format!("查询 gpkg_geometry_columns 失败: {}", e))?;
 
     let mut layers = Vec::new();
@@ -182,7 +182,7 @@ pub fn read_gpkg(path: &Path) -> Result<GpkgFileInfo, String> {
             row.get::<_, String>(1)
         }).map_err(|e| format!("读字段名失败: {}", e))?
         .filter_map(|r| r.ok())
-        .filter(|n| n != &geom_col)
+        .filter(|n| n != &geom_col && n.to_lowercase() != "fid")
         .collect();
 
         // 读取要素
@@ -309,10 +309,22 @@ pub fn write_gpkg_output(
     }).collect();
 
     let all_cols = field_defs.join(", ");
-    let create_sql = format!(
-        "CREATE TABLE \"{}\" (\"geom\" BLOB NOT NULL, {}, CONSTRAINT pk_{}_rowid PRIMARY KEY (\"rowid\"))",
-        base_name, all_cols, base_name
-    );
+    let column_names = fields
+        .iter()
+        .map(|(name, _, _, _)| format!("\"{}\"", name))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let create_sql = if all_cols.is_empty() {
+        format!(
+            "CREATE TABLE \"{}\" (\"fid\" INTEGER PRIMARY KEY AUTOINCREMENT, \"geom\" BLOB NOT NULL)",
+            base_name
+        )
+    } else {
+        format!(
+            "CREATE TABLE \"{}\" (\"fid\" INTEGER PRIMARY KEY AUTOINCREMENT, \"geom\" BLOB NOT NULL, {})",
+            base_name, all_cols
+        )
+    };
 
     conn.execute("SELECT enable_extension('gpkg')", []).ok();
     conn.execute(&create_sql, [])
@@ -333,10 +345,14 @@ pub fn write_gpkg_output(
     let val_placeholders: Vec<String> = fields.iter().enumerate()
         .map(|(i, _)| format!("?{}", i + 2))
         .collect();
-    let insert_sql = format!(
-        "INSERT INTO \"{}\" (\"geom\", {}) VALUES (?1, {})",
-        base_name, all_cols, val_placeholders.join(", ")
-    );
+    let insert_sql = if column_names.is_empty() {
+        format!("INSERT INTO \"{}\" (\"geom\") VALUES (?1)", base_name)
+    } else {
+        format!(
+            "INSERT INTO \"{}\" (\"geom\", {}) VALUES (?1, {})",
+            base_name, column_names, val_placeholders.join(", ")
+        )
+    };
 
     let mut insert_stmt = conn.prepare(&insert_sql)
         .map_err(|e| format!("准备插入语句失败: {}", e))?;

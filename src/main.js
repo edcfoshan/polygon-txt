@@ -20,7 +20,8 @@ let headerManual = {};
 let lastPreviewKey = "";
 let previewTimer = null;
 let theme = "light";
-let gdbPath = null;
+let sourceType = null;
+let sourcePath = null;
 let gdbLayers = [];
 let selectedLayers = [];
 
@@ -64,7 +65,10 @@ window.importShp = async function () {
     const result = await tauriInvoke("pick_shp_files");
     if (!result.files || result.files.length === 0) return;
     loadedFiles = result.files;
-    gdbPath = null;
+    sourceType = null;
+    sourcePath = null;
+    gdbLayers = [];
+    selectedLayers = [];
     renderFileList();
     processImport();
     autoSetOutputDirS(loadedFiles[0]?.shp_path);
@@ -73,15 +77,37 @@ window.importShp = async function () {
   }
 };
 
+window.importGpkg = async function () {
+  try {
+    const result = await tauriInvoke("import_gpkg");
+    if (!result || !result.path) return;
+    sourceType = "gpkg";
+    sourcePath = result.path;
+    loadedFiles = [];
+    gdbLayers = [];
+    selectedLayers = [];
+    const fl = $("fl");
+    if (fl) fl.innerHTML = `<div class="fitem"><span class="fn">◈ ${result.name}.gpkg</span><span class="fs">${result.num_features}个要素</span></div>`;
+    autoMatchFields(result.field_names);
+    autoSetOutputDirS(result.path);
+    renderGdbLayers();
+    toast(`已导入 GPKG: ${result.name} (${result.layers.length} 个图层)`);
+    updatePreview();
+  } catch (e) {
+    toast("导入 GPKG 失败: " + e);
+  }
+};
+
 // ═══ GDB 导入 ═══
 window.importGdb = async function () {
   try {
     const result = await tauriInvoke("import_gdb");
     if (!result || !result.path) return;
-    gdbPath = result.path;
+    sourceType = "gdb";
+    sourcePath = result.path;
     loadedFiles = [];
     const fl = $("fl");
-    fl.innerHTML = `<div class="fitem"><span class="fn">◈ ${result.name}.gdb</span><span class="fs">${result.num_features}个要素</span></div>`;
+    if (fl) fl.innerHTML = `<div class="fitem"><span class="fn">◈ ${result.name}.gdb</span><span class="fs">${result.num_features}个要素</span></div>`;
     autoMatchFields(result.field_names);
     autoSetOutputDirS(result.path);
     gdbLayers = result.layers || [];
@@ -98,7 +124,7 @@ function renderGdbLayers() {
   const container = $("gdbLayerList");
   const list = $("gdbLayers");
   if (!container || !list) return;
-  if (!gdbLayers.length) { container.style.display = "none"; return; }
+  if (sourceType !== "gdb" || !gdbLayers.length) { container.style.display = "none"; return; }
   container.style.display = "block";
   list.innerHTML = "";
   gdbLayers.forEach((layer) => {
@@ -119,6 +145,7 @@ function renderGdbLayers() {
 
 function renderFileList() {
   const fl = $("fl");
+  if (!fl) return;
   fl.innerHTML = "";
   loadedFiles.forEach((g, i) => {
     fl.innerHTML += `<div class="fitem"><span class="fn">◈ ${g.name}.shp</span><span class="fs">${g.num_features}个</span><button class="fitem-close" data-remove-file="${i}">×</button></div>`;
@@ -230,7 +257,7 @@ function renderTxtParseLog() {
     : "等待导入 TXT 文件…";
 }
 
-window.clearAllFiles = function () { loadedFiles = []; gdbPath = null; gdbLayers = []; selectedLayers = []; const fl = $("fl"); if (fl) fl.innerHTML = ""; const out = $("out_dir_s"); if (out) out.value = ""; const gl = $("gdbLayerList"); if (gl) gl.style.display = "none"; toast("已清空"); };
+window.clearAllFiles = function () { loadedFiles = []; sourceType = null; sourcePath = null; gdbLayers = []; selectedLayers = []; const fl = $("fl"); if (fl) fl.innerHTML = ""; const out = $("out_dir_s"); if (out) out.value = ""; const gl = $("gdbLayerList"); if (gl) gl.style.display = "none"; toast("已清空"); };
 window.clearAllFilesTxt = function () { txtFiles = []; const fl = $("flT"); if (fl) fl.innerHTML = ""; const pv = $("pvT"); if (pv) pv.textContent = "等待导入 TXT 文件…"; const out = $("out_dir"); if (out) out.value = ""; toast("已清空"); };
 
 // ═══ Preview ═══
@@ -250,21 +277,21 @@ window.up = async function () {
   const opt = getOptions();
   const shpPaths = loadedFiles.map((f) => f.shp_path).filter(Boolean);
 
-  if (shpPaths.length > 0 || gdbPath) {
+  if (shpPaths.length > 0 || sourcePath) {
     try {
-      const txt = await tauriInvoke("read_shp_to_txt_preview", { shpPaths, gdbPath, headerCfg: cfg.h, fieldMapping: cfg.f, options: opt, selectedLayers: gdbPath ? selectedLayers : [] });
+      const txt = await tauriInvoke("read_shp_to_txt_preview", { shpPaths, sourceType, sourcePath, headerCfg: cfg.h, fieldMapping: cfg.f, options: opt, selectedLayers: sourceType === "gdb" ? selectedLayers : [] });
       if (txt) { const pv = $("pv"); if (pv) pv.textContent = txt; return; }
     } catch (e) { console.log("Preview error:", e); }
   }
   const pv = $("pv");
-  if (pv) pv.textContent = out || "等待导入 SHP 或 GDB 文件…";
+  if (pv) pv.textContent = out || "等待导入 SHP、GPKG 或 GDB 文件…";
   lastPreviewKey = out;
 }
 
 // ═══ Run ═══
 window.runShpToTxt = async function () {
   const shpPaths = loadedFiles.map((f) => f.shp_path).filter(Boolean);
-  if (!shpPaths.length && !gdbPath) { toast("请先导入 SHP 或 GDB 文件"); return; }
+  if (!shpPaths.length && !sourcePath) { toast("请先导入 SHP、GPKG 或 GDB 文件"); return; }
 
   const outDir = $("out_dir_s")?.value || "";
   if (!outDir) { toast("请先导入文件以设置输出路径"); return; }
@@ -272,7 +299,7 @@ window.runShpToTxt = async function () {
   const cfg = getConfig();
   const opt = getOptions();
   try {
-    const result = await tauriInvoke("run_shp_to_txt", { shpPaths, gdbPath, headerCfg: cfg.h, fieldMapping: cfg.f, options: opt, outputDir: outDir, selectedLayers: gdbPath ? selectedLayers : [] });
+    const result = await tauriInvoke("run_shp_to_txt", { shpPaths, sourceType, sourcePath, headerCfg: cfg.h, fieldMapping: cfg.f, options: opt, outputDir: outDir, selectedLayers: sourceType === "gdb" ? selectedLayers : [] });
     toast("✓ " + result.message);
     const pf = $("pf"); const ps = $("ps");
     if (pf) pf.style.width = "100%";
@@ -286,15 +313,15 @@ window.runTxtToShp = async function () {
   if (!outDir) { toast("请先导入文件以设置输出路径"); return; }
 
   const outputShp = $("of_shp")?.checked || false;
-  const outputGdb = $("of_gdb")?.checked || false;
-  if (!outputShp && !outputGdb) { toast("请至少选择一种输出格式"); return; }
+  const outputGpkg = $("of_gpkg")?.checked || false;
+  if (!outputShp && !outputGpkg) { toast("请至少选择一种输出格式"); return; }
 
   const txtPaths = txtFiles.map((f) => f.path);
   const cfg = getConfig();
   try {
     const result = await tauriInvoke("run_txt_to_shp", {
       txtPaths,
-      options: { output_shp: outputShp, output_gdb: outputGdb, merge: $("org_merge")?.checked || false, output_dir: outDir },
+      options: { output_shp: outputShp, output_gpkg: outputGpkg, merge: $("org_merge")?.checked || false, output_dir: outDir },
       headerCfg: cfg.h,
     });
     toast("✓ " + result.message);
@@ -477,6 +504,7 @@ function init() {
   bind("btnSave", () => saveOnly());
   bind("btnDel", () => delCfg());
   bind("dropZone", () => importShp());
+  bind("dropGpkg", () => importGpkg());
   bind("dropGdb", () => importGdb());
   bind("btnClearS", () => clearAllFiles());
   bind("btnBrowseS", () => selectOutputDirS());
@@ -555,7 +583,7 @@ function init() {
         const paths = files.map((f) => f.path || f.name);
         const result = await tauriInvoke("pick_shp_files_from_paths", { paths });
         if (result.files && result.files.length > 0) {
-          loadedFiles = result.files; gdbPath = null; renderFileList(); processImport();
+          loadedFiles = result.files; sourceType = null; sourcePath = null; gdbLayers = []; selectedLayers = []; renderFileList(); processImport();
         }
       } catch (err) { toast("拖放导入失败: " + err); }
     });

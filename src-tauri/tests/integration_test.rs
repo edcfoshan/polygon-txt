@@ -9,7 +9,7 @@ extern crate jisig_bpoint_converter_lib;
 
 // 测试用的模块
 use jisig_bpoint_converter_lib::{
-    shp, txt, gdb, convert,
+    shp, txt, gdb, gpkg, convert,
 };
 
 const TEST_DIR: &str = r"C:\Users\Administrator\Documents\txt与gdb互转\test_arcpy\std_shp";
@@ -188,7 +188,7 @@ fn test_txt_to_shp_full() {
 
     let options = convert::TxtToShpOptions {
         output_shp: true,
-        output_gdb: false,
+        output_gpkg: false,
         merge: false,
         output_dir: out_dir.path().to_string_lossy().to_string(),
     };
@@ -274,6 +274,7 @@ fn test_shp_to_txt_full() {
     let result = convert::convert_shp_to_txt(
         &[shp_path.clone()],
         None,
+        None,
         &header,
         &field_mapping,
         &options,
@@ -313,7 +314,7 @@ fn test_shp_txt_roundtrip() {
     // Step 1: TXT → SHP
     let txt_to_shp_opts = convert::TxtToShpOptions {
         output_shp: true,
-        output_gdb: false,
+        output_gpkg: false,
         merge: false,
         output_dir: out_dir1.path().to_string_lossy().to_string(),
     };
@@ -367,6 +368,7 @@ fn test_shp_txt_roundtrip() {
 
     let r2 = convert::convert_shp_to_txt(
         &generated_shp,
+        None,
         None,
         &header,
         &field_mapping,
@@ -438,6 +440,7 @@ fn test_preview() {
     let preview = convert::shp_to_txt_preview(
         &[shp_path.clone()],
         None,
+        None,
         &header,
         &field_mapping,
         &options,
@@ -472,16 +475,16 @@ fn test_read_gdb() {
     }
 }
 
-// ─── 测试 11: TXT→GDB（纯 Rust 写入）───
+// ─── 测试 11: TXT→GPKG ───
 
 #[test]
-fn test_txt_to_gdb() {
+fn test_txt_to_gpkg() {
     let out_dir = tempfile::tempdir().expect("创建临时目录失败");
     let txt_path = test_txt_path();
 
     let options = convert::TxtToShpOptions {
         output_shp: false,
-        output_gdb: true,
+        output_gpkg: true,
         merge: false,
         output_dir: out_dir.path().to_string_lossy().to_string(),
     };
@@ -501,9 +504,9 @@ fn test_txt_to_gdb() {
         &[txt_path.clone()],
         &options,
         &header,
-    ).expect("TXT→GDB 转换失败");
+    ).expect("TXT→GPKG 转换失败");
 
-    println!("TXT→GDB 结果: {}", result.message);
+    println!("TXT→GPKG 结果: {}", result.message);
     for f in &result.output_files {
         println!("  输出: {}", f);
     }
@@ -511,36 +514,95 @@ fn test_txt_to_gdb() {
     assert!(result.success, "转换应成功");
     assert!(!result.output_files.is_empty(), "应有输出文件");
 
-    // 验证 .gdb 目录结构
-    let gdb_path_str = result.output_files.iter()
-        .find(|f| f.ends_with(".gdb"))
-        .expect("应输出 .gdb 目录");
-    let gdb_path = PathBuf::from(gdb_path_str);
-    assert!(gdb_path.is_dir(), ".gdb 应为目录");
-    assert!(gdb_path.join("a00000001.gdbtable").exists(), "应有系统目录表");
-    assert!(gdb_path.join("a00000001.gdbtablx").exists(), "应有系统目录索引");
-    assert!(gdb_path.join("a0000000b.gdbtable").exists(), "应有要素类表");
-    assert!(gdb_path.join("a0000000b.gdbtablx").exists(), "应有要素类索引");
+    let gpkg_path_str = result.output_files.iter()
+        .find(|f| f.ends_with(".gpkg"))
+        .expect("应输出 .gpkg 文件");
+    let gpkg_path = PathBuf::from(gpkg_path_str);
+    assert!(gpkg_path.is_file(), ".gpkg 应为文件");
 
-    // 验证生成的 GDB 可被 geonative-filegdb 读回
-    match gdb::read_gdb(&gdb_path) {
-        Ok(info) => {
-            println!("  读回 GDB: {} 个图层", info.layers.len());
-            for layer in &info.layers {
-                println!("    图层: {} ({} 要素)", layer.name, layer.num_features);
-            }
-            assert!(!info.layers.is_empty(), "读回应有图层");
-            let total_features: usize = info.layers.iter().map(|l| l.num_features).sum();
-            assert!(total_features > 0, "读回应有要素");
-            assert!(total_features == 1, "应有 1 个要素（仅 feature class，spTimestamps 已移除）");
-        }
-        Err(e) => {
-            panic!("GDB 读回失败: {}", e);
-        }
-    }
+    let info = gpkg::read_gpkg(&gpkg_path).expect("读回 GPKG 失败");
+    println!("  读回 GPKG: {} 个图层", info.layers.len());
+    assert!(!info.layers.is_empty(), "读回应有图层");
+    let total_features: usize = info.layers.iter().map(|l| l.num_features).sum();
+    assert!(total_features > 0, "读回应有要素");
+    assert_eq!(total_features, 1, "应有 1 个要素");
 }
 
-// ─── 测试 12: Default1.gdb 手动回退读取 ───
+// ─── 测试 12: GPKG→TXT ───
+
+#[test]
+fn test_gpkg_to_txt_full() {
+    let prep_dir = tempfile::tempdir().expect("创建临时目录失败");
+    let out_dir = tempfile::tempdir().expect("创建临时目录失败");
+    let txt_path = test_txt_path();
+
+    let header = convert::HeaderConfig {
+        crs: "2000国家大地坐标系".into(),
+        band: "3".into(),
+        proj: "高斯克吕格".into(),
+        unit: "米".into(),
+        zone: "38".into(),
+        precision: "0.001".into(),
+        transform: ",,,,,,".into(),
+        project_info: String::new(),
+    };
+
+    let make_gpkg = convert::TxtToShpOptions {
+        output_shp: false,
+        output_gpkg: true,
+        merge: false,
+        output_dir: prep_dir.path().to_string_lossy().to_string(),
+    };
+
+    let gpkg_result = convert::convert_txt_to_shp(
+        &[txt_path.clone()],
+        &make_gpkg,
+        &header,
+    ).expect("准备 GPKG 失败");
+
+    let gpkg_path = gpkg_result.output_files.iter()
+        .find(|f| f.ends_with(".gpkg"))
+        .map(PathBuf::from)
+        .expect("应生成 gpkg");
+
+    let field_mapping = convert::FieldMapping {
+        name: "DKMC".into(),
+        id: "DKBH".into(),
+        area: "MJ".into(),
+        use_field: "DKYT".into(),
+        tfh: "TFH".into(),
+        dlbm: "DLBM".into(),
+    };
+
+    let options = convert::ShpToTxtOptions {
+        ox: false,
+        oj: true,
+        op: false,
+        on: false,
+        oo: false,
+        om: false,
+        buffer: 0.0,
+    };
+
+    let result = convert::convert_shp_to_txt(
+        &[],
+        Some("gpkg"),
+        Some(&gpkg_path),
+        &header,
+        &field_mapping,
+        &options,
+        out_dir.path(),
+        None,
+    ).expect("GPKG→TXT 转换失败");
+
+    assert!(result.success, "转换应成功");
+    assert_eq!(result.output_files.len(), 1, "应生成 1 个 TXT");
+    let content = std::fs::read_to_string(&result.output_files[0]).expect("读取 TXT 失败");
+    assert!(content.contains("[属性描述]"), "应包含属性描述");
+    assert!(content.contains("[地块坐标]"), "应包含地块坐标");
+}
+
+// ─── 测试 13: Default1.gdb 手动回退读取 ───
 
 #[test]
 fn test_read_default_gdb() {

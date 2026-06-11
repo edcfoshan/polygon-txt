@@ -21,6 +21,8 @@ let lastPreviewKey = "";
 let previewTimer = null;
 let theme = "light";
 let gdbPath = null;
+let gdbLayers = [];
+let selectedLayers = [];
 
 const FIELD_MATCH_RULES = {
   fn: ["DKMC", "MC", "NAME"],
@@ -82,12 +84,38 @@ window.importGdb = async function () {
     fl.innerHTML = `<div class="fitem"><span class="fn">◈ ${result.name}.gdb</span><span class="fs">${result.num_features}个要素</span></div>`;
     autoMatchFields(result.field_names);
     autoSetOutputDirS(result.path);
+    gdbLayers = result.layers || [];
+    selectedLayers = gdbLayers.map((l) => l.name);
+    renderGdbLayers();
     toast(`已导入 GDB: ${result.name} (${result.layers.length} 个图层)`);
     updatePreview();
   } catch (e) {
     toast("导入 GDB 失败: " + e);
   }
 };
+
+function renderGdbLayers() {
+  const container = $("gdbLayerList");
+  const list = $("gdbLayers");
+  if (!container || !list) return;
+  if (!gdbLayers.length) { container.style.display = "none"; return; }
+  container.style.display = "block";
+  list.innerHTML = "";
+  gdbLayers.forEach((layer) => {
+    const checked = selectedLayers.includes(layer.name) ? "checked" : "";
+    list.innerHTML += `<label class="ck" style="padding:4px 6px;border-bottom:1px solid var(--brd);font-size:11px"><input type="checkbox" data-layer="${layer.name}" ${checked}><span style="flex:1">${layer.name}</span><span style="color:var(--tx3);font-size:10px">${layer.num_features}个要素</span></label>`;
+  });
+  list.querySelectorAll("input[type=checkbox]").forEach((cb) => {
+    cb.addEventListener("change", () => {
+      if (cb.checked) {
+        if (!selectedLayers.includes(cb.dataset.layer)) selectedLayers.push(cb.dataset.layer);
+      } else {
+        selectedLayers = selectedLayers.filter((n) => n !== cb.dataset.layer);
+      }
+      updatePreview();
+    });
+  });
+}
 
 function renderFileList() {
   const fl = $("fl");
@@ -202,8 +230,8 @@ function renderTxtParseLog() {
     : "等待导入 TXT 文件…";
 }
 
-window.clearAllFiles = function () { loadedFiles = []; gdbPath = null; const fl = $("fl"); if (fl) fl.innerHTML = ""; toast("已清空"); };
-window.clearAllFilesTxt = function () { txtFiles = []; const fl = $("flT"); if (fl) fl.innerHTML = ""; const pv = $("pvT"); if (pv) pv.textContent = "等待导入 TXT 文件…"; toast("已清空"); };
+window.clearAllFiles = function () { loadedFiles = []; gdbPath = null; gdbLayers = []; selectedLayers = []; const fl = $("fl"); if (fl) fl.innerHTML = ""; const out = $("out_dir_s"); if (out) out.value = ""; const gl = $("gdbLayerList"); if (gl) gl.style.display = "none"; toast("已清空"); };
+window.clearAllFilesTxt = function () { txtFiles = []; const fl = $("flT"); if (fl) fl.innerHTML = ""; const pv = $("pvT"); if (pv) pv.textContent = "等待导入 TXT 文件…"; const out = $("out_dir"); if (out) out.value = ""; toast("已清空"); };
 
 // ═══ Preview ═══
 function updatePreview() {
@@ -224,7 +252,7 @@ window.up = async function () {
 
   if (shpPaths.length > 0 || gdbPath) {
     try {
-      const txt = await tauriInvoke("read_shp_to_txt_preview", { shpPaths, gdbPath, headerCfg: cfg.h, fieldMapping: cfg.f, options: opt });
+      const txt = await tauriInvoke("read_shp_to_txt_preview", { shpPaths, gdbPath, headerCfg: cfg.h, fieldMapping: cfg.f, options: opt, selectedLayers: gdbPath ? selectedLayers : [] });
       if (txt) { const pv = $("pv"); if (pv) pv.textContent = txt; return; }
     } catch (e) { console.log("Preview error:", e); }
   }
@@ -244,7 +272,7 @@ window.runShpToTxt = async function () {
   const cfg = getConfig();
   const opt = getOptions();
   try {
-    const result = await tauriInvoke("run_shp_to_txt", { shpPaths, gdbPath, headerCfg: cfg.h, fieldMapping: cfg.f, options: opt, outputDir: outDir });
+    const result = await tauriInvoke("run_shp_to_txt", { shpPaths, gdbPath, headerCfg: cfg.h, fieldMapping: cfg.f, options: opt, outputDir: outDir, selectedLayers: gdbPath ? selectedLayers : [] });
     toast("✓ " + result.message);
     const pf = $("pf"); const ps = $("ps");
     if (pf) pf.style.width = "100%";
@@ -254,8 +282,8 @@ window.runShpToTxt = async function () {
 
 window.runTxtToShp = async function () {
   if (!txtFiles.length) { toast("请先导入 TXT 文件"); return; }
-  const outDir = await tauriInvoke("pick_output_dir");
-  if (!outDir) { toast("请选择输出目录"); return; }
+  const outDir = $("out_dir")?.value || "";
+  if (!outDir) { toast("请先导入文件以设置输出路径"); return; }
 
   const outputShp = $("of_shp")?.checked || false;
   const outputGdb = $("of_gdb")?.checked || false;

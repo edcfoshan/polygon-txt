@@ -8,6 +8,28 @@ This file provides guidance to AI agents working with this repository.
 
 **GitHub:** https://github.com/edcfoshan/boundary-point-converter
 
+## Core Rules
+
+### No arcpy in production code
+**arcpy is FORBIDDEN in the software's build/code.** This tool's purpose is to eliminate arcpy dependency. 
+
+**Allowed:**
+- Using arcpy for verification, testing, and debugging (演算和校正)
+- Comparing with arcpy-generated output to validate format correctness
+
+**Forbidden:**
+- Using arcpy in the compiled application
+- Shelling out to arcpy from Rust code
+- Bundling any arcpy dependency
+- Using arcpy as a runtime dependency
+
+### GDB ArcGIS Pro Compatibility
+Pure Rust OpenFileGDB writer (gdb.rs) cannot fully match ArcGIS Pro's binary format. Recommended workflow for Pro users:
+1. Export as SHP → Open in ArcGIS Pro
+2. Convert SHP → GDB using ArcGIS Pro's built-in tools
+
+The Rust GDB writer is compatible with `geonative-filegdb` for read-back verification.
+
 ## Architecture
 
 ```

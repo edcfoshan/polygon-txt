@@ -6,6 +6,7 @@ pub mod shp;
 pub mod txt;
 pub mod convert;
 pub mod gdb;
+pub mod gpkg;
 
 use convert::{FieldMapping, HeaderConfig, ShpToTxtOptions, TxtToShpOptions};
 
@@ -244,11 +245,12 @@ fn read_shp_to_txt_preview(
     header_cfg: HeaderConfig,
     field_mapping: FieldMapping,
     options: ShpToTxtOptions,
+    selected_layers: Option<Vec<String>>,
 ) -> Result<String, String> {
     let shp_bufs: Vec<PathBuf> = shp_paths.iter().map(PathBuf::from).collect();
     let gdb_buf = gdb_path.as_ref().map(PathBuf::from);
 
-    convert::shp_to_txt_preview(&shp_bufs, gdb_buf.as_ref(), &header_cfg, &field_mapping, &options)
+    convert::shp_to_txt_preview(&shp_bufs, gdb_buf.as_ref(), &header_cfg, &field_mapping, &options, selected_layers.as_deref())
 }
 
 #[tauri::command]
@@ -259,6 +261,7 @@ fn run_shp_to_txt(
     field_mapping: FieldMapping,
     options: ShpToTxtOptions,
     output_dir: String,
+    selected_layers: Option<Vec<String>>,
 ) -> Result<ConvertResultPayload, String> {
     let out_dir = PathBuf::from(&output_dir);
     let shp_bufs: Vec<PathBuf> = shp_paths.iter().map(PathBuf::from).collect();
@@ -271,6 +274,7 @@ fn run_shp_to_txt(
         &field_mapping,
         &options,
         &out_dir,
+        selected_layers.as_deref(),
     )?;
 
     Ok(ConvertResultPayload {

@@ -8,6 +8,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+mod gdb_templates;
+
 /// GDB 中的要素信息
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GdbFeature {
@@ -455,6 +457,9 @@ fn w_u32(buf: &mut Vec<u8>, v: u32) {
 fn w_i16(buf: &mut Vec<u8>, v: i16) {
     buf.extend_from_slice(&v.to_le_bytes());
 }
+fn w_u16(buf: &mut Vec<u8>, v: u16) {
+    buf.extend_from_slice(&v.to_le_bytes());
+}
 fn w_f64(buf: &mut Vec<u8>, v: f64) {
     buf.extend_from_slice(&v.to_le_bytes());
 }
@@ -615,6 +620,29 @@ fn write_fd_float64(buf: &mut Vec<u8>, name: &str) {
     w_u8(buf, 0); // no default
 }
 
+/// 写 Int32 字段描述
+fn write_fd_int32(buf: &mut Vec<u8>, name: &str) {
+    let n16 = enc_utf16le(&mut Vec::new(), name);
+    w_u8(buf, (n16 / 2) as u8);
+    enc_utf16le(buf, name);
+    w_u8(buf, 0);
+    w_u8(buf, 1); // type = Int32
+    w_u8(buf, 4); // width
+    w_u8(buf, 0x01); // nullable
+    w_u8(buf, 0); // default len = 0
+}
+
+/// 写 Guid 字段描述
+fn write_fd_guid(buf: &mut Vec<u8>, name: &str) {
+    let n16 = enc_utf16le(&mut Vec::new(), name);
+    w_u8(buf, (n16 / 2) as u8);
+    enc_utf16le(buf, name);
+    w_u8(buf, 0);
+    w_u8(buf, 10); // type = Guid
+    w_u8(buf, 0x01); // flag = nullable
+    w_u8(buf, 0); // default len = 0
+}
+
 // ─── null bitmap 辅助 ───
 
 #[allow(dead_code)]
@@ -626,20 +654,21 @@ fn test_bit(bitmap: &[u8], idx: usize) -> bool {
 
 fn build_gdbtablx(row_offsets: &[u64]) -> Vec<u8> {
     let n = row_offsets.len();
-    let osz = 4u32;
+    let osz = 5u32; // ArcGIS Pro uses 5-byte offsets
     let mut buf = Vec::new();
     w_u32(&mut buf, 3); // version
-    w_u32(&mut buf, 1); // n_1024_blocks
+    w_u32(&mut buf, if n > 0 { 1 } else { 0 }); // n_1024_blocks
     w_i32(&mut buf, n as i32); // total_records
     w_u32(&mut buf, osz); // offset_size
     for i in 0..1024 {
         let v = if i < n { row_offsets[i] } else { 0 };
-        buf.extend_from_slice(&(v as u32).to_le_bytes());
+        let bytes = (v as u64).to_le_bytes();
+        buf.extend_from_slice(&bytes[..osz as usize]);
     }
     // trailer
     w_u32(&mut buf, 0); // nBitmapInt32Words
-    w_u32(&mut buf, 1); // nBitsForBlockMap
-    w_u32(&mut buf, 1); // n1024BlocksBis
+    w_u32(&mut buf, if n > 0 { 1 } else { 0 }); // nBitsForBlockMap
+    w_u32(&mut buf, if n > 0 { 1 } else { 0 }); // n1024BlocksBis
     w_u32(&mut buf, 0); // nLeadingNonZero
     buf
 }
@@ -647,24 +676,42 @@ fn build_gdbtablx(row_offsets: &[u64]) -> Vec<u8> {
 // ─── 系统目录写入 ───
 
 fn write_system_catalog(gdb_path: &Path, fc_name: &str) -> Result<(), String> {
+    // FID order: system tables first, user layer last (matches reference GDB)
     let items = vec![
-        (1i16, "GDB_SystemCatalog".to_string()),
-        (2i16, fc_name.to_string()),
-        (3i16, "spTimestamps".to_string()),
-        (4i16, "GDB_Items".to_string()),
-        (5i16, "GDB_ItemTypes".to_string()),
+        "GDB_SystemCatalog".to_string(),            // FID 1
+        "GDB_DBTune".to_string(),                    // FID 2
+        "GDB_SpatialRefs".to_string(),               // FID 3
+        "GDB_Items".to_string(),                      // FID 4
+        "GDB_ItemTypes".to_string(),                  // FID 5
+        "GDB_ItemRelationships".to_string(),           // FID 6
+        "GDB_ItemRelationshipTypes".to_string(),       // FID 7
+        "GDB_ReplicaLog".to_string(),                  // FID 8
+        "GDB_EditingTemplates".to_string(),            // FID 9
+        "GDB_EditingTemplateRelationships".to_string(), // FID 10
+        fc_name.to_string(),                           // FID 11
     ];
 
-    let _strings_utf8 = true;
-    let flags = 0x100u32; // UTF-8 strings, no geometry
+    let flags = 0x100u32; // UTF-8 strings
 
-    // Field descriptors (OBJECTID + Name)
+    // Field descriptors: ID + Name + FileFormat
     let mut field_sec = Vec::new();
     w_u32(&mut field_sec, 4); // format_version
-    w_u32(&mut field_sec, flags);
-    w_i16(&mut field_sec, 2); // 2 fields
-    write_fd_objectid(&mut field_sec, "OBJECTID");
-    write_fd_string(&mut field_sec, "Name", 256);
+    w_u16(&mut field_sec, flags as u16);
+    w_u16(&mut field_sec, 0); // padding
+    w_i16(&mut field_sec, 3); // 3 fields
+    write_fd_objectid(&mut field_sec, "ID");
+    write_fd_string(&mut field_sec, "Name", 160);
+    // FileFormat (Int16, width=4, flag=4)
+    {
+        let n16 = enc_utf16le(&mut Vec::new(), "FileFormat");
+        w_u8(&mut field_sec, (n16 / 2) as u8);
+        enc_utf16le(&mut field_sec, "FileFormat");
+        w_u8(&mut field_sec, 0);
+        w_u8(&mut field_sec, 0); // type = Int16
+        w_u8(&mut field_sec, 4); // width
+        w_u8(&mut field_sec, 0x04); // flag
+        w_u8(&mut field_sec, 0); // default len = 0
+    }
 
     let section_size = field_sec.len() as i32;
     let mut fs_with_size = Vec::new();
@@ -672,13 +719,13 @@ fn write_system_catalog(gdb_path: &Path, fc_name: &str) -> Result<(), String> {
     fs_with_size.extend_from_slice(&field_sec);
 
     // Encode rows
-    let n_nullable = 1usize; // Name is nullable
+    let n_nullable = 3usize; // ID(0) + Name(1) + FileFormat(2)
     let bitmap_size = (n_nullable + 7) / 8;
 
     let mut rows_data = Vec::new();
     let mut offsets: Vec<u64> = Vec::new();
 
-    for (_id, name) in &items {
+    for name in &items {
         offsets.push((40 + fs_with_size.len() + rows_data.len()) as u64);
         let mut rb = Vec::new();
         rb.extend_from_slice(&vec![0u8; bitmap_size]); // null bitmap (all present)
@@ -686,6 +733,8 @@ fn write_system_catalog(gdb_path: &Path, fc_name: &str) -> Result<(), String> {
         let nb = name.as_bytes();
         enc_varuint(&mut rb, nb.len() as u64);
         rb.extend_from_slice(nb);
+        // FileFormat: i16 LE = 2
+        w_i16(&mut rb, 2);
 
         w_i32(&mut rows_data, rb.len() as i32);
         rows_data.extend_from_slice(&rb);
@@ -715,6 +764,134 @@ fn write_system_catalog(gdb_path: &Path, fc_name: &str) -> Result<(), String> {
     let tx_path = gdb_path.join("a00000001.gdbtablx");
     std::fs::write(&tx_path, &tx).map_err(|e| format!("写 catalog index 失败: {}", e))?;
 
+    Ok(())
+}
+
+// ─── GDB_DBTune 系统表 (a00000006) ───
+
+#[allow(dead_code)]
+fn write_gdb_dbtune(gdb_path: &Path) -> Result<(), String> {
+    let flags = 0x100u32;
+    let mut field_sec = Vec::new();
+    w_u32(&mut field_sec, 4);
+    w_u32(&mut field_sec, flags);
+    w_i16(&mut field_sec, 3);
+    write_fd_string(&mut field_sec, "Keyword", 256);
+    write_fd_string(&mut field_sec, "ParameterName", 256);
+    write_fd_string(&mut field_sec, "ConfigString", 256);
+
+    let section_size = field_sec.len() as i32;
+    let mut fs_with_size = Vec::new();
+    w_i32(&mut fs_with_size, section_size);
+    fs_with_size.extend_from_slice(&field_sec);
+
+    let mut table = Vec::new();
+    w_i32(&mut table, 3);
+    w_i32(&mut table, 0); // 0 rows
+    w_i32(&mut table, 1024);
+    w_i32(&mut table, 5);
+    table.extend_from_slice(&0i64.to_le_bytes());
+    let file_size_off = table.len();
+    table.extend_from_slice(&0i64.to_le_bytes());
+    table.extend_from_slice(&40i64.to_le_bytes());
+    table.extend_from_slice(&fs_with_size);
+    let fsz = table.len() as i64;
+    patch_i64(&mut table, file_size_off, fsz);
+
+    std::fs::write(gdb_path.join("a00000002.gdbtable"), &table)
+        .map_err(|e| format!("写 GDB_DBTune 失败: {}", e))?;
+    let tx = build_gdbtablx(&[]);
+    std::fs::write(gdb_path.join("a00000002.gdbtablx"), &tx)
+        .map_err(|e| format!("写 GDB_DBTune index 失败: {}", e))?;
+    Ok(())
+}
+
+    // ─── GDB_SpatialRefs 系统表 (a00000007) ───
+
+/// 写入 GDB_SpatialRefs 表，包含 CGCS2000 3度带38号投影的 SR 条目
+#[allow(dead_code)]
+fn write_gdb_spatial_refs(gdb_path: &Path, crs_name: &str, band: &str, zone: &str) -> Result<(), String> {
+    let flags = 0x100u32;
+    let mut field_sec = Vec::new();
+    w_u32(&mut field_sec, 4);
+    w_u32(&mut field_sec, flags);
+    w_i16(&mut field_sec, 12);
+    write_fd_objectid(&mut field_sec, "ID");
+    write_fd_string(&mut field_sec, "SRTEXT", 2048);
+    write_fd_float64(&mut field_sec, "FalseX");
+    write_fd_float64(&mut field_sec, "FalseY");
+    write_fd_float64(&mut field_sec, "XYUnits");
+    write_fd_float64(&mut field_sec, "FalseZ");
+    write_fd_float64(&mut field_sec, "ZUnits");
+    write_fd_float64(&mut field_sec, "FalseM");
+    write_fd_float64(&mut field_sec, "MUnits");
+    write_fd_float64(&mut field_sec, "XYTolerance");
+    write_fd_float64(&mut field_sec, "ZTolerance");
+    write_fd_float64(&mut field_sec, "MTolerance");
+
+    let section_size = field_sec.len() as i32;
+    let mut fs_with_size = Vec::new();
+    w_i32(&mut fs_with_size, section_size);
+    fs_with_size.extend_from_slice(&field_sec);
+
+    // Build WKT from CRS params
+    let (projcs_wkt, _geogcs_wkt) = build_crs_wkt(crs_name, band, zone);
+
+    // Null bitmap: fields 2-11 (Float64) are nullable = 10 bits = 2 bytes
+    let bitmap_size = 2usize;
+
+    let zval: f64 = zone.parse().unwrap_or(38.0);
+    let band_val: f64 = band.parse().unwrap_or(3.0);
+    let (false_easting, _central_meridian) = if (band_val - 3.0).abs() < 0.1 {
+        (zval * 1_000_000.0 + 500_000.0, zval * 3.0)
+    } else {
+        (zval * 1_000_000.0 + 500_000.0, zval * 6.0 - 3.0)
+    };
+
+    let mut rows_data = Vec::new();
+    let mut offsets: Vec<u64> = Vec::new();
+
+    offsets.push((40 + fs_with_size.len() + rows_data.len()) as u64);
+    let mut rb = Vec::new();
+    rb.extend_from_slice(&vec![0u8; bitmap_size]); // null bitmap (all present)
+    // SRTEXT: varuint byte_len + UTF-8
+    let srs_bytes = projcs_wkt.as_bytes();
+    enc_varuint(&mut rb, srs_bytes.len() as u64);
+    rb.extend_from_slice(srs_bytes);
+    // Float64 fields
+    w_f64(&mut rb, false_easting);  // FalseX
+    w_f64(&mut rb, 0.0);            // FalseY
+    w_f64(&mut rb, 1.0);            // XYUnits (meters)
+    w_f64(&mut rb, 0.0);            // FalseZ
+    w_f64(&mut rb, 1.0);            // ZUnits
+    w_f64(&mut rb, 0.0);            // FalseM
+    w_f64(&mut rb, 1.0);            // MUnits
+    w_f64(&mut rb, 0.001);          // XYTolerance
+    w_f64(&mut rb, 0.001);          // ZTolerance
+    w_f64(&mut rb, 0.001);          // MTolerance
+
+    w_i32(&mut rows_data, rb.len() as i32);
+    rows_data.extend_from_slice(&rb);
+
+    let mut table = Vec::new();
+    w_i32(&mut table, 3);
+    w_i32(&mut table, 1); // 1 row
+    w_i32(&mut table, 65536);
+    w_i32(&mut table, 5);
+    table.extend_from_slice(&0i64.to_le_bytes());
+    let file_size_off = table.len();
+    table.extend_from_slice(&0i64.to_le_bytes());
+    table.extend_from_slice(&40i64.to_le_bytes());
+    table.extend_from_slice(&fs_with_size);
+    table.extend_from_slice(&rows_data);
+    let fsz = table.len() as i64;
+    patch_i64(&mut table, file_size_off, fsz);
+
+    std::fs::write(gdb_path.join("a00000003.gdbtable"), &table)
+        .map_err(|e| format!("写 GDB_SpatialRefs 失败: {}", e))?;
+    let tx = build_gdbtablx(&offsets);
+    std::fs::write(gdb_path.join("a00000003.gdbtablx"), &tx)
+        .map_err(|e| format!("写 GDB_SpatialRefs index 失败: {}", e))?;
     Ok(())
 }
 
@@ -772,6 +949,7 @@ fn build_crs_wkt(crs_name: &str, band: &str, zone: &str) -> (String, String) {
 // ─── spTimestamps 系统表 (a00000003) ───
 
 /// 写入 spTimestamps 系统表 (a00000003)
+#[allow(dead_code)]
 fn write_sp_timestamps(gdb_path: &Path) -> Result<(), String> {
     let items = vec![
         ("a00000001".to_string(), "GDB_SystemCatalog".to_string()),
@@ -779,6 +957,8 @@ fn write_sp_timestamps(gdb_path: &Path) -> Result<(), String> {
         ("a00000003".to_string(), "spTimestamps".to_string()),
         ("a00000004".to_string(), "GDB_Items".to_string()),
         ("a00000005".to_string(), "GDB_ItemTypes".to_string()),
+        ("a00000006".to_string(), "GDB_DBTune".to_string()),
+        ("a00000007".to_string(), "GDB_SpatialRefs".to_string()),
     ];
 
     let flags = 0x100u32;
@@ -792,22 +972,8 @@ fn write_sp_timestamps(gdb_path: &Path) -> Result<(), String> {
     w_i16(&mut field_sec, 4);
     write_fd_objectid(&mut field_sec, "OBJECTID");
     write_fd_string(&mut field_sec, "TableName", 160);
-    // CreationTime (Float64 for OLE Automation date)
-    let n16 = enc_utf16le(&mut Vec::new(), "CreationTime");
-    w_u8(&mut field_sec, (n16 / 2) as u8);
-    enc_utf16le(&mut field_sec, "CreationTime");
-    w_u8(&mut field_sec, 0);
-    w_u8(&mut field_sec, 3); // Float64
-    w_u8(&mut field_sec, 8);
-    w_u8(&mut field_sec, 0x01);
-    // LastModifiedTime (Float64)
-    let n16 = enc_utf16le(&mut Vec::new(), "LastModifiedTime");
-    w_u8(&mut field_sec, (n16 / 2) as u8);
-    enc_utf16le(&mut field_sec, "LastModifiedTime");
-    w_u8(&mut field_sec, 0);
-    w_u8(&mut field_sec, 3);
-    w_u8(&mut field_sec, 8);
-    w_u8(&mut field_sec, 0x01);
+    write_fd_float64(&mut field_sec, "CreationTime");
+    write_fd_float64(&mut field_sec, "LastModifiedTime");
 
     let section_size = field_sec.len() as i32;
     let mut fs_with_size = Vec::new();
@@ -897,48 +1063,20 @@ fn write_gdb_items(gdb_path: &Path, fc_name: &str, wkt: &str) -> Result<(), Stri
     let fc_uuid = simple_uuid_from(fc_name);
     let zero_uuid = [0u8; 16];
 
-    let flags = 0x104u32;
+    let flags = 0x304u32; // Added bit 9 (0x200) for ArcGIS Pro compatibility
     let n_nullable = 16usize;
     let bitmap_size = (n_nullable + 7) / 8;
 
-    // Field descriptors: 17 fields for GDB_Items
+    // Field descriptors: 18 fields for GDB_Items (Pro adds Properties field)
     let mut field_sec = Vec::new();
     w_u32(&mut field_sec, 4);
     w_u32(&mut field_sec, flags);
-    w_i16(&mut field_sec, 17);
+    w_i16(&mut field_sec, 18);
 
-    write_fd_objectid(&mut field_sec, "OBJECTID");
-
-    // UUID (Guid type)
-    {
-        let n16 = enc_utf16le(&mut Vec::new(), "UUID");
-        w_u8(&mut field_sec, (n16 / 2) as u8);
-        enc_utf16le(&mut field_sec, "UUID");
-        w_u8(&mut field_sec, 0);
-        w_u8(&mut field_sec, 8); // Guid
-        w_u8(&mut field_sec, 16);
-        w_u8(&mut field_sec, 0x01);
-    }
-    // ParentId (Guid)
-    {
-        let n16 = enc_utf16le(&mut Vec::new(), "ParentId");
-        w_u8(&mut field_sec, (n16 / 2) as u8);
-        enc_utf16le(&mut field_sec, "ParentId");
-        w_u8(&mut field_sec, 0);
-        w_u8(&mut field_sec, 8);
-        w_u8(&mut field_sec, 16);
-        w_u8(&mut field_sec, 0x01);
-    }
-    // Type (UUID)
-    {
-        let n16 = enc_utf16le(&mut Vec::new(), "Type");
-        w_u8(&mut field_sec, (n16 / 2) as u8);
-        enc_utf16le(&mut field_sec, "Type");
-        w_u8(&mut field_sec, 0);
-        w_u8(&mut field_sec, 8);
-        w_u8(&mut field_sec, 16);
-        w_u8(&mut field_sec, 0x01);
-    }
+    write_fd_objectid(&mut field_sec, "ObjectID");
+    write_fd_guid(&mut field_sec, "UUID");
+    write_fd_guid(&mut field_sec, "ParentID");
+    write_fd_guid(&mut field_sec, "Type");
 
     // Name, PhysicalName, Path (String)
     for fname in &["Name", "PhysicalName", "Path"] {
@@ -946,20 +1084,16 @@ fn write_gdb_items(gdb_path: &Path, fc_name: &str, wkt: &str) -> Result<(), Stri
     }
 
     // DatasetSubtype1, DatasetSubtype2 (Int32)
-    for fname in &["DatasetSubtype1", "DatasetSubtype2"] {
-        let n16 = enc_utf16le(&mut Vec::new(), fname);
-        w_u8(&mut field_sec, (n16 / 2) as u8);
-        enc_utf16le(&mut field_sec, fname);
-        w_u8(&mut field_sec, 0);
-        w_u8(&mut field_sec, 1); // Int32
-        w_u8(&mut field_sec, 4);
-        w_u8(&mut field_sec, 0x01);
-    }
+    write_fd_int32(&mut field_sec, "DatasetSubtype1");
+    write_fd_int32(&mut field_sec, "DatasetSubtype2");
 
-    // String fields (DatasetInfo1, DatasetInfo2, URL, Definition, Documentation, ItemInfo)
+    // String fields
     for fname in &["DatasetInfo1", "DatasetInfo2", "URL", "Definition", "Documentation", "ItemInfo"] {
         write_fd_string(&mut field_sec, fname, 4096);
     }
+
+    // ArcGIS Pro extra fields
+    write_fd_int32(&mut field_sec, "Metadata");
 
     // Shape (Geometry)
     write_fd_geometry(&mut field_sec, "Shape", wkt, -400.0, -400.0, 10000.0);
@@ -1011,10 +1145,24 @@ fn write_gdb_items(gdb_path: &Path, fc_name: &str, wkt: &str) -> Result<(), Stri
         for _ in 0..2 {
             w_i32(&mut rb, 0);
         }
-        // Empty strings for DatasetInfo1, DatasetInfo2, URL, Definition, Documentation, ItemInfo
-        for _ in 0..6 {
+        // Empty strings for DatasetInfo1, DatasetInfo2, URL
+        for _ in 0..3 {
             enc_varuint(&mut rb, 0);
         }
+        // Definition XML (minimal workspace XML for ArcGIS Pro)
+        if *name == "ROOT".to_string() {
+            enc_varuint(&mut rb, 0);
+        } else {
+            let def = b"<DEWorkspace xsi:type='typens:DEWorkspace' xmlns:xsi='http://www.w3.org/2001/XMLSchema-instance' xmlns:xs='http://www.w3.org/2001/XMLSchema' xmlns:typens='http://www.esri.com/schemas/ArcGIS/10.8'><CatalogPath>\\</CatalogPath><Name></Name><ChildrenExpanded>false</ChildrenExpanded><WorkspaceType>esriLocalDatabaseWorkspace</WorkspaceType><WorkspaceFactoryProgID></WorkspaceFactoryProgID><ConnectionString></ConnectionString><ConnectionInfo xsi:nil='true'/><Domains xsi:type='typens:ArrayOfDomain'></Domains></DEWorkspace>";
+            enc_varuint(&mut rb, def.len() as u64);
+            rb.extend_from_slice(def);
+        }
+        // Documentation, ItemInfo: empty
+        for _ in 0..2 {
+            enc_varuint(&mut rb, 0);
+        }
+        // Metadata (Int32 field 17)
+        w_i32(&mut rb, 0);
         // Empty shape
         enc_varuint(&mut rb, 0);
 
@@ -1074,13 +1222,30 @@ fn write_gdb_indexes_file(gdb_path: &Path, table_num: &str, indexes: &[(String, 
     let mut buf = Vec::new();
     w_u32(&mut buf, indexes.len() as u32);
     for (idx_name, field_names) in indexes {
-        w_u32(&mut buf, idx_name.len() as u32 * 2);
-        enc_utf16le(&mut buf, idx_name);
-        w_u32(&mut buf, 0); // unknown
+        // Index name: u32 charlen + UTF-16LE + u16(0) + u32(value) + u16(0)
+        let name_chars: Vec<u16> = idx_name.encode_utf16().collect();
+        w_u32(&mut buf, name_chars.len() as u32);
+        for c in &name_chars {
+            buf.extend_from_slice(&c.to_le_bytes());
+        }
+        w_u16(&mut buf, 0); // padding
+        w_u32(&mut buf, 16); // value (16 for FDO_ID, 2 for others)
+        w_u16(&mut buf, 0); // padding
+        // For FDO_ObjectID index, add 0xFFFF sentinel
+        if idx_name == "FDO_ObjectID" || idx_name == "FDO_ID" {
+            w_u16(&mut buf, 0xFFFF);
+        }
+        // Fields
         w_u32(&mut buf, field_names.len() as u32);
         for fn_name in field_names {
-            w_u32(&mut buf, fn_name.len() as u32 * 2);
-            enc_utf16le(&mut buf, fn_name);
+            let fn_chars: Vec<u16> = fn_name.encode_utf16().collect();
+            w_u32(&mut buf, fn_chars.len() as u32);
+            for c in &fn_chars {
+                buf.extend_from_slice(&c.to_le_bytes());
+            }
+            w_u16(&mut buf, 0); // padding
+            w_u32(&mut buf, 12); // value
+            w_u16(&mut buf, 0); // padding
         }
     }
     let path = gdb_path.join(format!("{}.gdbindexes", table_num));
@@ -1142,6 +1307,7 @@ fn write_atx_file(gdb_path: &Path, table_num: &str, index_name: &str, num_record
 
 // ─── GDB_ItemTypes 系统表 (a00000005) ───
 
+#[allow(dead_code)]
 fn write_gdb_item_types(gdb_path: &Path) -> Result<(), String> {
     // Standard Esri type UUIDs
     let type_uuids: Vec<([u8; 16], String)> = vec![
@@ -1182,26 +1348,8 @@ fn write_gdb_item_types(gdb_path: &Path) -> Result<(), String> {
     w_u32(&mut field_sec, flags);
     w_i16(&mut field_sec, 4);
     write_fd_objectid(&mut field_sec, "OBJECTID");
-    // UUID (Guid)
-    {
-        let n16 = enc_utf16le(&mut Vec::new(), "UUID");
-        w_u8(&mut field_sec, (n16 / 2) as u8);
-        enc_utf16le(&mut field_sec, "UUID");
-        w_u8(&mut field_sec, 0);
-        w_u8(&mut field_sec, 8); // Guid
-        w_u8(&mut field_sec, 16);
-        w_u8(&mut field_sec, 0x01);
-    }
-    // ParentTypeID (Guid)
-    {
-        let n16 = enc_utf16le(&mut Vec::new(), "ParentTypeID");
-        w_u8(&mut field_sec, (n16 / 2) as u8);
-        enc_utf16le(&mut field_sec, "ParentTypeID");
-        w_u8(&mut field_sec, 0);
-        w_u8(&mut field_sec, 8);
-        w_u8(&mut field_sec, 16);
-        w_u8(&mut field_sec, 0x01);
-    }
+    write_fd_guid(&mut field_sec, "UUID");
+    write_fd_guid(&mut field_sec, "ParentTypeID");
     // Name
     write_fd_string(&mut field_sec, "Name", 64);
 
@@ -1252,7 +1400,179 @@ fn write_gdb_item_types(gdb_path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-// ─── GDB 写入（纯 Rust OpenFileGDB，仅 Polygon）───
+// ─── GDB_ItemRelationships 系统表 (a00000006) ───
+
+#[allow(dead_code)]
+fn write_gdb_item_relationships(gdb_path: &Path) -> Result<(), String> {
+    let flags = 0x100u32;
+    let mut field_sec = Vec::new();
+    w_u32(&mut field_sec, 4);
+    w_u32(&mut field_sec, flags);
+    w_i16(&mut field_sec, 8);
+    write_fd_objectid(&mut field_sec, "OBJECTID");
+    write_fd_guid(&mut field_sec, "OriginID");
+    write_fd_guid(&mut field_sec, "DestinationID");
+    write_fd_guid(&mut field_sec, "RelationshipTypeID");
+    write_fd_string(&mut field_sec, "Attributes", 4096);
+    write_fd_string(&mut field_sec, "CreationTime", 256);
+    write_fd_string(&mut field_sec, "ModifiedTime", 256);
+    write_fd_string(&mut field_sec, "Content", 4096);
+
+    let section_size = field_sec.len() as i32;
+    let mut fs_with_size = Vec::new();
+    w_i32(&mut fs_with_size, section_size);
+    fs_with_size.extend_from_slice(&field_sec);
+
+    let mut table = Vec::new();
+    w_i32(&mut table, 3);
+    w_i32(&mut table, 0); // 0 rows
+    w_i32(&mut table, 65536);
+    w_i32(&mut table, 5);
+    table.extend_from_slice(&0i64.to_le_bytes());
+    let file_size_off = table.len();
+    table.extend_from_slice(&0i64.to_le_bytes());
+    table.extend_from_slice(&40i64.to_le_bytes());
+    table.extend_from_slice(&fs_with_size);
+    let fsz = table.len() as i64;
+    patch_i64(&mut table, file_size_off, fsz);
+
+    std::fs::write(gdb_path.join("a00000006.gdbtable"), &table)
+        .map_err(|e| format!("写 GDB_ItemRelationships 失败: {}", e))?;
+    let tx = build_gdbtablx(&[]);
+    std::fs::write(gdb_path.join("a00000006.gdbtablx"), &tx)
+        .map_err(|e| format!("写 GDB_ItemRelationships index 失败: {}", e))?;
+    Ok(())
+}
+
+// ─── GDB_ItemRelationshipTypes 系统表 (a00000007) ───
+
+#[allow(dead_code)]
+fn write_gdb_item_relationship_types(gdb_path: &Path) -> Result<(), String> {
+    let flags = 0x100u32;
+    let mut field_sec = Vec::new();
+    w_u32(&mut field_sec, 4);
+    w_u32(&mut field_sec, flags);
+    w_i16(&mut field_sec, 6);
+    write_fd_objectid(&mut field_sec, "OBJECTID");
+    write_fd_guid(&mut field_sec, "UUID");
+    write_fd_guid(&mut field_sec, "OriginTypeID");
+    write_fd_guid(&mut field_sec, "DestinationTypeID");
+    write_fd_string(&mut field_sec, "Name", 256);
+    write_fd_string(&mut field_sec, "ForwardLabel", 256);
+
+    let section_size = field_sec.len() as i32;
+    let mut fs_with_size = Vec::new();
+    w_i32(&mut fs_with_size, section_size);
+    fs_with_size.extend_from_slice(&field_sec);
+
+    let mut table = Vec::new();
+    w_i32(&mut table, 3);
+    w_i32(&mut table, 0);
+    w_i32(&mut table, 65536);
+    w_i32(&mut table, 5);
+    table.extend_from_slice(&0i64.to_le_bytes());
+    let file_size_off = table.len();
+    table.extend_from_slice(&0i64.to_le_bytes());
+    table.extend_from_slice(&40i64.to_le_bytes());
+    table.extend_from_slice(&fs_with_size);
+    let fsz = table.len() as i64;
+    patch_i64(&mut table, file_size_off, fsz);
+
+    std::fs::write(gdb_path.join("a00000007.gdbtable"), &table)
+        .map_err(|e| format!("写 GDB_ItemRelationshipTypes 失败: {}", e))?;
+    let tx = build_gdbtablx(&[]);
+    std::fs::write(gdb_path.join("a00000007.gdbtablx"), &tx)
+        .map_err(|e| format!("写 GDB_ItemRelationshipTypes index 失败: {}", e))?;
+    Ok(())
+}
+
+// ─── GDB_ReplicaLog 系统表 (a00000008) ───
+
+#[allow(dead_code)]
+fn write_gdb_replica_log(_gdb_path: &Path) -> Result<(), String> {
+    // 写空标记文件 (a00000008 无实际文件)
+    // 只在 catalog 中有记录表示已删除
+    Ok(())
+}
+
+// ─── GDB_EditingTemplates 系统表 (a00000009) ───
+
+#[allow(dead_code)]
+fn write_gdb_editing_templates(gdb_path: &Path) -> Result<(), String> {
+    let flags = 0x100u32;
+    let mut field_sec = Vec::new();
+    w_u32(&mut field_sec, 4);
+    w_u32(&mut field_sec, flags);
+    w_i16(&mut field_sec, 3);
+    write_fd_objectid(&mut field_sec, "OBJECTID");
+    write_fd_string(&mut field_sec, "Name", 256);
+    write_fd_string(&mut field_sec, "Template", 4096);
+
+    let section_size = field_sec.len() as i32;
+    let mut fs_with_size = Vec::new();
+    w_i32(&mut fs_with_size, section_size);
+    fs_with_size.extend_from_slice(&field_sec);
+
+    let mut table = Vec::new();
+    w_i32(&mut table, 3);
+    w_i32(&mut table, 0);
+    w_i32(&mut table, 65536);
+    w_i32(&mut table, 5);
+    table.extend_from_slice(&0i64.to_le_bytes());
+    let file_size_off = table.len();
+    table.extend_from_slice(&0i64.to_le_bytes());
+    table.extend_from_slice(&40i64.to_le_bytes());
+    table.extend_from_slice(&fs_with_size);
+    let fsz = table.len() as i64;
+    patch_i64(&mut table, file_size_off, fsz);
+
+    std::fs::write(gdb_path.join("a00000009.gdbtable"), &table)
+        .map_err(|e| format!("写 GDB_EditingTemplates 失败: {}", e))?;
+    let tx = build_gdbtablx(&[]);
+    std::fs::write(gdb_path.join("a00000009.gdbtablx"), &tx)
+        .map_err(|e| format!("写 GDB_EditingTemplates index 失败: {}", e))?;
+    Ok(())
+}
+
+// ─── GDB_EditingTemplateRelationships 系统表 (a0000000a) ───
+
+#[allow(dead_code)]
+fn write_gdb_editing_template_relationships(gdb_path: &Path) -> Result<(), String> {
+    let flags = 0x100u32;
+    let mut field_sec = Vec::new();
+    w_u32(&mut field_sec, 4);
+    w_u32(&mut field_sec, flags);
+    w_i16(&mut field_sec, 4);
+    write_fd_objectid(&mut field_sec, "OBJECTID");
+    write_fd_string(&mut field_sec, "RelationshipID", 256);
+    write_fd_string(&mut field_sec, "TemplateID", 256);
+    write_fd_string(&mut field_sec, "Type", 64);
+
+    let section_size = field_sec.len() as i32;
+    let mut fs_with_size = Vec::new();
+    w_i32(&mut fs_with_size, section_size);
+    fs_with_size.extend_from_slice(&field_sec);
+
+    let mut table = Vec::new();
+    w_i32(&mut table, 3);
+    w_i32(&mut table, 0);
+    w_i32(&mut table, 65536);
+    w_i32(&mut table, 5);
+    table.extend_from_slice(&0i64.to_le_bytes());
+    let file_size_off = table.len();
+    table.extend_from_slice(&0i64.to_le_bytes());
+    table.extend_from_slice(&40i64.to_le_bytes());
+    table.extend_from_slice(&fs_with_size);
+    let fsz = table.len() as i64;
+    patch_i64(&mut table, file_size_off, fsz);
+
+    std::fs::write(gdb_path.join("a0000000a.gdbtable"), &table)
+        .map_err(|e| format!("写 GDB_EditingTemplateRelationships 失败: {}", e))?;
+    let tx = build_gdbtablx(&[]);
+    std::fs::write(gdb_path.join("a0000000a.gdbtablx"), &tx)
+        .map_err(|e| format!("写 GDB_EditingTemplateRelationships index 失败: {}", e))?;
+    Ok(())
+}
 
 /// 写 .gdb 目录（纯 Rust 实现，不依赖 GDAL）
 pub fn write_gdb_output(
@@ -1284,7 +1604,7 @@ pub fn write_gdb_output(
     let zone = crs_info.get("z").map(|s| s.as_str()).unwrap_or("38");
     let (wkt, _geogcs_wkt) = build_crs_wkt(crs_name, band, zone);
 
-    let layer_flags = 0x104u32; // polygon(4) + UTF-8(bit8)
+    let layer_flags = 0x304u32; // polygon(4) + UTF-8(bit8) + Pro flag(bit9)
     let _strings_utf8 = true;
 
     // Field descriptors
@@ -1377,37 +1697,33 @@ pub fn write_gdb_output(
     let fsz = table.len() as i64;
     patch_i64(&mut table, file_size_off, fsz);
 
-    let tbl_path = gdb_path.join("a00000002.gdbtable");
+    let tbl_path = gdb_path.join("a0000000b.gdbtable");
     std::fs::write(&tbl_path, &table)
         .map_err(|e| format!("写 feature class table 失败: {}", e))?;
 
     let tx = build_gdbtablx(&row_offsets);
-    let tx_path = gdb_path.join("a00000002.gdbtablx");
+    let tx_path = gdb_path.join("a0000000b.gdbtablx");
     std::fs::write(&tx_path, &tx)
         .map_err(|e| format!("写 feature class index 失败: {}", e))?;
 
-    // System catalog
+    // ── 系统表 (按 FID 顺序) ──
+
+    // FID 1: System catalog (写入 GDB_SystemCatalog + 所有表引用)
     write_system_catalog(&gdb_path, base_name)?;
 
-    // spTimestamps
-    write_sp_timestamps(&gdb_path)?;
+    // FID 2-10: 静态系统表（嵌入 arcpy 生成的标准模板）
+    gdb_templates::write_all_templates(&gdb_path)?;
 
-    // GDB_Items
+    // FID 4: GDB_Items（动态，含用户图层名）
     write_gdb_items(&gdb_path, base_name, &wkt)?;
-
-    // GDB_ItemTypes 系统表
-    write_gdb_item_types(&gdb_path)?;
 
     // timestamps 文件
     write_timestamps_file(&gdb_path)?;
 
     // .gdbindexes 文件
     write_gdb_indexes_file(&gdb_path, "a00000001", &[
-        ("FDO_ID".to_string(), vec!["OBJECTID".to_string()]),
+        ("FDO_ID".to_string(), vec!["ID".to_string()]),
         ("TablesByName".to_string(), vec!["Name".to_string()]),
-    ])?;
-    write_gdb_indexes_file(&gdb_path, "a00000003", &[
-        ("FDO_ID".to_string(), vec!["OBJECTID".to_string()]),
     ])?;
     write_gdb_indexes_file(&gdb_path, "a00000004", &[
         ("FDO_ObjectID".to_string(), vec!["OBJECTID".to_string()]),
@@ -1423,18 +1739,18 @@ pub fn write_gdb_output(
         ("CatItemTypesByParentTypeID".to_string(), vec!["ParentTypeID".to_string()]),
         ("CatItemTypesByName".to_string(), vec!["Name".to_string()]),
     ])?;
-    write_gdb_indexes_file(&gdb_path, "a00000002", &[
+    write_gdb_indexes_file(&gdb_path, "a0000000b", &[
         ("FDO_ObjectID".to_string(), vec!["OBJECTID".to_string()]),
         ("FDO_Shape".to_string(), vec!["Shape".to_string()]),
     ])?;
 
     // .horizon 文件（空间表）
     write_horizon_file(&gdb_path, "a00000004")?;
-    write_horizon_file(&gdb_path, "a00000002")?;
+    write_horizon_file(&gdb_path, "a0000000b")?;
 
     // .spx 文件（空间索引）
     write_spx_file(&gdb_path, "a00000004")?;
-    write_spx_file(&gdb_path, "a00000002")?;
+    write_spx_file(&gdb_path, "a0000000b")?;
 
     // .atx 文件（属性索引）
     write_atx_file(&gdb_path, "a00000001", "TablesByName", 2)?;
@@ -1444,9 +1760,11 @@ pub fn write_gdb_output(
     write_atx_file(&gdb_path, "a00000005", "CatItemTypesByName", 5)?;
     write_atx_file(&gdb_path, "a00000005", "CatItemTypesByUUID", 5)?;
     write_atx_file(&gdb_path, "a00000005", "CatItemTypesByParentTypeID", 5)?;
+    write_atx_file(&gdb_path, "a0000000b", "FDO_ObjectID", 1)?;
+    write_atx_file(&gdb_path, "a0000000b", "FDO_Shape", 1)?;
 
-    // Marker file
-    std::fs::write(gdb_path.join("gdb"), b"")
+    // Marker file (4 bytes: version 5)
+    std::fs::write(gdb_path.join("gdb"), &5u32.to_le_bytes())
         .map_err(|e| format!("写 gdb marker 失败: {}", e))?;
 
     Ok(vec![gdb_path.to_string_lossy().to_string()])

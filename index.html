@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
@@ -292,6 +292,13 @@ body::before{
 .app[data-mode="t"] .pnl-l .pnl-bd .fld input,.app[data-mode="t"] .pnl-l .pnl-bd .fld .ck{font-size:12px}
 .app[data-mode="t"] .pnl-l .pnl-bd .slabel{font-size:11.5px}
 .app[data-mode="t"] .pnl-l .pnl-bd .ck{font-size:12px}
+/* TXT mode: left panel scrollable */
+.app[data-mode="t"] .pnl-l .pnl-bd{overflow-y:auto}
+/* TXT mode: limit file list height */
+.app[data-mode="t"] .file-list{max-height:140px}
+/* TXT mode: compact output-settings row */
+.os-h{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 0 2px}
+.os-h .ck{white-space:nowrap;font-size:12px}
 
 .pnl{
   display:flex;flex-direction:column;overflow:hidden;
@@ -669,19 +676,15 @@ body::before{
         <div style="text-align:right;margin-top:2px"><button class="btn" id="btnClearT">清空全部</button></div>
         <div class="div"></div>
         <div class="slabel">输出设置</div>
-        <div class="fld">
-          <label>输出格式</label>
-          <div style="display:flex;gap:6px">
-            <label class="ck"><input type="checkbox" id="of_shp" checked>SHP</label>
-            <label class="ck"><input type="checkbox" id="of_gdb" checked>GDB</label>
-          </div>
+        <div class="os-h">
+          <span style="font-size:10.5px;color:var(--tx3);font-weight:500">格式</span>
+          <label class="ck"><input type="checkbox" id="of_shp" checked>SHP</label>
+          <label class="ck"><input type="checkbox" id="of_gdb">GDB</label>
         </div>
-        <div class="fld">
-          <label>文件组织</label>
-          <div style="display:flex;gap:10px">
-            <label class="ck"><input type="radio" name="org_mode" id="org_sep" checked>每个TXT一个图层</label>
-            <label class="ck"><input type="radio" name="org_mode" id="org_merge">合并输出</label>
-          </div>
+        <div class="os-h" style="padding-top:0">
+          <span style="font-size:10.5px;color:var(--tx3);font-weight:500">组织</span>
+          <label class="ck"><input type="radio" name="org_mode" id="org_sep" checked>每个TXT一个图层</label>
+          <label class="ck"><input type="radio" name="org_mode" id="org_merge">合并输出</label>
         </div>
         <div class="fld">
           <label>输出目录</label>
@@ -741,6 +744,10 @@ body::before{
       <!-- 面→TXT mode -->
       <div class="mode-s ctr-inner">
         <div class="ctr-bd">
+          <div id="gdbLayerList" style="display:none;margin-bottom:8px">
+            <div class="slabel">GDB 图层（勾选要转换的）</div>
+            <div id="gdbLayers" style="border:1px solid var(--brd);border-radius:6px;padding:4px;max-height:180px;overflow-y:auto"></div>
+          </div>
           <div class="pv" id="pv">等待导入 SHP 文件…</div>
         </div>
         <div class="ctr-ft">

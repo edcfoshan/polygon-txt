@@ -148,10 +148,11 @@ pub fn shp_to_txt_preview(
     header_cfg: &HeaderConfig,
     field_mapping: &FieldMapping,
     options: &ShpToTxtOptions,
+    selected_layers: Option<&[String]>,
 ) -> Result<String, String> {
     if let Some(gdb) = gdb_path {
         let info = gdb::read_gdb(gdb)?;
-        let plots = gdb_features_to_plots(&info, field_mapping, options, header_cfg)?;
+        let plots = gdb_features_to_plots(&info, field_mapping, options, header_cfg, selected_layers)?;
         let result = txt::generate_txt(
             &header_cfg.project_info,
             &make_header_attrs(header_cfg),
@@ -192,12 +193,13 @@ pub fn convert_shp_to_txt(
     field_mapping: &FieldMapping,
     options: &ShpToTxtOptions,
     output_dir: &Path,
+    selected_layers: Option<&[String]>,
 ) -> Result<ConvertResult, String> {
     let mut output_files = Vec::new();
 
     if let Some(gdb) = gdb_path {
         let info = gdb::read_gdb(gdb)?;
-        let plots = gdb_features_to_plots(&info, field_mapping, options, header_cfg)?;
+        let plots = gdb_features_to_plots(&info, field_mapping, options, header_cfg, selected_layers)?;
         let txt_content = txt::generate_txt(
             &header_cfg.project_info,
             &make_header_attrs(header_cfg),
@@ -432,10 +434,18 @@ fn gdb_features_to_plots(
     field_mapping: &FieldMapping,
     options: &ShpToTxtOptions,
     _header_cfg: &HeaderConfig,
+    selected_layers: Option<&[String]>,
 ) -> Result<Vec<txt::PlotData>, String> {
     let mut all_plots = Vec::new();
 
     for (layer_idx, features) in info.all_features.iter().enumerate() {
+        let layer_name = info.layers.get(layer_idx).map(|l| l.name.as_str()).unwrap_or("");
+        if let Some(sel) = selected_layers {
+            if !sel.iter().any(|n| n == layer_name) {
+                continue;
+            }
+        }
+
         let _field_names = info
             .all_field_names
             .get(layer_idx)

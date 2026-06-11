@@ -2,7 +2,6 @@
 // 测试数据路径: C:\Users\Administrator\Documents\txt与gdb互转\test_data
 // 输出目录: 自动创建临时目录
 
-use std::collections::HashMap;
 use std::path::PathBuf;
 
 // 引用库
@@ -184,8 +183,6 @@ fn test_generate_txt() {
 
 #[test]
 fn test_txt_to_shp_full() {
-    use std::collections::HashMap;
-
     let out_dir = tempfile::tempdir().expect("创建临时目录失败");
     let txt_path = test_txt_path();
 
@@ -226,7 +223,6 @@ fn test_txt_to_shp_full() {
     assert!(has_shp, "应输出 .shp 文件");
 
     // 验证生成的 SHP 文件存在且大小不为 0
-    let shp_files_exist: Vec<&str> = result.output_files.iter().filter(|f| f.ends_with(".shp") || f.ends_with(".dbf") || f.ends_with(".prj")).map(|s| s.as_str()).collect();
     assert!(result.output_files.iter().any(|f| f.ends_with(".shp")), "应输出 .shp 文件");
     assert!(result.output_files.iter().any(|f| f.ends_with(".dbf")), "应输出 .dbf 文件");
     assert!(result.output_files.iter().any(|f| f.ends_with(".prj")), "应输出 .prj 文件");
@@ -282,6 +278,7 @@ fn test_shp_to_txt_full() {
         &field_mapping,
         &options,
         out_dir.path(),
+        None,
     ).expect("SHP→TXT 转换失败");
 
     println!("SHP→TXT 结果: {:?}", result.message);
@@ -311,7 +308,6 @@ fn test_shp_txt_roundtrip() {
     let out_dir1 = tempfile::tempdir().expect("创建临时目录失败");
     let out_dir2 = tempfile::tempdir().expect("创建临时目录失败");
 
-    let shp_path = test_shp_stem();
     let txt_path = test_txt_path();
 
     // Step 1: TXT → SHP
@@ -376,6 +372,7 @@ fn test_shp_txt_roundtrip() {
         &field_mapping,
         &options,
         out_dir2.path(),
+        None,
     ).expect("SHP→TXT 失败");
 
     println!("SHP→TXT 成功: {} 个文件", r2.output_files.len());
@@ -444,6 +441,7 @@ fn test_preview() {
         &header,
         &field_mapping,
         &options,
+        None,
     ).expect("生成预览失败");
 
     println!("预览 (前300字):");
@@ -521,8 +519,8 @@ fn test_txt_to_gdb() {
     assert!(gdb_path.is_dir(), ".gdb 应为目录");
     assert!(gdb_path.join("a00000001.gdbtable").exists(), "应有系统目录表");
     assert!(gdb_path.join("a00000001.gdbtablx").exists(), "应有系统目录索引");
-    assert!(gdb_path.join("a00000002.gdbtable").exists(), "应有要素类表");
-    assert!(gdb_path.join("a00000002.gdbtablx").exists(), "应有要素类索引");
+    assert!(gdb_path.join("a0000000b.gdbtable").exists(), "应有要素类表");
+    assert!(gdb_path.join("a0000000b.gdbtablx").exists(), "应有要素类索引");
 
     // 验证生成的 GDB 可被 geonative-filegdb 读回
     match gdb::read_gdb(&gdb_path) {
@@ -534,11 +532,10 @@ fn test_txt_to_gdb() {
             assert!(!info.layers.is_empty(), "读回应有图层");
             let total_features: usize = info.layers.iter().map(|l| l.num_features).sum();
             assert!(total_features > 0, "读回应有要素");
+            assert!(total_features == 1, "应有 1 个要素（仅 feature class，spTimestamps 已移除）");
         }
         Err(e) => {
-            println!("  GDB 读回失败(可接受): {}", e);
-            // 写出的 GDB 可能不完全兼容 geonative-filegdb 读取，
-            // 但文件结构应该是正确的
+            panic!("GDB 读回失败: {}", e);
         }
     }
 }

@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>GDB 图层列表 - 5个UI方案对比</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#1a1a2e;color:#e0e0e0;font-family:system-ui,-apple-system,"Noto Sans SC",sans-serif;padding:20px}
+h1{text-align:center;font-size:18px;margin-bottom:20px;color:#fff}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(350px,1fr));gap:20px;max-width:1200px;margin:0 auto}
+.card{background:#fff;border-radius:10px;padding:16px;color:#333}
+.card-title{font-size:14px;font-weight:600;margin-bottom:12px;padding-bottom:8px;border-bottom:2px solid #e67e22;color:#e67e22}
+.card-desc{font-size:11px;color:#888;margin-bottom:10px;line-height:1.4}
+:root{--accent:#e67e22;--brd:#e0e0e0;--tx1:#222;--tx2:#666;--tx3:#999}
+/* Shared layer list styles */
+.layer-list{max-height:200px;overflow-y:auto;border:1px solid var(--brd);border-radius:6px;padding:4px}
+.layer-item{display:flex;align-items:center;padding:4px 6px;border-bottom:1px solid #f0f0f0;font-size:11px;gap:6px}
+.layer-item:last-child{border-bottom:none}
+.layer-item.empty{opacity:.45}
+.layer-item input[type=checkbox]{accent-color:var(--accent)}
+.layer-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.layer-count{font-size:10px;color:var(--tx3)}
+.badge-empty{font-size:9px;background:#f0f0f0;color:#999;padding:1px 5px;border-radius:3px}
+.btn-sm{font-size:10px;padding:2px 8px;border:1px solid var(--brd);border-radius:4px;background:#fff;cursor:pointer;color:var(--tx2)}
+.btn-sm:hover{border-color:var(--accent);color:var(--accent)}
+.summary-bar{display:flex;align-items:center;gap:8px;padding:6px 8px;background:#fafafa;border-radius:6px;margin-bottom:6px;font-size:12px}
+.toggle-btn{cursor:pointer;color:var(--accent);font-size:12px;background:none;border:none;font-weight:600}
+.group-header{display:flex;align-items:center;padding:6px 8px;background:#f8f8f8;border-radius:4px;margin:4px 0;font-size:12px;font-weight:500;cursor:pointer;gap:6px}
+.group-header .arrow{font-size:10px;transition:transform .2s}
+.group-header.collapsed .arrow{transform:rotate(-90deg)}
+/* Tag styles */
+.tag-wrap{display:flex;flex-wrap:wrap;gap:4px;max-height:220px;overflow-y:auto;padding:4px}
+.tag{font-size:10px;padding:3px 8px;border-radius:12px;cursor:pointer;border:1px solid var(--brd);transition:all .15s;display:flex;align-items:center;gap:4px}
+.tag.selected{background:var(--accent);color:#fff;border-color:var(--accent)}
+.tag.empty-tag{border-style:dashed;opacity:.5}
+.tag .tc{font-size:9px;opacity:.7}
+.search-input{width:100%;padding:5px 8px;border:1px solid var(--brd);border-radius:4px;font-size:11px;margin-bottom:6px;outline:none}
+.search-input:focus{border-color:var(--accent)}
+</style>
+</head>
+<body>
+<h1>GDB 图层列表 — 5 个 UI 方案对比</h1>
+<div class="grid">
+
+<!-- 方案1 -->
+<div class="card">
+<div class="card-title">方案1：折叠摘要 + 全选/全不选</div>
+<div class="card-desc">图层多时自动折叠，显示摘要信息，点击展开查看和勾选。空图层降低透明度。</div>
+<div id="mock1"></div>
+</div>
+
+<!-- 方案2 -->
+<div class="card">
+<div class="card-title">方案2：搜索过滤 + 列表</div>
+<div class="card-desc">搜索框过滤图层名，始终可见的滚动列表。空图层有"空"标记。</div>
+<div id="mock2"></div>
+</div>
+
+<!-- 方案3 -->
+<div class="card">
+<div class="card-title">方案3：紧凑表格</div>
+<div class="card-desc">表格形式，按要素数降序排列，表头全选框，空图层降低透明度。</div>
+<div id="mock3"></div>
+</div>
+
+<!-- 方案4 -->
+<div class="card">
+<div class="card-title">方案4：分组显示</div>
+<div class="card-desc">按"有数据"和"空图层"分组，各组可折叠，组头有全选框。</div>
+<div id="mock4"></div>
+</div>
+
+<!-- 方案5 -->
+<div class="card">
+<div class="card-title">方案5：标签式选择</div>
+<div class="card-desc">图层显示为可点击标签，选中高亮，空图层虚线边框。全选/全不选按钮。</div>
+<div id="mock5"></div>
+</div>
+
+</div>
+
+<script>
+const LAYERS = [
+  {name:"yuwang_lyr6",n:5295},{name:"yuwang_lyr66",n:5295},
+  {name:"yuwang_3_lyr4",n:200},{name:"yuwang_3_lyr44",n:200},
+  {name:"yuwang_3_lyr5",n:200},{name:"yuwang_3_lyr55",n:200},
+  {name:"yuwang_3_lyr7",n:200},{name:"yuwang_3_lyr77",n:200},
+  {name:"yuwang_3_lyr8",n:200},{name:"yuwang_3_lyr88",n:200},
+  {name:"yuwang_3_lyr9",n:200},{name:"yuwang_3_lyr99",n:200},
+  {name:"yuwang_3_lyr10",n:200},{name:"yuwang_3_lyr1010",n:200},
+  {name:"yuwang_3_lyr11",n:200},{name:"yuwang_3_lyr1111",n:200},
+  {name:"yuwang_3_lyr12",n:51},{name:"yuwang_3_lyr1212",n:51},
+  {name:"c1237905709655162881_Interse",n:0},{name:"c1665617467915476993_Merge",n:0},{name:"Point",n:0}
+];
+const total = LAYERS.reduce((s,l)=>s+l.n,0);
+const hasData = LAYERS.filter(l=>l.n>0);
+const empty = LAYERS.filter(l=>l.n===0);
+
+// ─── 方案1: 折叠摘要 ───
+(function(){
+  const el = document.getElementById('mock1');
+  const sel = new Set(hasData.map(l=>l.name));
+  let expanded = false;
+  function render(){
+    const selCount = sel.size;
+    let h = `<div class="summary-bar">
+      <button class="toggle-btn">${expanded?'▼':'▶'}</button>
+      <span style="flex:1"><b>${LAYERS.length}</b>个图层 · <b>${total.toLocaleString()}</b>个要素</span>
+      <button class="btn-sm" id="m1all">全选</button>
+      <button class="btn-sm" id="m1none">全不选</button>
+    </div>`;
+    if(expanded){
+      h += '<div class="layer-list">';
+      LAYERS.forEach(l=>{
+        const ck = sel.has(l.name)?'checked':'';
+        const cls = l.n===0?'layer-item empty':'layer-item';
+        h += `<label class="${cls}"><input type="checkbox" data-n="${l.name}" ${ck}><span class="layer-name">${l.name}</span><span class="layer-count">${l.n}个要素</span></label>`;
+      });
+      h += '</div>';
+    }
+    h += `<div style="font-size:10px;color:#999;margin-top:4px">已选 ${selCount}/${LAYERS.length}</div>`;
+    el.innerHTML = h;
+    el.querySelector('.toggle-btn').onclick = ()=>{expanded=!expanded;render()};
+    el.querySelector('#m1all').onclick = ()=>{LAYERS.forEach(l=>sel.add(l.name));render()};
+    el.querySelector('#m1none').onclick = ()=>{sel.clear();render()};
+    el.querySelectorAll('input[type=checkbox]').forEach(cb=>{
+      cb.onchange = ()=>{cb.checked?sel.add(cb.dataset.n):sel.delete(cb.dataset.n);
+        el.querySelector('div[style*="font-size:10px"]').textContent=`已选 ${sel.size}/${LAYERS.length}`;
+      };
+    });
+  }
+  render();
+})();
+
+// ─── 方案2: 搜索过滤 ───
+(function(){
+  const el = document.getElementById('mock2');
+  const sel = new Set(hasData.map(l=>l.name));
+  let q = '';
+  function render(){
+    const filtered = q?LAYERS.filter(l=>l.name.toLowerCase().includes(q.toLowerCase())):LAYERS;
+    let h = `<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
+      <input class="search-input" placeholder="搜索图层名…" value="${q}" style="flex:1">
+      <span style="font-size:11px;color:var(--tx2);white-space:nowrap">已选 ${sel.size}/${LAYERS.length}</span>
+    </div>`;
+    h += '<div class="layer-list">';
+    filtered.forEach(l=>{
+      const ck = sel.has(l.name)?'checked':'';
+      const cls = l.n===0?'layer-item empty':'layer-item';
+      const badge = l.n===0?'<span class="badge-empty">空</span>':'';
+      h += `<label class="${cls}"><input type="checkbox" data-n="${l.name}" ${ck}><span class="layer-name">${l.name}</span>${badge}<span class="layer-count">${l.n}个</span></label>`;
+    });
+    if(!filtered.length) h += '<div style="text-align:center;padding:12px;color:#ccc;font-size:11px">无匹配图层</div>';
+    h += '</div>';
+    el.innerHTML = h;
+    el.querySelector('.search-input').oninput = (e)=>{q=e.target.value;render()};
+    el.querySelectorAll('input[type=checkbox]').forEach(cb=>{
+      cb.onchange = ()=>{cb.checked?sel.add(cb.dataset.n):sel.delete(cb.dataset.n);
+        el.querySelector('span[style*="white-space"]').textContent=`已选 ${sel.size}/${LAYERS.length}`;
+      };
+    });
+  }
+  render();
+})();
+
+// ─── 方案3: 紧凑表格 ───
+(function(){
+  const el = document.getElementById('mock3');
+  const sel = new Set(hasData.map(l=>l.name));
+  const sorted = [...LAYERS].sort((a,b)=>b.n-a.n);
+  function render(){
+    const allChecked = sorted.every(l=>sel.has(l.name));
+    const someChecked = sorted.some(l=>sel.has(l.name)) && !allChecked;
+    let h = `<table style="width:100%;border-collapse:collapse;font-size:11px">
+      <thead><tr style="background:#f5f5f5">
+        <th style="width:24px;padding:4px"><input type="checkbox" id="m3all" ${allChecked?'checked':someChecked?'data-ind':''}></th>
+        <th style="text-align:left;padding:4px">图层名</th>
+        <th style="text-align:right;padding:4px;width:60px">要素数</th>
+      </tr></thead><tbody>`;
+    sorted.forEach(l=>{
+      const ck = sel.has(l.name)?'checked':'';
+      const op = l.n===0?'opacity:.4':'';
+      h += `<tr style="${op};border-bottom:1px solid #f0f0f0">
+        <td style="padding:3px 4px;text-align:center"><input type="checkbox" data-n="${l.name}" ${ck}></td>
+        <td style="padding:3px 4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px">${l.name}</td>
+        <td style="padding:3px 4px;text-align:right">${l.n>0?l.n.toLocaleString():'—'}</td>
+      </tr>`;
+    });
+    h += '</tbody></table>';
+    h += `<div style="font-size:10px;color:#999;margin-top:4px">已选 ${sel.size}/${LAYERS.length} · ${total.toLocaleString()}个要素</div>`;
+    el.innerHTML = h;
+    el.querySelector('#m3all').onchange = (e)=>{
+      if(e.target.checked) LAYERS.forEach(l=>sel.add(l.name)); else sel.clear(); render();
+    };
+    const ind = el.querySelector('[data-ind]');
+    if(ind){ind.indeterminate=true;ind.removeAttribute('data-ind')}
+    el.querySelectorAll('tbody input[type=checkbox]').forEach(cb=>{
+      cb.onchange = ()=>{cb.checked?sel.add(cb.dataset.n):sel.delete(cb.dataset.n);render()};
+    });
+  }
+  render();
+})();
+
+// ─── 方案4: 分组显示 ───
+(function(){
+  const el = document.getElementById('mock4');
+  const sel = new Set(hasData.map(l=>l.name));
+  let g1Open = true, g2Open = false;
+  function render(){
+    const g1Sel = hasData.filter(l=>sel.has(l.name)).length;
+    const g2Sel = empty.filter(l=>sel.has(l.name)).length;
+    let h = '';
+    // Group 1: has data
+    h += `<div class="group-header ${g1Open?'':'collapsed'}" id="g1h">
+      <span class="arrow">▼</span>
+      <input type="checkbox" id="g1ck" ${g1Sel===hasData.length?'checked':''}>
+      <span style="flex:1">有数据 (${hasData.length}个图层)</span>
+      <span style="font-size:10px;color:var(--tx3)">${g1Sel}已选</span>
+    </div>`;
+    if(g1Open){
+      h += '<div class="layer-list" style="margin-bottom:6px">';
+      hasData.forEach(l=>{
+        const ck = sel.has(l.name)?'checked':'';
+        h += `<label class="layer-item"><input type="checkbox" data-n="${l.name}" ${ck}><span class="layer-name">${l.name}</span><span class="layer-count">${l.n}个要素</span></label>`;
+      });
+      h += '</div>';
+    }
+    // Group 2: empty
+    h += `<div class="group-header ${g2Open?'':'collapsed'}" id="g2h">
+      <span class="arrow">▼</span>
+      <input type="checkbox" id="g2ck" ${g2Sel===empty.length&&empty.length?'checked':''}>
+      <span style="flex:1">空图层 (${empty.length}个图层)</span>
+      <span style="font-size:10px;color:var(--tx3)">${g2Sel}已选</span>
+    </div>`;
+    if(g2Open){
+      h += '<div class="layer-list">';
+      empty.forEach(l=>{
+        const ck = sel.has(l.name)?'checked':'';
+        h += `<label class="layer-item empty"><input type="checkbox" data-n="${l.name}" ${ck}><span class="layer-name">${l.name}</span><span class="badge-empty">空</span></label>`;
+      });
+      h += '</div>';
+    }
+    h += `<div style="font-size:10px;color:#999;margin-top:4px">已选 ${sel.size}/${LAYERS.length} · ${total.toLocaleString()}个要素</div>`;
+    el.innerHTML = h;
+    el.querySelector('#g1h').onclick = (e)=>{if(e.target.tagName==='INPUT')return;g1Open=!g1Open;render()};
+    el.querySelector('#g2h').onclick = (e)=>{if(e.target.tagName==='INPUT')return;g2Open=!g2Open;render()};
+    el.querySelector('#g1ck').onchange = (e)=>{hasData.forEach(l=>{e.target.checked?sel.add(l.name):sel.delete(l.name)});render()};
+    el.querySelector('#g2ck').onchange = (e)=>{empty.forEach(l=>{e.target.checked?sel.add(l.name):sel.delete(l.name)});render()};
+    const g1i = el.querySelector('#g1ck'); if(g1Sel>0&&g1Sel<hasData.length) g1i.indeterminate=true;
+    const g2i = el.querySelector('#g2ck'); if(g2Sel>0&&g2Sel<empty.length) g2i.indeterminate=true;
+    el.querySelectorAll('.layer-list input[type=checkbox]').forEach(cb=>{
+      cb.onchange = ()=>{cb.checked?sel.add(cb.dataset.n):sel.delete(cb.dataset.n);render()};
+    });
+  }
+  render();
+})();
+
+// ─── 方案5: 标签式 ───
+(function(){
+  const el = document.getElementById('mock5');
+  const sel = new Set(hasData.map(l=>l.name));
+  function render(){
+    let h = `<div style="display:flex;gap:6px;margin-bottom:6px;align-items:center">
+      <button class="btn-sm" id="m5all">全选</button>
+      <button class="btn-sm" id="m5none">全不选</button>
+      <span style="flex:1"></span>
+      <span style="font-size:11px;color:var(--tx2)">已选 ${sel.size}/${LAYERS.length}</span>
+    </div>`;
+    h += '<div class="tag-wrap">';
+    LAYERS.forEach(l=>{
+      const s = sel.has(l.name)?'selected':'';
+      const e = l.n===0?'empty-tag':'';
+      h += `<div class="tag ${s} ${e}" data-n="${l.name}">${l.name} <span class="tc">${l.n>0?l.n:'空'}</span></div>`;
+    });
+    h += '</div>';
+    el.innerHTML = h;
+    el.querySelector('#m5all').onclick = ()=>{LAYERS.forEach(l=>sel.add(l.name));render()};
+    el.querySelector('#m5none').onclick = ()=>{sel.clear();render()};
+    el.querySelectorAll('.tag').forEach(t=>{
+      t.onclick = ()=>{const n=t.dataset.n;sel.has(n)?sel.delete(n):sel.add(n);render()};
+    });
+  }
+  render();
+})();
+</script>
+</body>
+</html>

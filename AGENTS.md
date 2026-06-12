@@ -1,10 +1,10 @@
 # AGENTS.md
 
-This file provides guidance to AI agents working with this repository.
+This file provides guidance to Qoder (qoder.com) when working with code in this repository.
 
 ## Project Overview
 
-**极思G界址点互转工具** — GIS utility for bidirectional conversion between polygon features (SHP/GDB) and standard boundary-point TXT files. Tauri v2 desktop app (Rust backend + Vite/HTML frontend).
+**极思G界址点互转工具** — GIS utility for bidirectional conversion between polygon features (SHP/GDB/GPKG) and standard boundary-point TXT files. Tauri v2 desktop app (Rust backend + Vite/HTML frontend).
 
 **GitHub:** https://github.com/edcfoshan/boundary-point-converter
 
@@ -74,7 +74,7 @@ index.html            ← Entry HTML (all CSS inline, Google Fonts CDN)
 package.json          ← npm deps
 vite.config.js        ← Vite config (vite-plugin-singlefile, port 1420)
 src/
-  main.js             ← Frontend JS (539 lines, all Tauri IPC + UI logic)
+  main.js             ← Frontend JS (614 lines, all Tauri IPC + UI logic)
 src-tauri/
   Cargo.toml          ← Rust deps
   tauri.conf.json     ← Window/CSP/bundle config
@@ -84,11 +84,14 @@ src-tauri/
     integration_test.rs   ← 10 integration tests
     debug_output_test.rs  ← Debug output generation tests
   src/
-    lib.rs            ← 8 Tauri IPC commands + serde types
+    lib.rs            ← 11 Tauri IPC commands + serde types
     main.rs           ← Entry point
     shp.rs            ← SHP/DBF/PRJ read/write
     txt.rs            ← TXT 3-section parse/generate
     gdb.rs            ← GDB read (geonative-filegdb) + minimal write
+    gdb/
+      gdb_templates.rs  ← GDB template binary data for minimal writer
+    gpkg.rs           ← GeoPackage read/write (rusqlite, OGC standard)
     convert.rs        ← Conversion orchestration
 ```
 
@@ -97,12 +100,13 @@ src-tauri/
 ### Frontend JS (src/main.js)
 - Uses ES module `import` statements (`import { invoke } from '@tauri-apps/api/core'`). Vite inlines these into the single HTML file during build. In production, `window.__TAURI__` is the runtime API — the imports are resolved at build time by Vite, not at runtime.
 - Functions exported to `window.*` for HTML `onclick` handlers (no framework, vanilla JS).
+- Uses `@tauri-apps/plugin-shell` for `shellOpen` (opening output folders in Explorer).
 
 ### CSP (tauri.conf.json)
 **Critical:** Must include `script-src 'self' 'unsafe-inline' 'unsafe-eval'` or WebView2 blocks inline `<script>`.
 
 ### Permissions (capabilities/default.json)
-Requires: `core:default`, `dialog:default/open/save`, `fs:default/read/write/exists/mkdir/remove/rename/stat`.
+Requires: `core:default`, `dialog:default/open/save`, `fs:default/read/write/exists/mkdir/remove/rename/stat`, `shell:allow-open`.
 
 ### DBF Writing
 Manually written binary (avoids `dbase` crate API). Field offset must be 4 bytes (LE), not 2 bytes.
@@ -115,6 +119,15 @@ SHP stores (X, Y) = (easting, northing). TXT stores (Y, X) = (northing, easting)
 - 坐标行：`J序号,1,Y坐标,X坐标` — Y (northing) first, X (easting) second
 - 地块元数据行以 `,@` 结尾
 - 坐标系字符串必须精确匹配：`2000国家大地坐标系`、`1980西安坐标系`、`1954北京坐标系`、`WGS84坐标系`
+
+## Supported Input Formats
+
+| Format | Module | Read | Write | Notes |
+|--------|--------|------|-------|-------|
+| SHP    | shp.rs | shapefile crate | shapefile crate + manual DBF | Standard ESRI Shapefile only |
+| GDB    | gdb.rs + gdb/gdb_templates.rs | geonative-filegdb | Minimal OpenFileGDB (template-based) | ArcGIS Pro compat limited |
+| GPKG   | gpkg.rs | rusqlite (OGC GeoPackage) | rusqlite | SQLite-based vector format |
+| TXT    | txt.rs | Custom parser | Custom generator | 3-section boundary point format |
 
 ## Known Issues
 

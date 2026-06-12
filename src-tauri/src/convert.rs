@@ -210,6 +210,8 @@ pub fn convert_shp_to_txt(
     output_dir: &Path,
     selected_layers: Option<&[String]>,
 ) -> Result<ConvertResult, String> {
+    std::fs::create_dir_all(output_dir)
+        .map_err(|e| format!("创建输出目录失败: {}", e))?;
     let mut output_files = Vec::new();
 
     match source_type {
@@ -304,6 +306,8 @@ pub fn convert_txt_to_shp(
     header_cfg: &HeaderConfig,
 ) -> Result<ConvertResult, String> {
     let output_dir = Path::new(&options.output_dir);
+    std::fs::create_dir_all(output_dir)
+        .map_err(|e| format!("创建输出目录失败: {}", e))?;
     let mut output_files = Vec::new();
 
     for txt_path in txt_paths {

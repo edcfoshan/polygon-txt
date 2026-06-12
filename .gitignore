@@ -11,3 +11,6 @@ src-tauri/target/
 
 # 浏览器测试缓存
 .playwright-mcp/
+
+# 外部共享资源（非项目代码）
+CC工具箱_共享/

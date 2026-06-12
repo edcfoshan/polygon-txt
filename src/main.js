@@ -1,7 +1,11 @@
 import { invoke } from '@tauri-apps/api/core';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import { open as shellOpen } from '@tauri-apps/plugin-shell';
 import aboutContent from '../content/about.md?raw';
 import sponsorContent from '../content/sponsor.md?raw';
+
+const WIN_MAX_ICON = `<svg viewBox="0 0 12 12"><rect x="2.5" y="2.5" width="7" height="7" rx="0.8"/></svg>`;
+const WIN_RESTORE_ICON = `<svg viewBox="0 0 12 12"><path d="M4 3.5h4.5v4.5H4z"/><path d="M3 4.5V3h4.5"/><path d="M4.5 3h4.5v4.5"/></svg>`;
 
 // Tauri IPC 调用
 async function tauriInvoke(cmd, args) {
@@ -28,6 +32,23 @@ function summarizeInvokeArgs(args) {
     }
   }
   return summary;
+}
+
+function setWinMaxIcon(isMaximized) {
+  const btn = $("btnWinMax");
+  if (!btn) return;
+  btn.innerHTML = isMaximized ? WIN_RESTORE_ICON : WIN_MAX_ICON;
+  btn.title = isMaximized ? "还原" : "最大化";
+  btn.setAttribute("aria-label", isMaximized ? "还原" : "最大化");
+}
+
+async function syncWinControls(appWindow) {
+  if (!appWindow) return;
+  try {
+    setWinMaxIcon(await appWindow.isMaximized());
+  } catch (e) {
+    console.warn("[Tauri] sync window controls failed:", e);
+  }
 }
 
 // ═══ State ═══
@@ -548,6 +569,12 @@ document.addEventListener("keydown", function (e) {
 
 // ═══ Init ═══
 function init() {
+  let appWindow = null;
+  try {
+    appWindow = getCurrentWindow();
+  } catch (e) {
+    console.warn("[Tauri] window API unavailable:", e);
+  }
   const savedTheme = localStorage.getItem("tg_theme") || "light";
   theme = savedTheme;
   document.documentElement.setAttribute("data-t", theme);
@@ -572,6 +599,16 @@ function init() {
   bind("btnAbout", () => openAbout());
   bind("btnSave", () => saveOnly());
   bind("btnDel", () => delCfg());
+  if (appWindow) {
+    bind("btnWinMin", () => appWindow.minimize());
+    bind("btnWinMax", async () => {
+      await appWindow.toggleMaximize();
+      await syncWinControls(appWindow);
+    });
+    bind("btnWinClose", () => appWindow.close());
+    void syncWinControls(appWindow);
+    void appWindow.onResized(() => { void syncWinControls(appWindow); });
+  }
   bind("dropZone", () => importShp());
   bind("dropGpkg", () => importGpkg());
   bind("dropGdb", () => importGdb());

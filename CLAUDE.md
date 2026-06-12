@@ -1,209 +1,139 @@
 # CLAUDE.md
 
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 ## 项目概述
 
-**极思G界址点互转工具 (Boundary Point Conversion Tool)** — 测绘与国土行业的 GIS 实用工具，实现 SHP 文件 / File Geodatabase (.gdb) 与标准界址点 TXT 文件的双向转换。
+**极思G界址点互转工具** — 测绘与国土行业 GIS 桌面工具，实现面要素（SHP/GDB/GPKG）与标准界址点 TXT 文件的双向转换。Tauri v2 桌面应用（Rust 后端 + Vite/HTML 前端）。
 
-- 前端：HTML + CSS + Vanilla JS（880×600px 窗口，支持浅色/暗色主题切换）
-- 后端：Rust（Tauri v2 桌面壳）
 - 仓库：https://github.com/edcfoshan/boundary-point-converter
+- 窗口：880×600px，无边框（`decorations: false`），自定义标题栏，支持浅色/暗色主题
+
+## 构建与测试命令
+
+```powershell
+npm install                          # 安装前端依赖
+npm run tauri dev                    # 开发模式（Vite HMR :1420 + Tauri WebView）
+npm run tauri build                  # 生产构建 → src-tauri/target/release/jisig-bpoint-converter.exe
+npm run build                        # 仅前端（dist/ 单文件 HTML）
+
+cd src-tauri
+cargo build --release                # 仅 Rust 编译（不会嵌入前端）
+cargo test                           # 全部测试
+cargo test --test integration_test   # 集成测试（SHP/DBF/PRJ/TXT/GDB/GPKG）
+cargo test --test release_smoke_test # Release 冒烟测试（TXT→GPKG 往返）
+cargo test --test debug_output_test  # 调试用：从 TXT 生成 SHP/GDB 输出验证
+```
+
+测试数据依赖 `test_arcpy/` 目录（ArcPy 生成的标准 SHP/TXT/GDB）和 `test_data/` 目录。
 
 ## 架构
 
 ```
-index.html (CSS内联) ← Vite构建 → Tauri WebView
-         ↕ window.__TAURI__.core.invoke() IPC
-   Rust 后端 (shapefile + geonative-filegdb crate)
-         ↕ std::fs
-   原生文件系统
+index.html (CSS 内联, Google Fonts CDN)
+  ← Vite (vite-plugin-singlefile) 打包 JS 内联到单文件 HTML
+  ← Tauri WebView 嵌入 dist/index.html
+       ↕ window.__TAURI__.core.invoke() IPC
+  Rust 后端 (shapefile / geonative-filegdb / rusqlite)
+       ↕ std::fs
+  原生文件系统
 ```
 
-### 双模式切换
-- `data-mode="s"` — 面→TXT（导入 SHP/GDB，输出 TXT）
-- `data-mode="t"` — TXT→面（导入 TXT，输出 SHP/GDB）
+关键：Vite 将所有 JS 内联到单个 HTML 文件中。`dist/index.html` 包含一切，Tauri 通过 `tauri-codegen` 在构建时嵌入。
 
-面→TXT 模式布局：3 列面板（260+260+360）
-TXT→面模式布局：2 列面板（300+flex，中间面板隐藏）
+### 前端 (src/main.js)
 
-### TXT 标准格式
-```
-[项目信息]          ← 可选
-项目名称=xxx
-...
-[属性描述]          ← 固定字段
-坐标系=2000国家大地坐标系
-几度分带=3
-投影类型=高斯克吕格
-计量单位=米
-带号=38
-精度=0.001
-转换参数=,,,,,,
-[地块坐标]          ← 元数据行 + 坐标行
-6,1.2247,FID_0,DKMC,面,TFH,DKYT,DLBM,@
-J1,1,Y坐标,X坐标
-...
-```
+- 使用 ES module `import`（Vite 构建时解析为 `window.__TAURI__` 运行时 API）
+- Vanilla JS，无框架。函数通过 `window.*` 导出供 HTML `onclick` 调用
+- Markdown 弹窗：`content/about.md` 和 `content/sponsor.md` 通过 `?raw` 导入，`renderMarkdown()` 渲染
+- 双模式：`data-mode="s"`（面→TXT，3 列 260+260+360）/ `data-mode="t"`（TXT→面，2 列 300+flex）
+- 预设配置 `PP` 数组包含三种模式（基础地块/规划审批/自定义），字段自动匹配规则在 `FIELD_MATCH_RULES`
 
 ### Rust 后端模块
-| 模块 | 文件 | 功能 |
-|------|------|------|
-| shp | `src-tauri/src/shp.rs` | SHP 读写 (shapefile crate)、DBF 解析、PRJ 坐标系识别 |
-| txt | `src-tauri/src/txt.rs` | TXT 格式解析与生成 |
-| gdb | `src-tauri/src/gdb.rs` | GDB 读取 (geonative-filegdb)、最小化 OpenFileGDB 写入 |
-| convert | `src-tauri/src/convert.rs` | 转换编排：SHP↔TXT、GDB→TXT、TXT→SHP/GDB |
-| lib | `src-tauri/src/lib.rs` | Tauri 命令注册（8 个 IPC 命令）|
 
-### Tauri IPC 命令
-- `pick_shp_files` — 选择 SHP 文件，返回字段列表和坐标系信息
-- `import_gdb` — 选择 GDB 文件夹，读取所有要素类
-- `pick_txt_files` — 选择 TXT 文件，解析并返回摘要
-- `pick_output_dir` — 选择输出目录
-- `read_shp_to_txt_preview` — 生成 TXT 预览
-- `read_txt_preview` — 读取 TXT 文件并解析
-- `run_shp_to_txt` — 执行 SHP/GDB→TXT 转换
-- `run_txt_to_shp` — 执行 TXT→SHP/GDB 转换
+| 模块 | 功能 |
+|------|------|
+| `lib.rs` | 12 个 Tauri IPC 命令 + IPC 类型定义 |
+| `shp.rs` | SHP 读写（shapefile crate）、DBF 解析、PRJ 坐标系识别 |
+| `txt.rs` | TXT 三段式格式解析与生成 |
+| `gdb.rs` + `gdb/gdb_templates.rs` | GDB 读取（geonative-filegdb）+ 模板化最小 OpenFileGDB 写入 |
+| `gpkg.rs` | GeoPackage 读写（rusqlite，OGC 标准） |
+| `convert.rs` | 转换编排：SHP/GDB/GPKG→TXT、TXT→SHP/GPKG |
+| `smoke.rs` | Release 冒烟测试逻辑 |
 
-### 前端文件
-`src/main.js` — 包含所有 UI 逻辑和 Tauri IPC 调用（使用 `window.__TAURI__` 运行时 API，Vite 构建时不打包是已知行为）
+### Tauri IPC 命令（12 个）
 
-## 开发环境要求
+文件选择：`pick_shp_files`、`import_gdb`、`import_gpkg`、`pick_txt_files`、`pick_output_dir`
+拖放导入：`pick_shp_files_from_paths`、`pick_txt_files_from_paths`
+预览：`read_shp_to_txt_preview`、`read_txt_preview`
+转换：`run_shp_to_txt`、`run_txt_to_shp`
 
-### 必需
-- **Rust** >= 1.74（`rustup` 安装）
-- **Node.js** >= 18（含 npm）
-- **Windows 10+**（WebView2 运行时，Win10 1809+ 自带）
+## 项目目录结构
 
-### 前端依赖
-```json
-{
-  "@tauri-apps/api": "^2",       // Tauri IPC
-  "@tauri-apps/plugin-dialog": "^2",  // 原生文件对话框
-  "@tauri-apps/plugin-fs": "^2",
-  "vite": "^6",                    // 前端构建
-  "@tauri-apps/cli": "^2"          // Tauri CLI
-}
+```
+├─ index.html              ← Vite 入口（引用 src/main.js）
+├─ package.json / vite.config.js
+├─ CLAUDE.md / AGENTS.md   ← Claude / Qoder 指导文件
+│
+├─ content/                ← Markdown 弹窗内容（?raw 导入，热更新）
+│   ├─ about.md
+│   └─ sponsor.md
+├─ src/                    ← 前端源码
+│   └─ main.js
+├─ src-tauri/              ← Rust 后端
+│   ├─ src/                ←   lib/shp/txt/gdb/gpkg/convert/smoke
+│   ├─ tests/              ←   integration_test / release_smoke_test / debug_output_test
+│   ├─ templates/          ←   GDB 写入模板二进制
+│   └─ capabilities/       ←   Tauri 权限声明
+│
+├─ scripts/                ← Python 验证/测试脚本 + PowerShell 发布脚本
+├─ docs/                   ← 设计文档 + screenshots/
+├─ versions/               ← 历史 UI 原型 (v7/v8/v9) + mockups
+├─ _archive/               ← 逆向工程资料（tbx 解码、分析脚本）
+│
+├─ test_arcpy/             ← 测试数据：ArcPy 生成的标准 SHP/TXT/GDB
+├─ test_data/              ← 测试数据：政府格式 SHP + TXT
+└─ 00测试数据/              ← 测试数据：实际业务 TXT + 转换产物
 ```
 
-### Rust 依赖（Cargo）
-- `tauri = "2"` — Tauri 框架
-- `tauri-plugin-dialog = "2"` — 对话框
-- `tauri-plugin-fs = "2"` — 文件系统
-- `shapefile = "0.8"` — SHP 读写
-- `dbase = "0.3"` — DBF 读写
-- `geonative-core = "0.2"` — 地理空间数据模型
-- `geonative-filegdb = "0.2"` — 纯 Rust GDB 读取
-- `serde = "1"` — 序列化
-- `tempfile = "3"` — 临时文件
+`关注、赞赏码.png` 留在根目录 — `content/*.md` 中以相对路径引用，运行时从页面根加载。
 
-## 构建与运行
+## 关键注意事项
 
-### 开发模式（热更新）
-```powershell
-cd 项目目录
-npm install
-npm run tauri dev
-```
-这会启动 Vite 开发服务器（localhost:1420）和 Tauri WebView 窗口。
+### 坐标顺序交换
+SHP 存储 (X, Y) = (东坐标, 北坐标)。TXT 存储 (Y, X) = (北坐标, 东坐标)。转换层负责交换。
 
-### 生产构建
-```powershell
-npm run tauri build
-```
-输出路径：`src-tauri/target/release/jisig-bpoint-converter.exe`
+### TXT 格式
+- 坐标行：`J序号,1,Y坐标,X坐标`（Y 在前）
+- 地块元数据行以 `,@` 结尾
+- 坐标系字符串必须精确匹配：`2000国家大地坐标系`、`1980西安坐标系`、`1954北京坐标系`、`WGS84坐标系`
 
-构建后手动重命名：
-```powershell
-Copy-Item src-tauri/target/release/jisig-bpoint-converter.exe 极思G界址点互转工具.exe
-```
+### DBF 写入
+手动二进制写入（未使用 dbase crate API）。字段偏移量必须为 4 字节（LE），不是 2 字节。
 
-### 仅构建前端
-```powershell
-npm run build
-```
-输出目录：`dist/`（Vite 将 HTML + 内联 JS 打包至此）
+### CSP（tauri.conf.json）
+必须包含 `script-src 'self' 'unsafe-inline' 'unsafe-eval'`，否则 WebView2 阻止内联脚本。
 
-### 仅编译 Rust（不运行 tauri-codegen）
-```powershell
-cd src-tauri
-cargo build --release
-```
-**注意**：这样不会重新嵌入前端文件，仅用于 Rust 编译测试。
+### 不使用 arcpy
+生产代码中严禁引入 arcpy 依赖。允许用 arcpy 做验证和测试对比。
 
-### 运行测试
-```powershell
-cd src-tauri
-cargo test --test integration_test
-```
-10 个集成测试覆盖：SHP 读取、DBF 解析、PRJ 识别、TXT 解析/生成、转换流程、GDB 读取。
-
-## 项目文件结构
-```
-│  index.html                ← 入口 HTML（含全部 CSS 样式，JS 内联）
-│  index.html          ← Vite 入口（引用 /src/main.js）
-│  AGENTS.md                 ← Codex 指导
-│  CLAUDE.md                 ← Claude 指导（本文档）
-│  package.json              ← npm 配置
-│  vite.config.js            ← Vite 配置
-│  .gitignore
-├─ src/
-│  └─ main.js                ← 前端 JS（Tauri IPC 调用）
-├─ dist/                     ← Vite 构建输出（gitignored）
-├─ node_modules/             ← npm 依赖（gitignored）
-├─ src-tauri/
-│  ├─ Cargo.toml             ← Rust 依赖配置
-│  ├─ tauri.conf.json        ← Tauri 配置（窗口、CSP、打包）
-│  ├─ capabilities/
-│  │  └─ default.json        ← Tauri 权限声明
-│  ├─ tests/
-│  │  └─ integration_test.rs ← 集成测试（10 个测试用例）
-│  ├─ icons/                 ← 应用图标
-│  ├─ target/                ← Rust 编译输出（gitignored）
-│  └─ src/
-│     ├─ lib.rs              ← Tauri 命令入口
-│     ├─ main.rs             ← 程序入口
-│     ├─ shp.rs              ← SHP/DBF/PRJ 读写
-│     ├─ txt.rs              ← TXT 解析/生成
-│     ├─ gdb.rs              ← GDB 读写
-│     └─ convert.rs          ← 转换编排
-```
-
-## 配置说明
-
-### Tauri 配置（tauri.conf.json）
-- `build.frontendDist: "../dist"` — 构建后的前端目录
-- `build.beforeBuildCommand: "npm run build"` — 构建前运行 Vite
-- `app.security.csp` — 内容安全策略（必须包含 `script-src 'unsafe-inline'`）
-- `bundle.windows.nsis.installMode: "currentUser"` — 安装模式
-- 窗口大小：880×600，最小 800×540
+### 前端构建特殊行为
+`@tauri-apps/api` 在 Vite 生产构建中不会被包含在输出 JS 内。ES module `import` 由 Vite 在构建时解析，运行时通过 `window.__TAURI__` 调用。
 
 ### 权限（capabilities/default.json）
-需要 `dialog:default`、`dialog:allow-open`、`dialog:allow-save`、`fs:default` 等权限。
+需要：`core:default`、`dialog:default/open/save`、`fs:default/read/write/exists/mkdir/remove/rename/stat`、`shell:allow-open`
 
 ## 已知问题
 
-### CSP 策略
-内联脚本需要在 CSP 中声明 `script-src 'unsafe-inline' 'unsafe-eval'`，否则 WebView2 会阻止 JS 执行。
+1. **政府 SHP 格式**：`test_data/` 中部分 `.shp` 使用非标准格式（magic ≠ 9994），标准库无法读取
+2. **GDB 写入**：最小化 OpenFileGDB 实现，ArcGIS Pro 兼容性有限。回退方案：`ogr2ogr -f "OpenFileGDB"`
+3. **MSI 打包**：WiX 工具可能缺失导致失败，不影响 exe 生成
+4. **Google Fonts**：需联网加载 Inter/Noto Sans SC/JetBrains Mono，离线回退系统字体
 
-### 政府 SHP 格式兼容性
-测试数据中的 `.shp` 文件采用非标准格式（magic number ≠ 9994），无法被标准 shapefile 库（包括 ArcPy）读取。原始的 Delphi `shp转txt.exe` 使用的是自定义格式解析器。当前工具仅支持标准 ESRI Shapefile 格式和 File Geodatabase (.gdb)。
+## 依赖
 
-### MSI 打包
-`npm run tauri build` 的最后一步（WiX 打包 MSI）可能会因缺少 WiX 工具而失败，但这不影响主 exe 的生成。
+### 前端（package.json）
+`@tauri-apps/api ^2`、`@tauri-apps/plugin-dialog ^2`、`@tauri-apps/plugin-shell ^2`、`vite ^6`、`vite-plugin-singlefile ^2`、`@tauri-apps/cli ^2`
 
-### GDB 写入
-当前 GDB 写入（TXT→GDB）使用的是最小化 OpenFileGDB 格式实现。如果需要完全兼容的 GDB 输出，可以：
-1. 使用 `ogr2ogr -f "OpenFileGDB" output.gdb input.shp`
-2. 或等待 geonative 生态的 GDB 写入支持
-
-### 前端构建注意事项
-`@tauri-apps/api` 包在 Vite 生产构建中不会被打包到 JS 文件内。前端代码使用 `window.__TAURI__` 运行时 API 来调用 Tauri IPC。开发模式下通过 `npm run tauri dev` 使用 Vite dev server 正常工作。
-
-## 测试数据
-测试数据位于开发者机器的 `D:\00结束\本地肇庆高新区数据治理\05开始录入\2所有都是0错误`，包含：
-- `shp/` — 60 个非标准格式 SHP 文件  
-- `肇庆高新区txt/` — 121 个标准 TXT 文件
-
-标准测试数据可由 ArcPy 生成：
-```powershell
-& "C:\Program Files\ArcGIS\Pro\bin\Python\envs\arcgispro-py3\python.exe" test_arcpy_gen.py
-```
+### Rust（Cargo.toml）
+`tauri 2`、`tauri-plugin-dialog/fs/shell 2`、`shapefile 0.8`、`dbase 0.3`、`geonative-core/filegdb/shapefile 0.2`、`rusqlite 0.31`（bundled）、`encoding_rs 0.8`、`geo-types 0.7`、`serde 1`、`tempfile 3`

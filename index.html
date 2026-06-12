@@ -571,7 +571,7 @@ body::before{
 
   <!-- ═══ Title Bar ═══ -->
   <div class="titlebar">
-    <div class="brand">
+    <div class="brand" data-tauri-drag-region>
       <div class="brand-mark">
         <svg viewBox="0 0 140 140" width="22" height="22" aria-label="极思G">
           <circle cx="70" cy="70" r="60" fill="none" stroke="var(--ac)" stroke-width="3.5" opacity="0.6"/>
@@ -614,7 +614,18 @@ body::before{
         <circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>
       </svg>
     </button>
-    <div class="spacer"></div>
+    <div class="spacer" data-tauri-drag-region></div>
+    <div class="win-ctls" aria-label="窗口控制" data-tauri-drag-region="false">
+      <button class="win-btn" id="btnWinMin" title="最小化" aria-label="最小化" data-tauri-drag-region="false">
+        <svg viewBox="0 0 12 12"><path d="M2 6h8"/></svg>
+      </button>
+      <button class="win-btn" id="btnWinMax" title="最大化/还原" aria-label="最大化/还原" data-tauri-drag-region="false">
+        <svg viewBox="0 0 12 12"><rect x="2.5" y="2.5" width="7" height="7" rx="0.8"/></svg>
+      </button>
+      <button class="win-btn close" id="btnWinClose" title="关闭" aria-label="关闭" data-tauri-drag-region="false">
+        <svg viewBox="0 0 12 12"><path d="M2 2l8 8M10 2l-8 8"/></svg>
+      </button>
+    </div>
   </div>
 
   <!-- ═══ Tab Bar ═══ -->

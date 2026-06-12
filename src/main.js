@@ -1,5 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { open as shellOpen } from '@tauri-apps/plugin-shell';
+import aboutContent from '../content/about.md?raw';
+import sponsorContent from '../content/sponsor.md?raw';
 
 // Tauri IPC 调用
 async function tauriInvoke(cmd, args) {
@@ -76,6 +78,36 @@ window.togTheme = function () {
   localStorage.setItem("tg_theme", theme);
 };
 
+// ═══ 弹窗内容渲染（Markdown → HTML） ═══
+function renderMarkdown(md) {
+  let html = '';
+  const lines = md.split('\n');
+  let inList = false;
+  for (const line of lines) {
+    if (line.startsWith('### ')) { closeList(); html += `<h3 style="text-align:center;margin-bottom:8px">${escHtml(line.slice(4))}</h3>\n`; continue; }
+    if (line.startsWith('- ')) {
+      if (!inList) { html += '<ul style="margin:0 0 8px 16px;padding:0">\n'; inList = true; }
+      html += `  <li>${inlineMd(line.slice(2))}</li>\n`;
+      continue;
+    }
+    if (line.trim() === '') { closeList(); continue; }
+    if (line.startsWith('---')) { closeList(); html += '<hr style="border:none;border-top:1px solid var(--brd);margin:10px 0">\n'; continue; }
+    closeList();
+    html += `<p style="margin-bottom:6px">${inlineMd(line)}</p>\n`;
+  }
+  closeList();
+  function closeList() { if (inList) { html += '</ul>\n'; inList = false; } }
+  function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  function inlineMd(t) {
+    t = escHtml(t);
+    t = t.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    t = t.replace(/!\[(.+?)\]\((.+?)\)/g, '<img src="$2" alt="$1" style="max-width:160px;border-radius:6px;border:1px solid var(--brd);display:block;margin:0 auto">');
+    t = t.replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" target="_blank" style="color:var(--ac)">$1</a>');
+    return t;
+  }
+  return html;
+}
+
 // ═══ SHP 导入 ═══
 window.importShp = async function () {
   try {
@@ -97,18 +129,20 @@ window.importShp = async function () {
 window.importGpkg = async function () {
   try {
     const result = await tauriInvoke("import_gpkg");
-    if (!result || !result.path) return;
+    if (!result || !result.files || result.files.length === 0) return;
     sourceType = "gpkg";
-    sourcePath = result.path;
+    sourcePath = result.files[0].path;
     loadedFiles = [];
     gdbLayers = [];
     selectedLayers = [];
     const fl = $("fl");
-    if (fl) fl.innerHTML = `<div class="fitem"><span class="fn">◈ ${result.name}.gpkg</span><span class="fs">${result.num_features}个要素</span></div>`;
-    autoMatchFields(result.field_names);
-    autoSetOutputDirS(result.path);
+    if (fl) fl.innerHTML = result.files.map((f) =>
+      `<div class="fitem"><span class="fn">◈ ${f.name}.gpkg</span><span class="fs">${f.num_features}个要素</span></div>`
+    ).join("");
+    autoMatchFields(result.files[0].field_names);
+    autoSetOutputDirS(result.files[0].path);
     renderGdbLayers();
-    toast(`已导入 GPKG: ${result.name} (${result.layers.length} 个图层)`);
+    toast(`已导入 ${result.files.length} 个 GPKG 文件 (共 ${result.files.reduce((s, f) => s + f.num_features, 0)} 个要素)`);
     updatePreview();
   } catch (e) {
     toast("导入 GPKG 失败: " + e);
@@ -523,6 +557,12 @@ function init() {
   PP.forEach((p) => { if (!cfgs[p.id]) cfgs[p.id] = p; });
   renderChips();
   ld(localStorage.getItem("tg_last") || "basic");
+
+  // ─── 注入弹窗内容（Markdown → HTML） ───
+  const ab = $("aboutBody");
+  if (ab) ab.innerHTML = renderMarkdown(aboutContent);
+  const sb = $("sponsorBody");
+  if (sb) sb.innerHTML = renderMarkdown(sponsorContent);
 
   // ─── Bind click events (replaces inline onclick) ───
   const bind = (id, fn) => { const el = $(id); if (el) el.addEventListener("click", fn); };

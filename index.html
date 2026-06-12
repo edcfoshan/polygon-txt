@@ -586,7 +586,7 @@ body::before{
           <line x1="126" y1="70" x2="132" y2="70" stroke="var(--ac)" stroke-width="1.5" opacity="0.5"/>
         </svg>
       </div>
-      <span class="brand-text">极思<span class="acc">G</span></span>
+      <span class="brand-text">极思<span class="acc">G</span>界址点互转工具</span>
       <span class="brand-sub">V1.0</span>
     </div>
     <!-- GitHub button -->
@@ -644,7 +644,7 @@ body::before{
         <div style="margin-top:4px;display:flex;gap:4px">
           <div class="drop" id="dropGpkg" style="flex:1;padding:6px 8px">
             <div style="display:flex;align-items:center;justify-content:center;gap:6px;font-size:11px;color:var(--tx3)">
-              <span style="font-size:13px;font-weight:300">◈</span> 导入 .gpkg 文件
+              <span style="font-size:13px;font-weight:300">◈</span> 导入 .gpkg 文件（可多选）
             </div>
           </div>
           <div class="drop" id="dropGdb" style="flex:1;padding:6px 8px">
@@ -781,27 +781,7 @@ body::before{
 <div class="modal-overlay" id="aboutModal">
   <div class="modal-card" style="max-width:360px;text-align:left">
     <button class="modal-close" id="btnCloseAbout" aria-label="关闭">×</button>
-    <h3 style="text-align:center;margin-bottom:8px">关于界址点互转工具</h3>
-    <p class="modal-sub" style="text-align:center">由极思 G 提供技术支持</p>
-    <div style="font-size:12px;color:var(--tx2);line-height:1.7;padding:0 4px;margin-bottom:10px">
-      <p style="margin-bottom:6px"><strong>界址点互转工具</strong> 是一款轻量级 GIS 实用工具，专为测绘与国土行业设计，支持常见面数据与标准界址点 TXT 文件之间的双向转换。</p>
-      <p style="margin-bottom:4px"><strong>主要功能：</strong></p>
-      <ul style="margin:0 0 8px 16px;padding:0">
-        <li>面→TXT：导入 SHP、GPKG、GDB，输出标准界址点 TXT 文件</li>
-        <li>TXT→面：解析 TXT 文件，生成 SHP、GPKG 矢量面数据</li>
-        <li>支持 2000国家大地坐标系 / 1980西安 / 1954北京 / WGS84</li>
-        <li>支持高斯克吕格投影，3度/6度分带</li>
-        <li>字段自动匹配，智能识别坐标系</li>
-      </ul>
-      <p style="margin-bottom:6px"><strong>技术栈：</strong>纯前端 HTML/CSS/JS，无需安装，打开即用</p>
-      <p style="margin-bottom:6px"><strong>版本：</strong>V1.0</p>
-      <p style="margin-bottom:6px"><strong>开源地址：</strong><br>
-      <a href="https://github.com/edcfoshan/txt-gdb-converter" target="_blank" style="color:var(--ac)">github.com/edcfoshan/txt-gdb-converter</a></p>
-    </div>
-    <div style="text-align:center;border-top:1px solid var(--brd);padding-top:10px">
-      <p style="font-size:11px;color:var(--tx3);margin-bottom:6px">扫码加群交流反馈</p>
-      <img src="关注、赞赏码.png" alt="加群二维码" style="max-width:160px;border-radius:6px;border:1px solid var(--brd);display:block;margin:0 auto">
-    </div>
+    <div id="aboutBody"></div>
   </div>
 </div>
 
@@ -809,9 +789,7 @@ body::before{
 <div class="modal-overlay" id="sponsorModal">
   <div class="modal-card">
     <button class="modal-close" id="btnCloseSponsor" aria-label="关闭">×</button>
-    <h3>支持开发者</h3>
-    <p class="modal-sub">如果这个工具对你有帮助</p>
-    <img src="关注、赞赏码.png" alt="关注、赞赏码">
+    <div id="sponsorBody"></div>
   </div>
 </div>
 

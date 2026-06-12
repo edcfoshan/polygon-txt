@@ -213,17 +213,22 @@ pub fn generate_txt(
         );
         out.push_str(&meta);
         for (i, (y, x)) in plot.coords.iter().enumerate() {
+            // 闭合点序号回到 1，保持与原始格式一致
+            let seq = if i > 0 && i == plot.coords.len() - 1
+                && (y - plot.coords[0].0).abs() < 1e-9
+                && (x - plot.coords[0].1).abs() < 1e-9
+            { 1 } else { i + 1 };
             if oj {
                 out.push_str(&format!(
                     "J{},1,{},{}\n",
-                    i + 1,
+                    seq,
                     format_coord(*y, decimals),
                     format_coord(*x, decimals),
                 ));
             } else {
                 out.push_str(&format!(
                     "{},1,{},{}\n",
-                    i + 1,
+                    seq,
                     format_coord(*y, decimals),
                     format_coord(*x, decimals),
                 ));

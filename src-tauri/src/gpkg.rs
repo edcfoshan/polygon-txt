@@ -291,7 +291,8 @@ pub fn read_gpkg(path: &Path) -> Result<GpkgFileInfo, String> {
         .collect();
 
         // 读取要素
-        let query = format!("SELECT rowid, \"{}\", * FROM \"{}\"", geom_col, table_name);
+        let cols = field_names.iter().map(|n| format!("\"{}\"", n)).collect::<Vec<_>>().join(", ");
+        let query = format!("SELECT rowid, \"{}\", {} FROM \"{}\"", geom_col, cols, table_name);
         let mut feat_stmt = conn.prepare(&query)
             .map_err(|e| format!("查询 {} 失败: {}", table_name, e))?;
 
@@ -301,7 +302,12 @@ pub fn read_gpkg(path: &Path) -> Result<GpkgFileInfo, String> {
             let mut attrs = HashMap::new();
             // 从第 2 列开始是用户属性（rowid + geom 后）
             for (i, name) in field_names.iter().enumerate() {
-                let val: String = row.get::<_, String>(i + 2).unwrap_or_default();
+                let val = match row.get_ref(i + 2) {
+                    Ok(rusqlite::types::ValueRef::Text(s)) => String::from_utf8_lossy(s).to_string(),
+                    Ok(rusqlite::types::ValueRef::Real(f)) => format!("{}", f),
+                    Ok(rusqlite::types::ValueRef::Integer(n)) => format!("{}", n),
+                    _ => String::new(),
+                };
                 attrs.insert(name.clone(), val);
             }
             Ok((geom_blob, attrs))

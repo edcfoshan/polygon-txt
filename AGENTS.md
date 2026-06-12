@@ -73,8 +73,11 @@ cargo test                                   # All tests
 index.html            ← Entry HTML (all CSS inline, Google Fonts CDN)
 package.json          ← npm deps
 vite.config.js        ← Vite config (vite-plugin-singlefile, port 1420)
+content/
+  about.md            ← 关于弹窗内容（Markdown，热更新）
+  sponsor.md          ← 赞助弹窗内容（Markdown，热更新）
 src/
-  main.js             ← Frontend JS (614 lines, all Tauri IPC + UI logic)
+  main.js             ← Frontend JS (all Tauri IPC + UI logic)
 src-tauri/
   Cargo.toml          ← Rust deps
   tauri.conf.json     ← Window/CSP/bundle config
@@ -84,7 +87,7 @@ src-tauri/
     integration_test.rs   ← 10 integration tests
     debug_output_test.rs  ← Debug output generation tests
   src/
-    lib.rs            ← 11 Tauri IPC commands + serde types
+    lib.rs            ← 12 Tauri IPC commands + serde types
     main.rs           ← Entry point
     shp.rs            ← SHP/DBF/PRJ read/write
     txt.rs            ← TXT 3-section parse/generate
@@ -101,6 +104,14 @@ src-tauri/
 - Uses ES module `import` statements (`import { invoke } from '@tauri-apps/api/core'`). Vite inlines these into the single HTML file during build. In production, `window.__TAURI__` is the runtime API — the imports are resolved at build time by Vite, not at runtime.
 - Functions exported to `window.*` for HTML `onclick` handlers (no framework, vanilla JS).
 - Uses `@tauri-apps/plugin-shell` for `shellOpen` (opening output folders in Explorer).
+
+### Markdown-Driven Modals (content/)
+About 和赞助弹窗的内容托管在 `content/about.md` 和 `content/sponsor.md`，通过 `?raw` 导入在 `main.js` 中渲染。
+- 编辑 `.md` 文件后保存，Vite 热更新即时生效
+- `npm run build` 构建时自动内联进单文件 HTML
+- 支持的语法：`###`标题、`**加粗**`、`- 列表`、`[链接](url)`、`![图片](src)`、`---`分隔线
+- 图片路径相对于项目根目录（如 `关注、赞赏码.png`）
+- 渲染函数 `renderMarkdown()` 位于 `main.js` 中，处理弹窗专用的行内样式
 
 ### CSP (tauri.conf.json)
 **Critical:** Must include `script-src 'self' 'unsafe-inline' 'unsafe-eval'` or WebView2 blocks inline `<script>`.

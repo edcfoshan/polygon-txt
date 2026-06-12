@@ -42,6 +42,20 @@ struct GdbImportResult {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+struct GpkgImportResult {
+    files: Vec<GpkgFileItem>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct GpkgFileItem {
+    path: String,
+    name: String,
+    layers: Vec<GdbLayerItem>,
+    field_names: Vec<String>,
+    num_features: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct GdbLayerItem {
     name: String,
     field_names: Vec<String>,
@@ -187,56 +201,63 @@ fn import_gdb(app: tauri::AppHandle) -> Result<GdbImportResult, String> {
 }
 
 #[tauri::command]
-fn import_gpkg(app: tauri::AppHandle) -> Result<GdbImportResult, String> {
+fn import_gpkg(app: tauri::AppHandle) -> Result<GpkgImportResult, String> {
     use tauri_plugin_dialog::DialogExt;
 
-    let file = app
+    let files = app
         .dialog()
         .file()
         .add_filter("GeoPackage 文件", &["gpkg"])
-        .blocking_pick_file();
+        .blocking_pick_files();
 
-    let gpkg_path = match file.and_then(|f| f.as_path().map(|p| p.to_path_buf())) {
-        Some(p) => p,
-        None => {
-            return Err("未选择文件".to_string());
-        }
+    let picked = match files {
+        Some(f) => f,
+        None => return Ok(GpkgImportResult { files: vec![] }),
     };
 
-    if gpkg_path
-        .extension()
-        .map(|e| e.to_string_lossy().to_lowercase() != "gpkg")
-        .unwrap_or(true)
-    {
-        return Err("请选择 .gpkg 文件".to_string());
+    let mut items = Vec::new();
+    for file in &picked {
+        let gpkg_path = match file.as_path() {
+            Some(p) => p.to_path_buf(),
+            None => continue,
+        };
+        if gpkg_path
+            .extension()
+            .map(|e| e.to_string_lossy().to_lowercase() != "gpkg")
+            .unwrap_or(true)
+        {
+            continue;
+        }
+        match gpkg::read_gpkg(&gpkg_path) {
+            Ok(info) => {
+                let name = gpkg_path
+                    .file_stem()
+                    .map(|s| s.to_string_lossy().to_string())
+                    .unwrap_or_default();
+                let field_names = info.all_field_names.first().cloned().unwrap_or_default();
+                let num_features: usize = info.layers.iter().map(|l| l.num_features).sum();
+                let layers = info
+                    .layers
+                    .iter()
+                    .map(|l| GdbLayerItem {
+                        name: l.name.clone(),
+                        field_names: l.field_names.clone(),
+                        num_features: l.num_features,
+                    })
+                    .collect();
+                items.push(GpkgFileItem {
+                    path: gpkg_path.to_string_lossy().to_string(),
+                    name,
+                    layers,
+                    field_names,
+                    num_features,
+                });
+            }
+            Err(e) => eprintln!("读 GPKG 失败: {}", e),
+        }
     }
 
-    let info = gpkg::read_gpkg(&gpkg_path)
-        .map_err(|e| format!("导入 GPKG 失败: {}", e))?;
-    let name = gpkg_path
-        .file_stem()
-        .map(|s| s.to_string_lossy().to_string())
-        .unwrap_or_default();
-
-    let field_names = info.all_field_names.first().cloned().unwrap_or_default();
-    let num_features = info.layers.first().map(|l| l.num_features).unwrap_or(0);
-    let layers = info
-        .layers
-        .iter()
-        .map(|l| GdbLayerItem {
-            name: l.name.clone(),
-            field_names: l.field_names.clone(),
-            num_features: l.num_features,
-        })
-        .collect();
-
-    Ok(GdbImportResult {
-        path: gpkg_path.to_string_lossy().to_string(),
-        name,
-        layers,
-        field_names,
-        num_features,
-    })
+    Ok(GpkgImportResult { files: items })
 }
 
 #[tauri::command]

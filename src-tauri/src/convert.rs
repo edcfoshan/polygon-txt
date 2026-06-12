@@ -349,9 +349,15 @@ pub fn convert_txt_to_shp(
             ];
 
             let mut crs_info = HashMap::new();
-            crs_info.insert("c".to_string(), header_cfg.crs.clone());
-            crs_info.insert("b".to_string(), header_cfg.band.clone());
-            crs_info.insert("z".to_string(), header_cfg.zone.clone());
+            let crs = parsed.attrs.get("坐标系").cloned()
+                .ok_or_else(|| "TXT 文件缺少「坐标系」属性".to_string())?;
+            let band = parsed.attrs.get("几度分带").cloned()
+                .ok_or_else(|| "TXT 文件缺少「几度分带」属性".to_string())?;
+            let zone = parsed.attrs.get("带号").cloned()
+                .ok_or_else(|| "TXT 文件缺少「带号」属性".to_string())?;
+            crs_info.insert("c".to_string(), crs);
+            crs_info.insert("b".to_string(), band);
+            crs_info.insert("z".to_string(), zone);
 
             let gpkg_files = gpkg::write_gpkg_output(
                 output_dir,

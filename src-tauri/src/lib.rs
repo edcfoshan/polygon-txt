@@ -7,6 +7,7 @@ pub mod txt;
 pub mod convert;
 pub mod gdb;
 pub mod gpkg;
+pub mod smoke;
 
 use convert::{FieldMapping, HeaderConfig, ShpToTxtOptions, TxtToShpOptions};
 
@@ -68,6 +69,12 @@ struct ConvertResultPayload {
     success: bool,
     message: String,
     output_files: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SmokeTestConfig {
+    pub txt_path: PathBuf,
+    pub output_dir: PathBuf,
 }
 
 // ─── Commands ───
@@ -204,7 +211,8 @@ fn import_gpkg(app: tauri::AppHandle) -> Result<GdbImportResult, String> {
         return Err("请选择 .gpkg 文件".to_string());
     }
 
-    let info = gpkg::read_gpkg(&gpkg_path)?;
+    let info = gpkg::read_gpkg(&gpkg_path)
+        .map_err(|e| format!("导入 GPKG 失败: {}", e))?;
     let name = gpkg_path
         .file_stem()
         .map(|s| s.to_string_lossy().to_string())
@@ -312,6 +320,7 @@ fn read_shp_to_txt_preview(
         &options,
         selected_layers.as_deref(),
     )
+    .map_err(|e| format!("预览失败: {}", e))
 }
 
 #[tauri::command]
@@ -338,7 +347,8 @@ fn run_shp_to_txt(
         &options,
         &out_dir,
         selected_layers.as_deref(),
-    )?;
+    )
+    .map_err(|e| format!("面转 TXT 失败: {}", e))?;
 
     Ok(ConvertResultPayload {
         success: result.success,
@@ -354,7 +364,8 @@ fn run_txt_to_shp(
     header_cfg: HeaderConfig,
 ) -> Result<ConvertResultPayload, String> {
     let txt_bufs: Vec<PathBuf> = txt_paths.iter().map(PathBuf::from).collect();
-    let result = convert::convert_txt_to_shp(&txt_bufs, &options, &header_cfg)?;
+    let result = convert::convert_txt_to_shp(&txt_bufs, &options, &header_cfg)
+        .map_err(|e| format!("TXT 转面失败: {}", e))?;
 
     Ok(ConvertResultPayload {
         success: result.success,

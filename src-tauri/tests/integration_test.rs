@@ -1,4 +1,4 @@
-// 界址点互转工具 — 集成测试
+﻿// 界址点互转工具 — 集成测试
 // 测试数据路径: C:\Users\Administrator\Documents\txt与gdb互转\test_data
 // 输出目录: 自动创建临时目录
 
@@ -60,7 +60,54 @@ fn test_read_shp() {
     for (i, feat) in features.iter().enumerate().take(5) {
         println!("  要素 {}: {} 个坐标点", i, feat.points.len());
         assert!(!feat.points.is_empty(), "要素 {} 应有坐标", i);
-    }
+}
+
+}
+
+#[test]
+fn test_txt_to_gpkg_band6_roundtrip() {
+    let txt_path = test_txt_path();
+    let out_dir = tempfile::tempdir().expect("temp dir");
+
+    let options = convert::TxtToShpOptions {
+        output_shp: false,
+        output_gpkg: true,
+        merge: false,
+        output_dir: out_dir.path().to_string_lossy().to_string(),
+    };
+
+    let header = convert::HeaderConfig {
+        crs: "2000".into(),
+        band: "6".into(),
+        proj: "Gauss-Kruger".into(),
+        unit: "m".into(),
+        zone: "20".into(),
+        precision: "0.001".into(),
+        transform: ",,,,,,".into(),
+        project_info: String::new(),
+    };
+
+    let result = convert::convert_txt_to_shp(&[txt_path], &options, &header)
+        .expect("txt to gpkg failed");
+    let gpkg_path = result
+        .output_files
+        .iter()
+        .find(|f| f.ends_with(".gpkg"))
+        .expect("missing gpkg");
+
+    let conn = rusqlite::Connection::open(gpkg_path).expect("open gpkg failed");
+    let geom_type: String = conn
+        .query_row(
+            r#"SELECT type FROM pragma_table_info('plot_000') WHERE name='geom'"#,
+            [],
+            |row| row.get(0),
+        )
+        .expect("geom type");
+    assert_eq!(geom_type.to_uppercase(), "POLYGON");
+
+    let info = gpkg::read_gpkg(std::path::Path::new(gpkg_path)).expect("read gpkg failed");
+    assert!(!info.layers.is_empty());
+    assert!(info.layers.iter().map(|l| l.num_features).sum::<usize>() > 0);
 }
 
 // ─── 测试 2: DBF 读取 ───
@@ -645,5 +692,141 @@ fn test_read_default_gdb() {
                 panic!("Default1.gdb 读取失败（手动回退也应能处理）: {}", e);
             }
         }
+    }
+}
+
+// ─── 测试 15: TXT→GPKG→TXT 完整双向往返 (2 轮) ───
+
+#[test]
+fn test_txt_gpkg_roundtrip_2_rounds() {
+    let user_dir = std::path::PathBuf::from(r"C:\Users\Administrator\Documents\txt与gdb互转\00测试数据");
+    if !user_dir.exists() {
+        eprintln!("跳过: 00测试数据 不存在");
+        return;
+    }
+
+    let txt_entries: Vec<_> = std::fs::read_dir(&user_dir).unwrap()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().extension().map(|ext| ext == "txt").unwrap_or(false))
+        .collect();
+
+    assert!(!txt_entries.is_empty(), "00测试数据 中应有 TXT 文件");
+
+    for entry in &txt_entries {
+        let original_path = entry.path();
+        let stem = original_path.file_stem().unwrap().to_string_lossy().to_string();
+        let original_text = std::fs::read_to_string(&original_path).expect("读取原始 TXT");
+
+        eprintln!("═══ 往返测试: {} ═══", stem);
+
+        let mut current_text = original_text.clone();
+
+        for round in 1..=2 {
+            eprintln!("  --- 第 {} 轮 ---", round);
+
+            // 解析当前 TXT
+            let parsed = txt::parse_txt(&current_text);
+            assert!(!parsed.plots.is_empty(), "{} 第{}轮: 应有地块", stem, round);
+
+            // 从 TXT 自身属性构建 header（不依赖前端）
+            let header = convert::HeaderConfig {
+                crs: parsed.attrs.get("坐标系").cloned().unwrap_or_default(),
+                band: parsed.attrs.get("几度分带").cloned().unwrap_or_default(),
+                proj: parsed.attrs.get("投影类型").cloned().unwrap_or_default(),
+                unit: parsed.attrs.get("计量单位").cloned().unwrap_or_default(),
+                zone: parsed.attrs.get("带号").cloned().unwrap_or_default(),
+                precision: parsed.attrs.get("精度").cloned().unwrap_or_default(),
+                transform: parsed.attrs.get("转换参数").cloned().unwrap_or_default(),
+                project_info: parsed.project_info.clone(),
+            };
+
+            // TXT → GPKG
+            let gpkg_dir = tempfile::tempdir().expect("创建临时目录");
+            let txt_to_gpkg_opts = convert::TxtToShpOptions {
+                output_shp: false,
+                output_gpkg: true,
+                merge: false,
+                output_dir: gpkg_dir.path().to_string_lossy().to_string(),
+            };
+            let gpkg_result = convert::convert_txt_to_shp(
+                &[original_path.clone()],
+                &txt_to_gpkg_opts,
+                &header,
+            ).unwrap_or_else(|e| panic!("{} 第{}轮 TXT→GPKG 失败: {}", stem, round, e));
+
+            let gpkg_path = gpkg_result.output_files.iter()
+                .find(|f| f.ends_with(".gpkg"))
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|| panic!("{} 第{}轮: 应生成 .gpkg", stem, round));
+
+            eprintln!("    TXT→GPKG: {} 要素写入 {}", gpkg_result.processed_count, gpkg_path.display());
+
+            // GPKG → TXT
+            let txt_dir = tempfile::tempdir().expect("创建临时目录");
+            let field_mapping = convert::FieldMapping {
+                name: "DKMC".into(),
+                id: "DKBH".into(),
+                area: "MJ".into(),
+                use_field: "DKYT".into(),
+                tfh: "TFH".into(),
+                dlbm: "DLBM".into(),
+            };
+            let shp_to_txt_opts = convert::ShpToTxtOptions {
+                ox: false,
+                oj: true,
+                op: false,
+                on: false,
+                oo: false,
+                om: false,
+                buffer: 0.0,
+            };
+
+            let txt_result = convert::convert_shp_to_txt(
+                &[],
+                Some("gpkg"),
+                Some(&gpkg_path),
+                &header,
+                &field_mapping,
+                &shp_to_txt_opts,
+                txt_dir.path(),
+                None,
+            ).unwrap_or_else(|e| panic!("{} 第{}轮 GPKG→TXT 失败: {}", stem, round, e));
+
+            eprintln!("    GPKG→TXT: {} 文件生成", txt_result.output_files.len());
+
+            // 读取生成的 TXT
+            let generated_txt_path = &txt_result.output_files[0];
+            current_text = std::fs::read_to_string(generated_txt_path)
+                .unwrap_or_else(|e| panic!("读取第{}轮 TXT 失败: {}", round, e));
+        }
+
+        // 比较原始和经过 2 轮后的 TXT
+        let original_lines: Vec<&str> = original_text.lines().collect();
+        let final_lines: Vec<&str> = current_text.lines().collect();
+
+        if original_lines != final_lines {
+            eprintln!("  差异 ({} 行 vs {} 行):", original_lines.len(), final_lines.len());
+            for (i, (o, f)) in original_lines.iter().zip(final_lines.iter()).enumerate() {
+                if o != f {
+                    eprintln!("    行 {}: 原始={} | 最终={}", i + 1, o, f);
+                }
+            }
+            // 显示仅在一方存在的行
+            if original_lines.len() != final_lines.len() {
+                let max_len = original_lines.len().max(final_lines.len());
+                for i in 0..max_len {
+                    let o = original_lines.get(i).unwrap_or(&"");
+                    let f = final_lines.get(i).unwrap_or(&"");
+                    if o != f {
+                        eprintln!("    行 {}: 原始=\"{}\" | 最终=\"{}\"", i + 1, o, f);
+                    }
+                }
+            }
+        }
+
+        assert_eq!(original_lines, final_lines,
+            "{}: 经过 2 轮 TXT→GPKG→TXT 后内容应一致", stem);
+
+        eprintln!("  ✓ {} 往返测试通过", stem);
     }
 }

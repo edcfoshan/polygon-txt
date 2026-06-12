@@ -1,4 +1,4 @@
-//! GeoPackage (.gpkg) 读写模块 — 纯 Rust 实现
+﻿//! GeoPackage (.gpkg) 读写模块 — 纯 Rust 实现
 //! 基于 OGC GeoPackage 标准，使用 SQLite 存储矢量面数据
 
 use rusqlite::Connection;
@@ -30,8 +30,114 @@ pub struct GpkgLayerInfo {
     pub num_features: usize,
 }
 
-/// CGCS2000 3-degree Gauss-Kruger zone 38 SRID
-const CGCS2000_SRID: i32 = 4490;
+fn projected_srs_from_crs_info(
+    crs_info: &HashMap<String, String>,
+) -> Result<(i32, String, String), String> {
+    let crs = crs_info
+        .get("c")
+        .map(|s| s.trim())
+        .ok_or_else(|| "TXT 头缺少坐标系信息".to_string())?;
+    let band = crs_info
+        .get("b")
+        .map(|s| s.trim())
+        .ok_or_else(|| "TXT 头缺少几度分带信息".to_string())?;
+    let zone = crs_info
+        .get("z")
+        .map(|s| s.trim())
+        .ok_or_else(|| "TXT 头缺少带号信息".to_string())?;
+    let zone = parse_zone(zone)?;
+
+    let (central_meridian, false_easting, srs_id, proj_name) = match band {
+        "3" => {
+            if !(35..=50).contains(&zone) {
+                return Err(format!("3度带带号超出范围: {}", zone));
+            }
+            (
+                zone * 3,
+                zone * 1_000_000 + 500_000,
+                4488 + zone,
+                format!("CGCS2000 / 3-degree Gauss-Kruger zone {}", zone),
+            )
+        }
+        "6" => {
+            if !(13..=23).contains(&zone) {
+                return Err(format!("6度带带号超出范围: {}", zone));
+            }
+            (
+                zone * 6 - 3,
+                zone * 1_000_000 + 500_000,
+                4478 + zone,
+                format!("CGCS2000 / Gauss-Kruger zone {}", zone),
+            )
+        }
+        other => return Err(format!("不支持的几度分带: {}", other)),
+    };
+
+    let (geogcs_name, datum_name, spheroid_name, semi_major, inv_flattening) =
+        if crs.contains("2000") || crs.contains("CGCS") {
+            (
+                "China Geodetic Coordinate System 2000",
+                "China_2000",
+                "CGCS2000",
+                6378137.0,
+                298.257222101,
+            )
+        } else if crs.contains("1980") || crs.contains("Xian") {
+            (
+                "Xian 1980",
+                "Xian_1980",
+                "Xian_1980",
+                6378140.0,
+                298.257,
+            )
+        } else if crs.contains("1954") || crs.contains("Beijing") {
+            (
+                "Beijing 1954",
+                "Beijing_1954",
+                "Krasovsky_1940",
+                6378245.0,
+                298.3,
+            )
+        } else {
+            (
+                "WGS 84",
+                "WGS_1984",
+                "WGS_1984",
+                6378137.0,
+                298.257223563,
+            )
+        };
+
+    let wkt = format!(
+        "PROJCS[\"{}\",GEOGCS[\"{}\",DATUM[\"{}\",SPHEROID[\"{}\",{},{}]],PRIMEM[\"Greenwich\",0.0],UNIT[\"Degree\",0.0174532925199433]],PROJECTION[\"Gauss_Kruger\"],PARAMETER[\"False_Easting\",{}],PARAMETER[\"False_Northing\",0.0],PARAMETER[\"Central_Meridian\",{}],PARAMETER[\"Scale_Factor\",1.0],PARAMETER[\"Latitude_Of_Origin\",0.0],UNIT[\"Meter\",1.0]]",
+        proj_name,
+        geogcs_name,
+        datum_name,
+        spheroid_name,
+        semi_major,
+        inv_flattening,
+        false_easting,
+        central_meridian
+    );
+
+    Ok((srs_id, wkt, proj_name))
+}
+
+fn parse_zone(raw: &str) -> Result<i32, String> {
+    if raw.is_empty() {
+        return Err("带号为空，请在表头设置中填写带号（如 38）后再转换".to_string());
+    }
+    let cleaned = raw.trim().trim_matches('\u{feff}');
+    if let Ok(value) = cleaned.parse::<i32>() {
+        return Ok(value);
+    }
+    if let Ok(value) = cleaned.parse::<f64>() {
+        if value.fract().abs() < 1e-9 {
+            return Ok(value.round() as i32);
+        }
+    }
+    Err(format!("带号格式无效: \"{}\"，请填写纯数字（如 38）", raw))
+}
 
 // ─── WKB 编码/解码 ───
 
@@ -69,7 +175,7 @@ fn encode_wkb_polygon(coords: &[(f64, f64)]) -> Vec<u8> {
 }
 
 /// GeoPackage 几何编码：GPKG header + WKB
-fn encode_gpkg_geom(coords: &[(f64, f64)]) -> Vec<u8> {
+fn encode_gpkg_geom(coords: &[(f64, f64)], srs_id: i32) -> Vec<u8> {
     if coords.len() < 3 {
         return Vec::new();
     }
@@ -78,14 +184,13 @@ fn encode_gpkg_geom(coords: &[(f64, f64)]) -> Vec<u8> {
         return Vec::new();
     }
 
-    // GPKG BLOB header: magic(2) + version(1) + flags(1) + srid(4) + [empty_envelope]
-    // flags: bit0=0(no envelope), bit1=1(exterior), bit2-3=0(no crs), bit4-7=0
-    let flags: u8 = 0x02; // exterior envelope empty
+    // GPKG BLOB header: magic(2) + version(1) + flags(1) + srid(4)
+    let flags: u8 = 0x01;
     let mut buf = Vec::with_capacity(8 + wkb.len());
     buf.extend_from_slice(b"GP"); // magic
     buf.push(0x00); // version
     buf.push(flags);
-    buf.extend_from_slice(&CGCS2000_SRID.to_le_bytes());
+    buf.extend_from_slice(&srs_id.to_le_bytes());
     // No envelope for simplicity
     buf.extend_from_slice(&wkb);
     buf
@@ -247,7 +352,7 @@ pub fn write_gpkg_output(
     fields: &[(String, String, u8, u32)],
     attributes: &[HashMap<String, String>],
     geometries: &[Vec<(f64, f64)>],
-    _crs_info: &HashMap<String, String>,
+    crs_info: &HashMap<String, String>,
 ) -> Result<Vec<String>, String> {
     let gpkg_path = output_dir.join(format!("{}.gpkg", base_name));
 
@@ -316,12 +421,12 @@ pub fn write_gpkg_output(
         .join(", ");
     let create_sql = if all_cols.is_empty() {
         format!(
-            "CREATE TABLE \"{}\" (\"fid\" INTEGER PRIMARY KEY AUTOINCREMENT, \"geom\" BLOB NOT NULL)",
+            "CREATE TABLE \"{}\" (\"fid\" INTEGER PRIMARY KEY AUTOINCREMENT, \"geom\" POLYGON NOT NULL)",
             base_name
         )
     } else {
         format!(
-            "CREATE TABLE \"{}\" (\"fid\" INTEGER PRIMARY KEY AUTOINCREMENT, \"geom\" BLOB NOT NULL, {})",
+            "CREATE TABLE \"{}\" (\"fid\" INTEGER PRIMARY KEY AUTOINCREMENT, \"geom\" POLYGON NOT NULL, {})",
             base_name, all_cols
         )
     };
@@ -331,14 +436,22 @@ pub fn write_gpkg_output(
         .map_err(|e| format!("创建要素表失败: {}", e))?;
 
     // 注册到元数据
+    let (feature_srs_id, feature_srs_wkt, feature_srs_name) =
+        projected_srs_from_crs_info(crs_info)?;
+
     conn.execute(
-        "INSERT INTO gpkg_contents (table_name, data_type, identifier, srs_id) VALUES (?1, 'features', ?2, 4490)",
-        rusqlite::params![base_name, base_name],
+        "INSERT OR REPLACE INTO gpkg_spatial_ref_sys (srs_id, srs_name, srs_type, organization, organization_coordsys_id, definition, description) VALUES (?1, ?2, 'PROJECTED', 'EPSG', ?1, ?3, 'projected CRS')",
+        rusqlite::params![feature_srs_id, feature_srs_name, feature_srs_wkt],
+    ).map_err(|e| format!("注册投影坐标系失败: {}", e))?;
+
+    conn.execute(
+        "INSERT INTO gpkg_contents (table_name, data_type, identifier, srs_id) VALUES (?1, 'features', ?2, ?3)",
+        rusqlite::params![base_name, base_name, feature_srs_id],
     ).map_err(|e| format!("注册 gpkg_contents 失败: {}", e))?;
 
     conn.execute(
-        "INSERT INTO gpkg_geometry_columns (table_name, column_name, geometry_type_name, srs_id, z, m) VALUES (?1, 'geom', 'POLYGON', 4490, 0, 0)",
-        rusqlite::params![base_name],
+        "INSERT INTO gpkg_geometry_columns (table_name, column_name, geometry_type_name, srs_id, z, m) VALUES (?1, 'geom', 'POLYGON', ?2, 0, 0)",
+        rusqlite::params![base_name, feature_srs_id],
     ).map_err(|e| format!("注册 gpkg_geometry_columns 失败: {}", e))?;
 
     // 插入要素
@@ -362,7 +475,7 @@ pub fn write_gpkg_output(
             continue;
         }
 
-        let gpkg_geom = encode_gpkg_geom(coords);
+        let gpkg_geom = encode_gpkg_geom(coords, feature_srs_id);
 
         let mut field_values: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
         field_values.push(Box::new(gpkg_geom)); // ?1 = geom

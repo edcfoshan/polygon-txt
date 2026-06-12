@@ -6,9 +6,26 @@ async function tauriInvoke(cmd, args) {
   try {
     return await invoke(cmd, args);
   } catch (e) {
-    console.error('[Tauri] invoke error:', cmd, e);
+    console.error('[Tauri] invoke error:', cmd, summarizeInvokeArgs(args), e);
     throw e;
   }
+}
+
+function summarizeInvokeArgs(args) {
+  if (!args || typeof args !== "object") return args;
+  const summary = {};
+  for (const [key, value] of Object.entries(args)) {
+    if (Array.isArray(value)) {
+      summary[key] = `array(${value.length})`;
+    } else if (typeof value === "string") {
+      summary[key] = value.length > 120 ? `${value.slice(0, 120)}...` : value;
+    } else if (value && typeof value === "object") {
+      summary[key] = `object(${Object.keys(value).length})`;
+    } else {
+      summary[key] = value;
+    }
+  }
+  return summary;
 }
 
 // ═══ State ═══
@@ -215,6 +232,17 @@ function autoFillHeader(info) {
   }
 }
 
+function autoFillHeaderFromTxt(info) {
+  const map = { "坐标系": "hc", "几度分带": "hb", "投影类型": "hj", "计量单位": "hu", "带号": "hz", "精度": "ha" };
+  for (const [k, id] of Object.entries(map)) {
+    if (!headerManual[id] && info[k]) {
+      const el = $(id);
+      if (el) { el.value = info[k]; el.style.borderColor = "var(--ac)";
+        setTimeout(() => { el.style.borderColor = ""; }, 2000); }
+    }
+  }
+}
+
 // ═══ TXT 导入 ═══
 window.importTxt = async function () {
   try {
@@ -223,6 +251,7 @@ window.importTxt = async function () {
     txtFiles = result.files;
     renderTxtFileList();
     renderTxtParseLog();
+    if (txtFiles[0]?.crs_info) autoFillHeaderFromTxt(txtFiles[0].crs_info);
     autoSetOutputDirT(txtFiles[0]?.path);
   } catch (e) {
     toast("导入失败: " + e);
@@ -602,6 +631,7 @@ function init() {
         const result = await tauriInvoke("pick_txt_files_from_paths", { paths });
         if (result.files && result.files.length > 0) {
           txtFiles = result.files; renderTxtFileList(); renderTxtParseLog();
+          if (result.files[0]?.crs_info) autoFillHeaderFromTxt(result.files[0].crs_info);
         }
       } catch (err) { toast("拖放导入失败: " + err); }
     });

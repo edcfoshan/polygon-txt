@@ -1,4 +1,5 @@
 // SHP / DBF / PRJ 文件读写模块
+use crate::geometry::{PolygonPart, SurfaceGeometry};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::Read;
@@ -8,6 +9,7 @@ use std::path::{Path, PathBuf};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ShpFeature {
     pub points: Vec<(f64, f64)>, // (x, y) = (easting, northing)
+    pub surface: SurfaceGeometry,
 }
 
 /// SHP 文件的摘要信息
@@ -37,29 +39,66 @@ pub fn read_shp(path: &Path) -> Result<Vec<ShpFeature>, String> {
         let shape = result.map_err(|e| format!("读取 SHP 图形: {}", e))?;
         match shape {
             shapefile::Shape::Polygon(poly) => {
+                let mut parts = Vec::new();
+                let mut current_exterior: Option<Vec<(f64, f64)>> = None;
+                let mut current_holes: Vec<Vec<(f64, f64)>> = Vec::new();
+
                 for ring in poly.rings() {
-                    // Only extract outer rings; inner rings (holes) are skipped
-                    // because the TXT format uses single-ring plots
-                    if let shapefile::PolygonRing::Outer(pts) = ring {
-                        let points: Vec<(f64, f64)> =
-                            pts.iter().map(|p| (p.x, p.y)).collect();
-                        if !points.is_empty() {
-                            features.push(ShpFeature { points });
+                    match ring {
+                        shapefile::PolygonRing::Outer(pts) => {
+                            if let Some(exterior) = current_exterior.take() {
+                                parts.push(PolygonPart {
+                                    exterior,
+                                    holes: std::mem::take(&mut current_holes),
+                                });
+                            }
+                            current_exterior = Some(pts.iter().map(|p| (p.x, p.y)).collect());
+                        }
+                        shapefile::PolygonRing::Inner(pts) => {
+                            current_holes.push(pts.iter().map(|p| (p.x, p.y)).collect());
                         }
                     }
+                }
+
+                if let Some(exterior) = current_exterior.take() {
+                    parts.push(PolygonPart {
+                        exterior,
+                        holes: current_holes,
+                    });
+                }
+
+                if !parts.is_empty() {
+                    let points = parts[0].exterior.clone();
+                    features.push(ShpFeature {
+                        points,
+                        surface: SurfaceGeometry { parts },
+                    });
                 }
             }
             shapefile::Shape::Polyline(pl) => {
                 for part in pl.parts() {
                     let pts: Vec<(f64, f64)> = part.iter().map(|p| (p.x, p.y)).collect();
                     if !pts.is_empty() {
-                        features.push(ShpFeature { points: pts });
+                        let surface = SurfaceGeometry {
+                            parts: vec![PolygonPart {
+                                exterior: pts.clone(),
+                                holes: Vec::new(),
+                            }],
+                        };
+                        features.push(ShpFeature { points: pts, surface });
                     }
                 }
             }
             shapefile::Shape::Point(p) => {
+                let pts = vec![(p.x, p.y)];
                 features.push(ShpFeature {
-                    points: vec![(p.x, p.y)],
+                    points: pts.clone(),
+                    surface: SurfaceGeometry {
+                        parts: vec![PolygonPart {
+                            exterior: pts,
+                            holes: Vec::new(),
+                        }],
+                    },
                 });
             }
             _ => {}
@@ -314,6 +353,27 @@ pub fn write_shapefile(
     band: &str,
     zone: &str,
 ) -> Result<Vec<String>, String> {
+    let surfaces: Vec<SurfaceGeometry> = geometries
+        .iter()
+        .map(|geom| SurfaceGeometry {
+            parts: vec![PolygonPart {
+                exterior: geom.clone(),
+                holes: Vec::new(),
+            }],
+        })
+        .collect();
+    write_shapefile_structured(output_dir, stem, &surfaces, attributes, crs, band, zone)
+}
+
+pub fn write_shapefile_structured(
+    output_dir: &Path,
+    stem: &str,
+    geometries: &[SurfaceGeometry],
+    attributes: &[std::collections::HashMap<String, String>],
+    crs: &str,
+    band: &str,
+    zone: &str,
+) -> Result<Vec<String>, String> {
     use shapefile::{ShapeWriter as ShpShapeWriter, PolygonRing, Point as ShpPoint, Polygon as ShpPolygon};
 
     let mut shp_paths = Vec::new();
@@ -323,25 +383,48 @@ pub fn write_shapefile(
     let mut swriter = ShpShapeWriter::from_path(&shp_path)
         .map_err(|e| format!("创建 SHP 写入器失败: {}", e))?;
 
-    for geom in geometries {
-        if geom.len() < 3 {
+    for surface in geometries {
+        let mut rings = Vec::new();
+        for part in &surface.parts {
+            if part.exterior.len() < 3 {
+                continue;
+            }
+            let exterior_points: Vec<ShpPoint> = part
+                .exterior
+                .iter()
+                .map(|&(x, y)| ShpPoint::new(x, y))
+                .collect();
+            let exterior_points = if exterior_points.first() != exterior_points.last() {
+                let mut closed = exterior_points.clone();
+                closed.push(closed[0]);
+                closed
+            } else {
+                exterior_points
+            };
+            rings.push(PolygonRing::Outer(exterior_points));
+
+            for hole in &part.holes {
+                if hole.len() < 3 {
+                    continue;
+                }
+                let hole_points: Vec<ShpPoint> = hole
+                    .iter()
+                    .map(|&(x, y)| ShpPoint::new(x, y))
+                    .collect();
+                let hole_points = if hole_points.first() != hole_points.last() {
+                    let mut closed = hole_points.clone();
+                    closed.push(closed[0]);
+                    closed
+                } else {
+                    hole_points
+                };
+                rings.push(PolygonRing::Inner(hole_points));
+            }
+        }
+        if rings.is_empty() {
             continue;
         }
-        let points: Vec<ShpPoint> = geom
-            .iter()
-            .map(|&(x, y)| ShpPoint::new(x, y))
-            .collect();
-
-        let ring_points = if points.first() != points.last() {
-            let mut closed = points.clone();
-            closed.push(closed[0]);
-            closed
-        } else {
-            points.clone()
-        };
-
-        let ring = PolygonRing::Outer(ring_points);
-        let poly = ShpPolygon::new(ring);
+        let poly = ShpPolygon::with_rings(rings);
         swriter
             .write_shape(&poly)
             .map_err(|e| format!("写 SHP 图形失败: {}", e))?;

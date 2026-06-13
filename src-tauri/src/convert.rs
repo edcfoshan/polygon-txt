@@ -1,4 +1,5 @@
 use crate::gdb;
+use crate::geometry::{indexed_rings_to_surface, surface_to_indexed_rings, SurfaceGeometry};
 use crate::gpkg;
 use crate::shp;
 use crate::txt;
@@ -324,8 +325,8 @@ pub fn convert_txt_to_shp(
             std::fs::create_dir_all(&out_dir)
                 .map_err(|e| format!("创建目录失败: {}", e))?;
 
-            let (geometries, attributes) = plots_to_shp_data(&parsed.plots);
-            let shp_files = shp::write_shapefile(
+            let (geometries, attributes) = plots_to_surfaces_and_attributes(&parsed.plots);
+            let shp_files = shp::write_shapefile_structured(
                 &out_dir,
                 &stem,
                 &geometries,
@@ -338,7 +339,7 @@ pub fn convert_txt_to_shp(
         }
 
         if options.output_gpkg {
-            let (geometries, attributes) = plots_to_shp_data(&parsed.plots);
+            let (geometries, attributes) = plots_to_surfaces_and_attributes(&parsed.plots);
             let fields: Vec<(String, String, u8, u32)> = vec![
                 ("DKMC".into(), "地块名称".into(), 4u8, 50u32),
                 ("DKBH".into(), "地块编号".into(), 4u8, 30u32),
@@ -359,7 +360,7 @@ pub fn convert_txt_to_shp(
             crs_info.insert("b".to_string(), band);
             crs_info.insert("z".to_string(), zone);
 
-            let gpkg_files = gpkg::write_gpkg_output(
+            let gpkg_files = gpkg::write_gpkg_output_structured(
                 output_dir,
                 &stem,
                 &fields,
@@ -410,7 +411,7 @@ fn single_shp_to_plots(
         let plot_dlbm = get_field_value(&field_mapping.dlbm, &info.field_names, &record);
 
         plots.push(build_plot_data(
-            &feat.points,
+            &feat.surface,
             plot_name,
             plot_area,
             plot_use,
@@ -441,7 +442,7 @@ fn gdb_features_to_plots(
 
         for feat in features {
             all_plots.push(build_plot_data(
-                &feat.points,
+                &feat.surface,
                 get_field_value_map(&field_mapping.name, &feat.attributes).to_string(),
                 get_field_value_map(&field_mapping.area, &feat.attributes).to_string(),
                 get_field_value_map(&field_mapping.use_field, &feat.attributes).to_string(),
@@ -465,7 +466,7 @@ fn gpkg_features_to_plots(
     for features in &info.all_features {
         for feat in features {
             all_plots.push(build_plot_data(
-                &feat.points,
+                &feat.surface,
                 get_field_value_map(&field_mapping.name, &feat.attributes).to_string(),
                 get_field_value_map(&field_mapping.area, &feat.attributes).to_string(),
                 get_field_value_map(&field_mapping.use_field, &feat.attributes).to_string(),
@@ -480,7 +481,7 @@ fn gpkg_features_to_plots(
 }
 
 fn build_plot_data(
-    points: &[(f64, f64)],
+    surface: &SurfaceGeometry,
     plot_name: String,
     plot_area: String,
     plot_use: String,
@@ -488,34 +489,8 @@ fn build_plot_data(
     plot_dlbm: String,
     options: &ShpToTxtOptions,
 ) -> txt::PlotData {
-    let mut coords: Vec<(f64, f64)> = points
-        .iter()
-        .map(|&(x, y)| if options.ox { (x, y) } else { (y, x) })
-        .collect();
-
-    if options.on && coords.len() > 2 {
-        let mut best_idx = 0;
-        let mut best_y = f64::NEG_INFINITY;
-        let mut best_x = f64::INFINITY;
-        for (i, &(y, x)) in coords.iter().enumerate() {
-            if y > best_y || (y == best_y && x < best_x) {
-                best_y = y;
-                best_x = x;
-                best_idx = i;
-            }
-        }
-        if best_idx > 0 {
-            coords.rotate_left(best_idx);
-        }
-    }
-
-    if options.oo && coords.len() >= 2 {
-        let first = coords[0];
-        let last = coords[coords.len() - 1];
-        if (first.0 - last.0).abs() > 1e-9 || (first.1 - last.1).abs() > 1e-9 {
-            coords.push(first);
-        }
-    }
+    let rings = surface_to_indexed_rings(surface, options.on, options.oo);
+    let coords = rings.iter().flat_map(|ring| ring.coords.iter().copied()).collect::<Vec<_>>();
 
     txt::PlotData {
         point_count: coords.len() as u32,
@@ -527,19 +502,27 @@ fn build_plot_data(
         use_field: plot_use,
         dlbm: plot_dlbm,
         coords,
+        rings,
     }
 }
 
-fn plots_to_shp_data(
+fn plots_to_surfaces_and_attributes(
     plots: &[txt::PlotData],
-) -> (Vec<Vec<(f64, f64)>>, Vec<HashMap<String, String>>) {
+) -> (Vec<SurfaceGeometry>, Vec<HashMap<String, String>>) {
     let mut geometries = Vec::new();
     let mut attributes = Vec::new();
 
     for plot in plots {
-        let coords: Vec<(f64, f64)> = plot.coords.iter().map(|&(y, x)| (x, y)).collect();
-        if coords.len() >= 3 {
-            geometries.push(coords);
+        let surface = if plot.rings.is_empty() {
+            indexed_rings_to_surface(&[crate::geometry::IndexedRing {
+                part_index: 1,
+                coords: plot.coords.clone(),
+            }])
+        } else {
+            indexed_rings_to_surface(&plot.rings)
+        };
+        if !surface.parts.is_empty() {
+            geometries.push(surface);
 
             let mut attr = HashMap::new();
             attr.insert("DKMC".to_string(), plot.name.clone());

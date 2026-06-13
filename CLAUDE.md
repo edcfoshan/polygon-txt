@@ -54,6 +54,7 @@ index.html (CSS 内联, Google Fonts CDN)
 | 模块 | 功能 |
 |------|------|
 | `lib.rs` | 12 个 Tauri IPC 命令 + IPC 类型定义 |
+| `geometry.rs` | 多边形几何共享类型（SurfaceGeometry/PolygonPart/IndexedRing）+ 环向归一化、洞识别、坐标系交换 |
 | `shp.rs` | SHP 读写（shapefile crate）、DBF 解析、PRJ 坐标系识别 |
 | `txt.rs` | TXT 三段式格式解析与生成 |
 | `gdb.rs` + `gdb/gdb_templates.rs` | GDB 读取（geonative-filegdb）+ 模板化最小 OpenFileGDB 写入 |
@@ -75,13 +76,15 @@ index.html (CSS 内联, Google Fonts CDN)
 ├─ package.json / vite.config.js
 ├─ CLAUDE.md / AGENTS.md   ← Claude / Qoder 指导文件
 │
-├─ content/                ← Markdown 弹窗内容（?raw 导入，热更新）
+├─ content/                ← Markdown 弹窗内容 + 图片资源（?raw 导入，热更新）
 │   ├─ about.md
-│   └─ sponsor.md
+│   ├─ sponsor.md
+│   ├─ 关注、赞赏码.png
+│   └─ 讨论群.jpg
 ├─ src/                    ← 前端源码
 │   └─ main.js
 ├─ src-tauri/              ← Rust 后端
-│   ├─ src/                ←   lib/shp/txt/gdb/gpkg/convert/smoke
+│   ├─ src/                ←   lib/geometry/shp/txt/gdb/gpkg/convert/smoke
 │   ├─ tests/              ←   integration_test / release_smoke_test / debug_output_test
 │   ├─ templates/          ←   GDB 写入模板二进制
 │   └─ capabilities/       ←   Tauri 权限声明
@@ -96,7 +99,7 @@ index.html (CSS 内联, Google Fonts CDN)
 └─ 00测试数据/              ← 测试数据：实际业务 TXT + 转换产物
 ```
 
-`关注、赞赏码.png` 留在根目录 — `content/*.md` 中以相对路径引用，运行时从页面根加载。
+图片资源放在 `content/` 中，`about.md`/`sponsor.md` 以 `content/xxx` 相对路径引用，由 `renderMarkdown()` 渲染为 `<img>` 标签，浏览器从页面根（dist/）发起请求。
 
 ## 关键注意事项
 

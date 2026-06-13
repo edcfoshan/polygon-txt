@@ -3,6 +3,7 @@
 // 写入: 最小化 OpenFileGDB (仅 Polygon)
 
 use geonative_core::{Geometry as GeoGeom, Value};
+use crate::geometry::{PolygonPart, SurfaceGeometry};
 use geonative_filegdb as fgdb;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -14,6 +15,7 @@ mod gdb_templates;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GdbFeature {
     pub points: Vec<(f64, f64)>,
+    pub surface: SurfaceGeometry,
     pub attributes: HashMap<String, String>,
 }
 
@@ -127,10 +129,12 @@ fn read_gdb_via_library(
 
                     let mut gdb_feat = GdbFeature {
                         points: Vec::new(),
+                        surface: SurfaceGeometry::default(),
                         attributes: HashMap::new(),
                     };
 
                     if let Some(ref geom) = feature.geometry {
+                        gdb_feat.surface = extract_surface_geometry(geom);
                         extract_coords(geom, &mut gdb_feat.points);
                     }
 
@@ -297,6 +301,7 @@ fn read_layer_manual(
 
         let mut gdb_feat = GdbFeature {
             points: Vec::new(),
+            surface: SurfaceGeometry::default(),
             attributes: HashMap::new(),
         };
 
@@ -304,6 +309,7 @@ fn read_layer_manual(
         if let (Some(geom_blob), Some(gidx)) = (&row.geometry_blob, geom_field_idx) {
             if let Some(meta) = schema.fields[gidx].geometry.as_ref() {
                 if let Ok(geom) = fgdb::decode_shape_buffer(geom_blob, meta) {
+                    gdb_feat.surface = extract_surface_geometry(&geom);
                     extract_coords(&geom, &mut gdb_feat.points);
                 }
             }
@@ -370,6 +376,35 @@ fn infer_geom_type(features: &[GdbFeature]) -> &str {
         1 => "Point",
         n if n > 2 => "Polygon",
         _ => "PolyLine",
+    }
+}
+
+fn extract_surface_geometry(geom: &GeoGeom) -> SurfaceGeometry {
+    match geom {
+        GeoGeom::Polygon(poly) => SurfaceGeometry {
+            parts: vec![PolygonPart {
+                exterior: poly.exterior.coords.iter().map(|c| (c.x, c.y)).collect(),
+                holes: poly
+                    .holes
+                    .iter()
+                    .map(|hole| hole.coords.iter().map(|c| (c.x, c.y)).collect())
+                    .collect(),
+            }],
+        },
+        GeoGeom::MultiPolygon(polys) => SurfaceGeometry {
+            parts: polys
+                .iter()
+                .map(|poly| PolygonPart {
+                    exterior: poly.exterior.coords.iter().map(|c| (c.x, c.y)).collect(),
+                    holes: poly
+                        .holes
+                        .iter()
+                        .map(|hole| hole.coords.iter().map(|c| (c.x, c.y)).collect())
+                        .collect(),
+                })
+                .collect(),
+        },
+        _ => SurfaceGeometry::default(),
     }
 }
 

@@ -1,6 +1,11 @@
 ﻿//! GeoPackage (.gpkg) 读写模块 — 纯 Rust 实现
 //! 基于 OGC GeoPackage 标准，使用 SQLite 存储矢量面数据
 
+use crate::geometry::{PolygonPart, SurfaceGeometry};
+use geonative_core::{
+    Coord as GeoCoord, Geometry as GeoGeometry, LineString as GeoLineString,
+    Polygon as GeoPolygon,
+};
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -10,6 +15,7 @@ use std::path::Path;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GpkgFeature {
     pub points: Vec<(f64, f64)>,
+    pub surface: SurfaceGeometry,
     pub attributes: HashMap<String, String>,
 }
 
@@ -141,45 +147,66 @@ fn parse_zone(raw: &str) -> Result<i32, String> {
 
 // ─── WKB 编码/解码 ───
 
-/// 将坐标点编码为 WKB Polygon（EPSG:4326 经纬度或投影坐标）
-fn encode_wkb_polygon(coords: &[(f64, f64)]) -> Vec<u8> {
-    if coords.len() < 3 {
-        return Vec::new();
+fn close_xy_ring(points: &[(f64, f64)]) -> Vec<GeoCoord> {
+    let mut coords: Vec<GeoCoord> = points
+        .iter()
+        .map(|&(x, y)| GeoCoord::xy(x, y))
+        .collect();
+    if let Some(first) = coords.first().cloned() {
+        let needs_close = coords
+            .last()
+            .map(|last| (first.x - last.x).abs() > 1e-12 || (first.y - last.y).abs() > 1e-12)
+            .unwrap_or(false);
+        if needs_close {
+            coords.push(first);
+        }
     }
+    coords
+}
 
-    // 确保闭合
-    let ring: Vec<(f64, f64)> = if coords.len() >= 2
-        && (coords[0].0 - coords.last().unwrap().0).abs() < 1e-12
-        && (coords[0].1 - coords.last().unwrap().1).abs() < 1e-12
-    {
-        coords.to_vec()
+fn geo_polygon_to_part(poly: &GeoPolygon) -> PolygonPart {
+    PolygonPart {
+        exterior: poly.exterior.coords.iter().map(|c| (c.x, c.y)).collect(),
+        holes: poly
+            .holes
+            .iter()
+            .map(|hole| hole.coords.iter().map(|c| (c.x, c.y)).collect())
+            .collect(),
+    }
+}
+
+fn encode_wkb_surface(surface: &SurfaceGeometry) -> Vec<u8> {
+    let polygons: Vec<GeoPolygon> = surface
+        .parts
+        .iter()
+        .filter(|part| part.exterior.len() >= 3)
+        .map(|part| {
+            let exterior = GeoLineString::new(close_xy_ring(&part.exterior));
+            let holes = part
+                .holes
+                .iter()
+                .filter(|hole| hole.len() >= 3)
+                .map(|hole| GeoLineString::new(close_xy_ring(hole)))
+                .collect();
+            GeoPolygon::new(exterior, holes)
+        })
+        .collect();
+
+    if polygons.is_empty() {
+        Vec::new()
+    } else if polygons.len() == 1 {
+        GeoGeometry::Polygon(polygons[0].clone()).to_wkb()
     } else {
-        let mut c = coords.to_vec();
-        c.push(coords[0]);
-        c
-    };
-
-    let n = ring.len();
-    let mut buf = Vec::with_capacity(9 + n * 16);
-
-    // WKB header: LittleEndian(1) + Polygon(3) + nRings(1) + nPoints + coords
-    buf.push(0x01); // byte order = Little Endian
-    buf.extend_from_slice(&3u32.to_le_bytes()); // geometry type = Polygon
-    buf.extend_from_slice(&1u32.to_le_bytes()); // 1 ring (exterior)
-    buf.extend_from_slice(&(n as u32).to_le_bytes()); // number of points
-    for &(x, y) in &ring {
-        buf.extend_from_slice(&x.to_le_bytes()); // X (easting)
-        buf.extend_from_slice(&y.to_le_bytes()); // Y (northing)
+        GeoGeometry::MultiPolygon(polygons).to_wkb()
     }
-    buf
 }
 
 /// GeoPackage 几何编码：GPKG header + WKB
-fn encode_gpkg_geom(coords: &[(f64, f64)], srs_id: i32) -> Vec<u8> {
-    if coords.len() < 3 {
+fn encode_gpkg_geom(surface: &SurfaceGeometry, srs_id: i32) -> Vec<u8> {
+    if surface.parts.is_empty() {
         return Vec::new();
     }
-    let wkb = encode_wkb_polygon(coords);
+    let wkb = encode_wkb_surface(surface);
     if wkb.is_empty() {
         return Vec::new();
     }
@@ -196,55 +223,30 @@ fn encode_gpkg_geom(coords: &[(f64, f64)], srs_id: i32) -> Vec<u8> {
     buf
 }
 
-/// 解码 WKB 几何体为坐标点列表（仅支持 Polygon）
-fn decode_wkb_polygon(data: &[u8]) -> Option<Vec<(f64, f64)>> {
-    if data.len() < 9 {
-        return None;
+fn decode_wkb_surface(data: &[u8]) -> Option<SurfaceGeometry> {
+    match GeoGeometry::from_wkb(data).ok()? {
+        GeoGeometry::Polygon(poly) => Some(SurfaceGeometry {
+            parts: vec![geo_polygon_to_part(&poly)],
+        }),
+        GeoGeometry::MultiPolygon(polys) => Some(SurfaceGeometry {
+            parts: polys.iter().map(geo_polygon_to_part).collect(),
+        }),
+        _ => None,
     }
-    let _byte_order = data[0];
-    let geom_type = u32::from_le_bytes([data[1], data[2], data[3], data[4]]);
-    if geom_type != 3 {
-        // Only Polygon supported
-        return None;
-    }
-    let n_rings = u32::from_le_bytes([data[5], data[6], data[7], data[8]]);
-    if n_rings < 1 {
-        return None;
-    }
-    let mut pos = 9;
-    if pos + 4 > data.len() {
-        return None;
-    }
-    let n_points = u32::from_le_bytes([data[pos], data[pos+1], data[pos+2], data[pos+3]]);
-    pos += 4;
-
-    let mut coords = Vec::with_capacity(n_points as usize);
-    for _ in 0..n_points {
-        if pos + 16 > data.len() {
-            break;
-        }
-        let x = f64::from_le_bytes([data[pos], data[pos+1], data[pos+2], data[pos+3],
-                                     data[pos+4], data[pos+5], data[pos+6], data[pos+7]]);
-        let y = f64::from_le_bytes([data[pos+8], data[pos+9], data[pos+10], data[pos+11],
-                                     data[pos+12], data[pos+13], data[pos+14], data[pos+15]]);
-        coords.push((x, y));
-        pos += 16;
-    }
-    Some(coords)
 }
 
 /// 从 GPKG BLOB 中提取坐标点（支持有/无 GPKG header）
-fn decode_gpkg_geom(data: &[u8]) -> Option<Vec<(f64, f64)>> {
+fn decode_gpkg_geom(data: &[u8]) -> Option<SurfaceGeometry> {
     if data.len() < 8 {
         return None;
     }
     // Check GPKG magic header
     if data[0] == b'G' && data[1] == b'P' {
         // Has GPKG header: skip 8 bytes (magic2 + ver1 + flags1 + srid4)
-        decode_wkb_polygon(&data[8..])
+        decode_wkb_surface(&data[8..])
     } else {
         // No GPKG header, assume raw WKB
-        decode_wkb_polygon(data)
+        decode_wkb_surface(data)
     }
 }
 
@@ -316,8 +318,17 @@ pub fn read_gpkg(path: &Path) -> Result<GpkgFileInfo, String> {
         for feat in feat_rows {
             let (geom_blob, attrs) = feat.map_err(|e| format!("要素行错误: {}", e))?;
             if let Some(blob) = geom_blob {
-                if let Some(coords) = decode_gpkg_geom(&blob) {
-                    features.push(GpkgFeature { points: coords, attributes: attrs });
+                if let Some(surface) = decode_gpkg_geom(&blob) {
+                    let points = surface
+                        .parts
+                        .first()
+                        .map(|part| part.exterior.clone())
+                        .unwrap_or_default();
+                    features.push(GpkgFeature {
+                        points,
+                        surface,
+                        attributes: attrs,
+                    });
                 }
             }
         }
@@ -358,6 +369,26 @@ pub fn write_gpkg_output(
     fields: &[(String, String, u8, u32)],
     attributes: &[HashMap<String, String>],
     geometries: &[Vec<(f64, f64)>],
+    crs_info: &HashMap<String, String>,
+) -> Result<Vec<String>, String> {
+    let surfaces: Vec<SurfaceGeometry> = geometries
+        .iter()
+        .map(|geom| SurfaceGeometry {
+            parts: vec![PolygonPart {
+                exterior: geom.clone(),
+                holes: Vec::new(),
+            }],
+        })
+        .collect();
+    write_gpkg_output_structured(output_dir, base_name, fields, attributes, &surfaces, crs_info)
+}
+
+pub fn write_gpkg_output_structured(
+    output_dir: &Path,
+    base_name: &str,
+    fields: &[(String, String, u8, u32)],
+    attributes: &[HashMap<String, String>],
+    geometries: &[SurfaceGeometry],
     crs_info: &HashMap<String, String>,
 ) -> Result<Vec<String>, String> {
     let gpkg_path = output_dir.join(format!("{}.gpkg", base_name));
@@ -476,12 +507,12 @@ pub fn write_gpkg_output(
     let mut insert_stmt = conn.prepare(&insert_sql)
         .map_err(|e| format!("准备插入语句失败: {}", e))?;
 
-    for (fi, coords) in geometries.iter().enumerate() {
-        if coords.len() < 3 {
+    for (fi, surface) in geometries.iter().enumerate() {
+        if surface.parts.is_empty() {
             continue;
         }
 
-        let gpkg_geom = encode_gpkg_geom(coords, feature_srs_id);
+        let gpkg_geom = encode_gpkg_geom(surface, feature_srs_id);
 
         let mut field_values: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
         field_values.push(Box::new(gpkg_geom)); // ?1 = geom
@@ -514,12 +545,22 @@ pub fn write_gpkg_output(
     // 更新范围
     let mut min_x = f64::MAX; let mut min_y = f64::MAX;
     let mut max_x = f64::MIN; let mut max_y = f64::MIN;
-    for coords in geometries {
-        for &(x, y) in coords {
-            if x < min_x { min_x = x; }
-            if y < min_y { min_y = y; }
-            if x > max_x { max_x = x; }
-            if y > max_y { max_y = y; }
+    for surface in geometries {
+        for part in &surface.parts {
+            for &(x, y) in &part.exterior {
+                if x < min_x { min_x = x; }
+                if y < min_y { min_y = y; }
+                if x > max_x { max_x = x; }
+                if y > max_y { max_y = y; }
+            }
+            for hole in &part.holes {
+                for &(x, y) in hole {
+                    if x < min_x { min_x = x; }
+                    if y < min_y { min_y = y; }
+                    if x > max_x { max_x = x; }
+                    if y > max_y { max_y = y; }
+                }
+            }
         }
     }
     if min_x != f64::MAX {

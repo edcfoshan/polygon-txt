@@ -615,14 +615,11 @@ body::before{
       </svg>
     </button>
     <div class="spacer" data-tauri-drag-region></div>
-    <div class="win-ctls" aria-label="窗口控制" data-tauri-drag-region="false">
-      <button class="win-btn" id="btnWinMin" title="最小化" aria-label="最小化" data-tauri-drag-region="false">
+    <div class="win-ctls" aria-label="窗口控制">
+      <button class="win-btn" id="btnWinMin" title="最小化" aria-label="最小化">
         <svg viewBox="0 0 12 12"><path d="M2 6h8"/></svg>
       </button>
-      <button class="win-btn" id="btnWinMax" title="最大化/还原" aria-label="最大化/还原" data-tauri-drag-region="false">
-        <svg viewBox="0 0 12 12"><rect x="2.5" y="2.5" width="7" height="7" rx="0.8"/></svg>
-      </button>
-      <button class="win-btn close" id="btnWinClose" title="关闭" aria-label="关闭" data-tauri-drag-region="false">
+      <button class="win-btn close" id="btnWinClose" title="关闭" aria-label="关闭">
         <svg viewBox="0 0 12 12"><path d="M2 2l8 8M10 2l-8 8"/></svg>
       </button>
     </div>
@@ -790,7 +787,7 @@ body::before{
 
 <!-- About Modal -->
 <div class="modal-overlay" id="aboutModal">
-  <div class="modal-card" style="max-width:360px;text-align:left">
+  <div class="modal-card" style="max-width:420px;text-align:left">
     <button class="modal-close" id="btnCloseAbout" aria-label="关闭">×</button>
     <div id="aboutBody"></div>
   </div>

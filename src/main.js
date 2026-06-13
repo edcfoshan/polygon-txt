@@ -1,11 +1,9 @@
 import { invoke } from '@tauri-apps/api/core';
-import { getCurrentWindow } from '@tauri-apps/api/window';
 import { open as shellOpen } from '@tauri-apps/plugin-shell';
 import aboutContent from '../content/about.md?raw';
 import sponsorContent from '../content/sponsor.md?raw';
-
-const WIN_MAX_ICON = `<svg viewBox="0 0 12 12"><rect x="2.5" y="2.5" width="7" height="7" rx="0.8"/></svg>`;
-const WIN_RESTORE_ICON = `<svg viewBox="0 0 12 12"><path d="M4 3.5h4.5v4.5H4z"/><path d="M3 4.5V3h4.5"/><path d="M4.5 3h4.5v4.5"/></svg>`;
+import aboutQrImage from '../content/讨论群.jpg?inline';
+import sponsorQrImage from '../content/关注、赞赏码.png?inline';
 
 // Tauri IPC 调用
 async function tauriInvoke(cmd, args) {
@@ -34,22 +32,22 @@ function summarizeInvokeArgs(args) {
   return summary;
 }
 
-function setWinMaxIcon(isMaximized) {
-  const btn = $("btnWinMax");
-  if (!btn) return;
-  btn.innerHTML = isMaximized ? WIN_RESTORE_ICON : WIN_MAX_ICON;
-  btn.title = isMaximized ? "还原" : "最大化";
-  btn.setAttribute("aria-label", isMaximized ? "还原" : "最大化");
-}
-
-async function syncWinControls(appWindow) {
-  if (!appWindow) return;
+async function runWindowCommand(command) {
   try {
-    setWinMaxIcon(await appWindow.isMaximized());
+    await tauriInvoke(command);
   } catch (e) {
-    console.warn("[Tauri] sync window controls failed:", e);
+    console.error(`[Tauri] ${command} failed:`, e);
+    toast(`窗口控制失败: ${e}`);
+    throw e;
   }
 }
+
+const MARKDOWN_IMAGE_MAP = {
+  "content/讨论群.jpg": aboutQrImage,
+  "讨论群.jpg": aboutQrImage,
+  "content/关注、赞赏码.png": sponsorQrImage,
+  "关注、赞赏码.png": sponsorQrImage,
+};
 
 // ═══ State ═══
 let loadedFiles = [];
@@ -119,10 +117,25 @@ function renderMarkdown(md) {
   closeList();
   function closeList() { if (inList) { html += '</ul>\n'; inList = false; } }
   function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  function normalizeMdImageSrc(src) {
+    const s = src.trim().replace(/\\/g, '/');
+    const contentIdx = s.lastIndexOf('/content/');
+    if (contentIdx >= 0) {
+      const normalized = s.slice(contentIdx + 1);
+      return MARKDOWN_IMAGE_MAP[normalized] || normalized;
+    }
+    if (/^[A-Za-z]:\//.test(s)) return '';
+    if (/^(https?:|data:|asset:|\/)/.test(s)) return s;
+    if (s.startsWith('content/')) return MARKDOWN_IMAGE_MAP[s] || s;
+    return MARKDOWN_IMAGE_MAP[s] || `content/${s}`;
+  }
   function inlineMd(t) {
     t = escHtml(t);
     t = t.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-    t = t.replace(/!\[(.+?)\]\((.+?)\)/g, '<img src="$2" alt="$1" style="max-width:160px;border-radius:6px;border:1px solid var(--brd);display:block;margin:0 auto">');
+    t = t.replace(/!\[(.+?)\]\((.+?)\)/g, (_, alt, src) => {
+      const normalizedSrc = normalizeMdImageSrc(src);
+      return `<img src="${escHtml(normalizedSrc)}" alt="${alt}" style="max-width:160px;border-radius:6px;border:1px solid var(--brd);display:block;margin:0 auto">`;
+    });
     t = t.replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" target="_blank" style="color:var(--ac)">$1</a>');
     return t;
   }
@@ -569,12 +582,6 @@ document.addEventListener("keydown", function (e) {
 
 // ═══ Init ═══
 function init() {
-  let appWindow = null;
-  try {
-    appWindow = getCurrentWindow();
-  } catch (e) {
-    console.warn("[Tauri] window API unavailable:", e);
-  }
   const savedTheme = localStorage.getItem("tg_theme") || "light";
   theme = savedTheme;
   document.documentElement.setAttribute("data-t", theme);
@@ -599,16 +606,16 @@ function init() {
   bind("btnAbout", () => openAbout());
   bind("btnSave", () => saveOnly());
   bind("btnDel", () => delCfg());
-  if (appWindow) {
-    bind("btnWinMin", () => appWindow.minimize());
-    bind("btnWinMax", async () => {
-      await appWindow.toggleMaximize();
-      await syncWinControls(appWindow);
-    });
-    bind("btnWinClose", () => appWindow.close());
-    void syncWinControls(appWindow);
-    void appWindow.onResized(() => { void syncWinControls(appWindow); });
-  }
+  bind("btnWinMin", async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    await runWindowCommand("minimize_window");
+  });
+  bind("btnWinClose", async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    await runWindowCommand("close_window");
+  });
   bind("dropZone", () => importShp());
   bind("dropGpkg", () => importGpkg());
   bind("dropGdb", () => importGdb());

@@ -7,6 +7,7 @@ pub mod txt;
 pub mod convert;
 pub mod gdb;
 pub mod gpkg;
+pub mod geometry;
 pub mod smoke;
 
 use convert::{FieldMapping, HeaderConfig, ShpToTxtOptions, TxtToShpOptions};
@@ -472,6 +473,16 @@ fn read_txt_preview(path: String) -> Result<String, String> {
 }
 
 /// 生成 TXT 解析日志（前端展示用）
+#[tauri::command]
+fn minimize_window(window: tauri::WebviewWindow) -> Result<(), String> {
+    window.minimize().map_err(|e| format!("窗口最小化失败: {}", e))
+}
+
+#[tauri::command]
+fn close_window(window: tauri::WebviewWindow) -> Result<(), String> {
+    window.close().map_err(|e| format!("窗口关闭失败: {}", e))
+}
+
 fn generate_parse_log(
     path: &Path,
     parsed: &txt::TxtParseResult,
@@ -554,6 +565,8 @@ pub fn run() {
             read_txt_preview,
             run_shp_to_txt,
             run_txt_to_shp,
+            minimize_window,
+            close_window,
         ])
         .run(tauri::generate_context!())
         .expect("启动失败");

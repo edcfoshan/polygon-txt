@@ -12,23 +12,39 @@ use jisig_bpoint_converter_lib::{
     shp, txt, gdb, gpkg, convert,
 };
 
-const TEST_DIR: &str = r"C:\Users\Administrator\Documents\txt与gdb互转\test_arcpy\std_shp";
-const TXT_TEST_DIR: &str = r"C:\Users\Administrator\Documents\txt与gdb互转\test_arcpy\txt_output";
-const GDB_TEST_DIR: &str = r"C:\Users\Administrator\Documents\txt与gdb互转\test_arcpy\test.gdb";
+fn repo_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("repo root")
+        .to_path_buf()
+}
+
+fn test_dir() -> PathBuf {
+    repo_root().join("test_arcpy").join("std_shp")
+}
+
+fn txt_test_dir() -> PathBuf {
+    repo_root().join("test_arcpy").join("txt_output")
+}
+
+fn gdb_test_dir() -> PathBuf {
+    repo_root().join("test_arcpy").join("test.gdb")
+}
+
 const DEFAULT_GDB: &str = r"C:\Users\Administrator\Documents\ArcGIS\Default1.gdb";
 
 fn test_shp_stem() -> PathBuf {
     // 用 ArcPy 生成的标准 SHP
-    PathBuf::from(TEST_DIR).join("plot_000.shp")
+    test_dir().join("plot_000.shp")
 }
 
 fn test_shp_dbf_path() -> PathBuf {
     // SHP 文件夹包含 ArcPy 生成的 DBF
-    PathBuf::from(TEST_DIR).join("plot_000.dbf")
+    test_dir().join("plot_000.dbf")
 }
 
 fn test_txt_path() -> PathBuf {
-    PathBuf::from(TXT_TEST_DIR).join("plot_000.txt")
+    txt_test_dir().join("plot_000.txt")
 }
 
 // ─── 测试 1: SHP 读取 ───
@@ -139,7 +155,7 @@ fn test_read_dbf() {
 
 #[test]
 fn test_read_prj() {
-    let prj_path = PathBuf::from(TEST_DIR).join("plot_000.prj");
+    let prj_path = test_dir().join("plot_000.prj");
     let (text, info) = shp::read_prj(&prj_path).expect("读取 PRJ 失败");
 
     println!("PRJ 文本: {}", &text[..std::cmp::min(80, text.len())]);
@@ -215,7 +231,8 @@ fn test_generate_txt() {
 
     // 验证坐标行格式
     assert!(generated.contains("J1,1,"), "应包含 J1 坐标行");
-    assert!(generated.contains("J6,1,"), "6点应包含 J6");
+    let j1_count = generated.matches("J1,1,").count();
+    assert!(j1_count >= 2, "闭合点应回卷到 J1，实际输出为:\n{}", generated);
 
     // 再解析回去验证 round-trip
     let reparsed = txt::parse_txt(&generated);
@@ -507,7 +524,7 @@ fn test_preview() {
 
 #[test]
 fn test_read_gdb() {
-    let gdb_path = PathBuf::from(GDB_TEST_DIR);
+    let gdb_path = gdb_test_dir();
 
     if gdb_path.exists() {
         let info = gdb::read_gdb(&gdb_path).expect("读取 GDB 失败");
@@ -829,4 +846,286 @@ fn test_txt_gpkg_roundtrip_2_rounds() {
 
         eprintln!("  ✓ {} 往返测试通过", stem);
     }
+}
+
+#[test]
+fn test_multi_part_txt_to_shp_roundtrip_preserves_part_index() {
+    let text = "[属性描述]
+坐标系=2000国家大地坐标系
+几度分带=3
+投影类型=高斯克吕格
+计量单位=米
+带号=38
+精度=0.001
+转换参数=,,,,,,
+[地块坐标]
+8,1,FID_0,多部件地块,面,,,@
+J1,1,10.000,10.000
+J2,1,10.000,20.000
+J3,1,20.000,20.000
+J1,1,10.000,10.000
+J1,2,30.000,30.000
+J2,2,30.000,40.000
+J3,2,40.000,40.000
+J1,2,30.000,30.000";
+
+    let temp = tempfile::tempdir().expect("tempdir");
+    let txt_path = temp.path().join("multipart.txt");
+    std::fs::write(&txt_path, text).expect("write txt");
+
+    let shp_dir = tempfile::tempdir().expect("tempdir");
+    let back_dir = tempfile::tempdir().expect("tempdir");
+
+    let header = convert::HeaderConfig {
+        crs: "2000国家大地坐标系".into(),
+        band: "3".into(),
+        proj: "高斯克吕格".into(),
+        unit: "米".into(),
+        zone: "38".into(),
+        precision: "0.001".into(),
+        transform: ",,,,,,".into(),
+        project_info: String::new(),
+    };
+
+    let txt_to_shp = convert::TxtToShpOptions {
+        output_shp: true,
+        output_gpkg: false,
+        merge: false,
+        output_dir: shp_dir.path().to_string_lossy().to_string(),
+    };
+
+    let shp_result = convert::convert_txt_to_shp(&[txt_path], &txt_to_shp, &header)
+        .expect("TXT->SHP should succeed");
+    let shp_paths: Vec<PathBuf> = shp_result
+        .output_files
+        .iter()
+        .filter(|f| f.ends_with(".shp"))
+        .map(PathBuf::from)
+        .collect();
+    assert_eq!(shp_paths.len(), 1, "应有一个 shp 输出");
+
+    let field_mapping = convert::FieldMapping {
+        name: "DKMC".into(),
+        id: "DKBH".into(),
+        area: "MJ".into(),
+        use_field: "DKYT".into(),
+        tfh: "TFH".into(),
+        dlbm: "DLBM".into(),
+    };
+    let shp_to_txt = convert::ShpToTxtOptions {
+        ox: false,
+        oj: true,
+        op: false,
+        on: false,
+        oo: true,
+        om: false,
+        buffer: 0.0,
+    };
+
+    let txt_result = convert::convert_shp_to_txt(
+        &shp_paths,
+        None,
+        None,
+        &header,
+        &field_mapping,
+        &shp_to_txt,
+        back_dir.path(),
+        None,
+    )
+    .expect("SHP->TXT should succeed");
+
+    let roundtrip = std::fs::read_to_string(&txt_result.output_files[0]).expect("read roundtrip");
+    assert!(
+        roundtrip.contains("J1,2,30.000,30.000"),
+        "往返后第二个部件的 part index 不应丢失，实际输出为:\n{}",
+        roundtrip
+    );
+}
+
+#[test]
+fn test_hole_txt_to_shp_roundtrip_preserves_inner_ring() {
+    let text = "[属性描述]
+坐标系=2000国家大地坐标系
+几度分带=3
+投影类型=高斯克吕格
+计量单位=米
+带号=38
+精度=0.001
+转换参数=,,,,,,
+[地块坐标]
+10,1,FID_0,带内环地块,面,,,@
+J1,1,0.000,0.000
+J2,1,0.000,10.000
+J3,1,10.000,10.000
+J4,1,10.000,0.000
+J1,1,0.000,0.000
+J1,2,2.000,2.000
+J2,2,8.000,2.000
+J3,2,8.000,8.000
+J4,2,2.000,8.000
+J1,2,2.000,2.000";
+
+    let temp = tempfile::tempdir().expect("tempdir");
+    let txt_path = temp.path().join("hole.txt");
+    std::fs::write(&txt_path, text).expect("write txt");
+
+    let shp_dir = tempfile::tempdir().expect("tempdir");
+    let back_dir = tempfile::tempdir().expect("tempdir");
+
+    let header = convert::HeaderConfig {
+        crs: "2000国家大地坐标系".into(),
+        band: "3".into(),
+        proj: "高斯克吕格".into(),
+        unit: "米".into(),
+        zone: "38".into(),
+        precision: "0.001".into(),
+        transform: ",,,,,,".into(),
+        project_info: String::new(),
+    };
+
+    let txt_to_shp = convert::TxtToShpOptions {
+        output_shp: true,
+        output_gpkg: false,
+        merge: false,
+        output_dir: shp_dir.path().to_string_lossy().to_string(),
+    };
+
+    let shp_result = convert::convert_txt_to_shp(&[txt_path], &txt_to_shp, &header)
+        .expect("TXT->SHP should succeed");
+    let shp_paths: Vec<PathBuf> = shp_result
+        .output_files
+        .iter()
+        .filter(|f| f.ends_with(".shp"))
+        .map(PathBuf::from)
+        .collect();
+
+    let field_mapping = convert::FieldMapping {
+        name: "DKMC".into(),
+        id: "DKBH".into(),
+        area: "MJ".into(),
+        use_field: "DKYT".into(),
+        tfh: "TFH".into(),
+        dlbm: "DLBM".into(),
+    };
+    let shp_to_txt = convert::ShpToTxtOptions {
+        ox: false,
+        oj: true,
+        op: false,
+        on: true,
+        oo: true,
+        om: false,
+        buffer: 0.0,
+    };
+
+    let txt_result = convert::convert_shp_to_txt(
+        &shp_paths,
+        None,
+        None,
+        &header,
+        &field_mapping,
+        &shp_to_txt,
+        back_dir.path(),
+        None,
+    )
+    .expect("SHP->TXT should succeed");
+
+    let roundtrip = std::fs::read_to_string(&txt_result.output_files[0]).expect("read roundtrip");
+    assert!(
+        roundtrip.contains("J1,2,8.000,2.000") || roundtrip.contains("J1,2,2.000,2.000"),
+        "内环应以独立 part 输出，实际输出为:\n{}",
+        roundtrip
+    );
+}
+
+#[test]
+fn test_multi_part_txt_to_gpkg_roundtrip_preserves_part_index() {
+    let text = "[属性描述]
+坐标系=2000国家大地坐标系
+几度分带=3
+投影类型=高斯克吕格
+计量单位=米
+带号=38
+精度=0.001
+转换参数=,,,,,,
+[地块坐标]
+8,1,FID_0,多部件地块,面,,,@
+J1,1,10.000,10.000
+J2,1,10.000,20.000
+J3,1,20.000,20.000
+J1,1,10.000,10.000
+J1,2,30.000,30.000
+J2,2,30.000,40.000
+J3,2,40.000,40.000
+J1,2,30.000,30.000";
+
+    let temp = tempfile::tempdir().expect("tempdir");
+    let txt_path = temp.path().join("multipart_gpkg.txt");
+    std::fs::write(&txt_path, text).expect("write txt");
+
+    let gpkg_dir = tempfile::tempdir().expect("tempdir");
+    let back_dir = tempfile::tempdir().expect("tempdir");
+
+    let header = convert::HeaderConfig {
+        crs: "2000国家大地坐标系".into(),
+        band: "3".into(),
+        proj: "高斯克吕格".into(),
+        unit: "米".into(),
+        zone: "38".into(),
+        precision: "0.001".into(),
+        transform: ",,,,,,".into(),
+        project_info: String::new(),
+    };
+
+    let txt_to_gpkg = convert::TxtToShpOptions {
+        output_shp: false,
+        output_gpkg: true,
+        merge: false,
+        output_dir: gpkg_dir.path().to_string_lossy().to_string(),
+    };
+
+    let gpkg_result = convert::convert_txt_to_shp(&[txt_path], &txt_to_gpkg, &header)
+        .expect("TXT->GPKG should succeed");
+    let gpkg_path = gpkg_result
+        .output_files
+        .iter()
+        .find(|f| f.ends_with(".gpkg"))
+        .map(PathBuf::from)
+        .expect("应有 gpkg 输出");
+
+    let field_mapping = convert::FieldMapping {
+        name: "DKMC".into(),
+        id: "DKBH".into(),
+        area: "MJ".into(),
+        use_field: "DKYT".into(),
+        tfh: "TFH".into(),
+        dlbm: "DLBM".into(),
+    };
+    let gpkg_to_txt = convert::ShpToTxtOptions {
+        ox: false,
+        oj: true,
+        op: false,
+        on: false,
+        oo: true,
+        om: false,
+        buffer: 0.0,
+    };
+
+    let txt_result = convert::convert_shp_to_txt(
+        &[],
+        Some("gpkg"),
+        Some(&gpkg_path),
+        &header,
+        &field_mapping,
+        &gpkg_to_txt,
+        back_dir.path(),
+        None,
+    )
+    .expect("GPKG->TXT should succeed");
+
+    let roundtrip = std::fs::read_to_string(&txt_result.output_files[0]).expect("read roundtrip");
+    assert!(
+        roundtrip.contains("J1,2,"),
+        "GPKG 往返后第二个部件的 part index 不应丢失，实际输出为:\n{}",
+        roundtrip
+    );
 }

@@ -52,7 +52,7 @@ const MARKDOWN_IMAGE_MAP = {
 // ═══ State ═══
 let loadedFiles = [];
 let txtFiles = [];
-let cur = "basic";
+let cur = "usr";
 let cfgs = {};
 let headerManual = {};
 let lastPreviewKey = "";
@@ -73,8 +73,6 @@ const FIELD_MATCH_RULES = {
 };
 
 const PP = [
-  { id: "basic", n: "基础地块", h: { c: "2000国家大地坐标系", b: "3", j: "高斯克吕格", u: "米", z: "", a: "0.001", t: ",,,,,," }, p: { pp: 3, pz: "auto", pb: 0, ox: 0, oj: 1, op: 0, on: 0, oo: 1, om: 0 }, f: { fn: "DKMC", fi: "DKBH", fa: "", fu: "", fm: "", fd: "" } },
-  { id: "gov", n: "规划审批", h: { c: "2000国家大地坐标系", b: "3", j: "高斯克吕格", u: "米", z: "", a: "0.001", t: ",,,,,," }, p: { pp: 3, pz: "auto", pb: 0, ox: 0, oj: 1, op: 0, on: 0, oo: 1, om: 0 }, f: { fn: "DKMC", fi: "DKBH", fa: "MJ", fu: "DKYT", fm: "TFH", fd: "DLBM" } },
   { id: "usr", n: "自定义", h: { c: "2000国家大地坐标系", b: "3", j: "高斯克吕格", u: "米", z: "", a: "0.001", t: ",,,,,," }, p: { pp: 3, pz: "auto", pb: 0, ox: 0, oj: 1, op: 0, on: 0, oo: 1, om: 0 }, f: { fn: "DKMC", fi: "DKBH", fa: "", fu: "", fm: "", fd: "" } },
 ];
 
@@ -489,6 +487,18 @@ window.prefillProject = function () {
   updatePreview();
 };
 
+window.resetDefaults = function () {
+  if ($("hc")) $("hc").value = "2000国家大地坐标系";
+  if ($("hb")) $("hb").value = "3";
+  if ($("hj")) $("hj").value = "高斯克吕格";
+  if ($("hu")) $("hu").value = "米";
+  if ($("hz")) $("hz").value = "";
+  if ($("ha")) $("ha").value = "0.001";
+  if ($("ht")) $("ht").value = ",,,,,,";
+  updatePreview();
+  toast("已恢复默认");
+};
+
 window.tp = function (id) { const el = $(id); if (el) el.classList.toggle("hide"); };
 
 window.selectOutputDir = async function () {
@@ -528,7 +538,7 @@ window.ld = function (id) {
   }
   if (c.f) Object.keys(c.f).forEach((k) => { const e = $(k); if (e) e.value = c.f[k]; });
   const cn = $("cn");
-  if (cn) cn.textContent = c.n || "基础地块";
+  if (cn) cn.textContent = c.n || "自定义";
   document.querySelectorAll(".chip").forEach((e) => e.classList.remove("on"));
   const cp = document.querySelector(`.chip[data-chip="${id}"]`);
   if (cp) cp.classList.add("on");
@@ -541,10 +551,15 @@ window.saveOnly = function () {
   if (!cn) return;
   const newName = (cn.textContent || "").trim();
   if (!newName) { toast("请输入配置名称"); return; }
-  let existing = null;
-  for (const [, v] of Object.entries(cfgs)) { if (v.n === newName) { existing = v; break; } }
+  let dupId = null;
+  for (const [, v] of Object.entries(cfgs)) {
+    if (v.n === newName) {
+      if (v.id === cur) { dupId = cur; break; }
+      toast("配置名「" + newName + "」已存在"); return;
+    }
+  }
   const c = getConfig();
-  const cfgObj = { id: existing ? existing.id : "u" + Date.now(), n: newName, h: c.h, p: getOptions(), f: c.f };
+  const cfgObj = { id: dupId || "u" + Date.now(), n: newName, h: c.h, p: getOptions(), f: c.f };
   cfgs[cfgObj.id] = cfgObj;
   localStorage.setItem("tg_dark", JSON.stringify(cfgs));
   cur = cfgObj.id;
@@ -554,12 +569,12 @@ window.saveOnly = function () {
 };
 
 window.delCfg = function () {
-  if (cur === "basic" || cur === "gov" || cur === "usr") { toast("内置预设不可删除"); return; }
+  if (cur === "usr") { toast("内置预设不可删除"); return; }
   if (!confirm("确定删除方案「" + ($("cn")?.textContent || "") + "」？")) return;
   delete cfgs[cur];
   localStorage.setItem("tg_dark", JSON.stringify(cfgs));
-  cur = "basic";
-  ld("basic");
+  cur = "usr";
+  ld("usr");
   renderChips();
   toast("已删除");
 };
@@ -590,7 +605,7 @@ function init() {
   if (s) cfgs = JSON.parse(s);
   PP.forEach((p) => { if (!cfgs[p.id]) cfgs[p.id] = p; });
   renderChips();
-  ld(localStorage.getItem("tg_last") || "basic");
+  ld(localStorage.getItem("tg_last") || "usr");
 
   // ─── 注入弹窗内容（Markdown → HTML） ───
   const ab = $("aboutBody");
@@ -627,6 +642,7 @@ function init() {
   bind("hdrTabAttr", () => switchHdrTab("attr"));
   bind("hdrTabProj", () => switchHdrTab("proj"));
   bind("btnPrefill", () => prefillProject());
+  bind("btnResetDefaults", () => resetDefaults());
   bind("btnRunStt", () => runShpToTxt());
   bind("btnRunTts", () => runTxtToShp());
   bind("btnCloseAbout", () => closeAbout());

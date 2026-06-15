@@ -14,3 +14,7 @@ src-tauri/target/
 
 # 外部共享资源（非项目代码）
 CC工具箱_共享/
+
+# dev logs
+*.log
+vite_*

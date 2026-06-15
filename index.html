@@ -209,14 +209,14 @@ body::before{
   background:var(--srf);
   border:1px solid var(--brd);
   border-radius:8px;
-  padding:24px 28px 20px;
   text-align:center;
   box-shadow:var(--shadow-lg);
-  max-width:300px;
   position:relative;
   transform:translateY(8px);
   transition:transform .3s cubic-bezier(.34,1.56,.64,1);
 }
+.modal-card[data-modal="about"]{max-width:var(--m-a-w,420px);padding:var(--m-a-p,24px 28px 20px);text-align:left}
+.modal-card[data-modal="sponsor"]{max-width:var(--m-s-w,300px);padding:var(--m-s-p,24px 28px 20px)}
 .modal-overlay.on .modal-card{transform:translateY(0)}
 .modal-close{
   position:absolute;top:8px;right:10px;
@@ -230,17 +230,21 @@ body::before{
 .modal-close:hover{color:var(--tx);background:var(--srf2)}
 .modal-close:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
 .modal-card h3{
-  font-size:13px;font-weight:600;color:var(--tx);
+  font-size:var(--m-a-ts,13px);font-weight:600;color:var(--tx);
   margin-bottom:4px;letter-spacing:0;
 }
 .modal-card .modal-sub{
   font-size:11px;color:var(--tx3);margin-bottom:14px;
 }
+.modal-body p,.modal-body li{font-size:var(--m-a-bs,12px);line-height:1.6}
+.modal-card[data-modal="sponsor"] .modal-body p,.modal-card[data-modal="sponsor"] .modal-body li{font-size:var(--m-s-bs,12px)}
 .modal-card img{
-  max-width:100%;max-height:200px;border-radius:6px;
+  max-width:100%;max-height:var(--m-a-im,200px);border-radius:6px;
   border:1px solid var(--brd);
   display:block;margin:0 auto;
 }
+.modal-card[data-modal="sponsor"] h3{font-size:var(--m-s-ts,13px)}
+.modal-card[data-modal="sponsor"] img{max-height:var(--m-s-im,200px)}
 
 /* ═══ Tab bar ═══ */
 .tabbar{
@@ -570,8 +574,8 @@ body::before{
 <div class="app" data-mode="s">
 
   <!-- ═══ Title Bar ═══ -->
-  <div class="titlebar">
-    <div class="brand" data-tauri-drag-region>
+  <div class="titlebar" data-tauri-drag-region>
+    <div class="brand">
       <div class="brand-mark">
         <svg viewBox="0 0 140 140" width="22" height="22" aria-label="极思G">
           <circle cx="70" cy="70" r="60" fill="none" stroke="var(--ac)" stroke-width="3.5" opacity="0.6"/>
@@ -742,6 +746,7 @@ body::before{
             <div class="hrow"><label>带号</label><input id="hz" value="" placeholder="无"></div>
             <div class="hrow"><label>精度</label><select id="ha"><option>1</option><option>0.1</option><option>0.01</option><option selected>0.001</option><option>0.0001</option></select></div>
             <div class="hrow"><label>参数</label><input id="ht" value=",,,,,,"></div>
+            <div style="display:flex;justify-content:flex-end;margin-top:4px"><button class="btn" id="btnResetDefaults" style="font-size:9.5px;padding:2px 8px">恢复默认</button></div>
           </div>
         </div>
         <div class="hdr-panel" id="hdrProj">
@@ -787,17 +792,17 @@ body::before{
 
 <!-- About Modal -->
 <div class="modal-overlay" id="aboutModal">
-  <div class="modal-card" style="max-width:420px;text-align:left">
+  <div class="modal-card" data-modal="about">
     <button class="modal-close" id="btnCloseAbout" aria-label="关闭">×</button>
-    <div id="aboutBody"></div>
+    <div class="modal-body" id="aboutBody"></div>
   </div>
 </div>
 
 <!-- Sponsor Modal -->
 <div class="modal-overlay" id="sponsorModal">
-  <div class="modal-card">
+  <div class="modal-card" data-modal="sponsor">
     <button class="modal-close" id="btnCloseSponsor" aria-label="关闭">×</button>
-    <div id="sponsorBody"></div>
+    <div class="modal-body" id="sponsorBody"></div>
   </div>
 </div>
 

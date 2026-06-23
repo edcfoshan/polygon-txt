@@ -73,7 +73,7 @@ const FIELD_MATCH_RULES = {
 };
 
 const PP = [
-  { id: "usr", n: "自定义", h: { c: "2000国家大地坐标系", b: "3", j: "高斯克吕格", u: "米", z: "", a: "0.001", t: ",,,,,," }, p: { pp: 3, pz: "auto", ox: 0, oj: 0, on: 0, oo: 1, om: 0 }, f: { fn: "DKMC", fi: "DKBH", fa: "", fu: "", fm: "", fd: "" } },
+  { id: "usr", n: "自定义", h: { c: "2000国家大地坐标系", b: "3", j: "高斯克吕格", u: "米", z: "", a: "0.001", t: ",,,,,," }, p: { pp: 3, pz: "auto", ox: 1, oj: 0, on: 0, oo: 1, om: 0 }, f: { fn: "DKMC", fi: "DKBH", fa: "", fu: "", fm: "", fd: "" } },
 ];
 
 const $ = (id) => document.getElementById(id);
@@ -180,6 +180,7 @@ window.importGdb = async function () {
     selectedLayers = [];        // 弹窗内默认不选；确认时才提交
     window._gdbName = result.name;
     autoMatchFields(result.field_names);
+    if (result.zone) autoFillHeader({ z: result.zone });
     autoSetOutputDirS(result.path);
     toast(`已读取 GDB: ${result.name}（${result.layers.length} 个面状要素类），请在弹窗中勾选`);
     renderLeftGdbSummary();     // 左栏先显示"待选择"占位行
@@ -486,12 +487,17 @@ window.up = async function () {
 window.runShpToTxt = async function () {
   const shpPaths = loadedFiles.map((f) => f.shp_path).filter(Boolean);
   if (!shpPaths.length && !sourcePath) { toast("请先导入 SHP 或 GDB 文件"); return; }
-  // GDB 已导入但未勾选任何要素类：拦截，避免后端把"空"当作"全选"
-  if (sourceType === "gdb" && selectedLayers.length === 0) {
-    toast("请先在左栏点击 GDB 行，勾选要转换的要素类"); return;
-  }
+    // GDB 已导入但未勾选任何要素类：拦截，避免后端把"空"当作"全选"
+    if (sourceType === "gdb" && selectedLayers.length === 0) {
+      toast("请先在左栏点击 GDB 行，勾选要转换的要素类"); return;
+    }
 
-  const outDir = $("out_dir_s")?.value || "";
+    const zoneVal = ($("hz")?.value || "").trim();
+    if (!zoneVal || !/^\d+$/.test(zoneVal)) {
+      toast("请填写带号后再输出"); return;
+    }
+
+    const outDir = $("out_dir_s")?.value || "";
   if (!outDir) { toast("请先导入文件以设置输出路径"); return; }
 
   const cfg = getConfig();

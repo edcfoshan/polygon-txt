@@ -478,6 +478,8 @@ fn txt_to_shp_one_to_one(
     let mut output_files = Vec::new();
     let mut used_names: HashMap<String, usize> = HashMap::new();
     let mut conflict_count = 0usize;
+    let mut skipped_count = 0usize;
+    let mut warnings: Vec<String> = Vec::new();
     for txt_path in txt_paths {
         let text = std::fs::read_to_string(txt_path)
             .map_err(|e| format!("读取 TXT 失败: {}", e))?;
@@ -486,6 +488,31 @@ fn txt_to_shp_one_to_one(
             .file_stem()
             .map(|s| s.to_string_lossy().to_string())
             .unwrap_or_else(|| "output".to_string());
+
+        // 带号优先级：坐标提取值 > 表单值 > 无（跳过）
+        let extracted = extract_zone_from_coords(&parsed.plots);
+        let declared = parsed.attrs.get("带号").map(|s| s.as_str());
+        let final_zone = match (extracted, header_cfg.zone.as_str()) {
+            (Some(z), _) => {
+                // 检测与 TXT 声明带号的矛盾
+                if let Some(d) = declared {
+                    if let Ok(dz) = d.trim().parse::<i32>() {
+                        if dz != z {
+                            warnings.push(format!(
+                                "{}：声明带号{}与坐标提取{}不一致，已用提取值",
+                                stem, dz, z
+                            ));
+                        }
+                    }
+                }
+                z.to_string()
+            }
+            (None, fz) if !fz.is_empty() => fz.to_string(),
+            (None, _) => {
+                skipped_count += 1;
+                continue;
+            }
+        };
 
         if options.output_shp {
             let (final_name, bumped) = allocate_unique_name(&stem, &mut used_names);
@@ -501,15 +528,21 @@ fn txt_to_shp_one_to_one(
                 &attributes,
                 &header_cfg.crs,
                 &header_cfg.band,
-                &header_cfg.zone,
+                &final_zone,
             )?;
             output_files.extend(shp_files);
         }
     }
-    let count = txt_paths.len();
+    let count = txt_paths.len() - skipped_count;
     let mut message = format!("成功转换 {} 个 TXT 文件", count);
+    if skipped_count > 0 {
+        message.push_str(&format!("（{} 个因无法确定带号已跳过，请手动填写带号）", skipped_count));
+    }
     if conflict_count > 0 {
         message.push_str(&format!("（{} 个文件名冲突已自动追加序号）", conflict_count));
+    }
+    for w in &warnings {
+        message.push_str(&format!("；{}", w));
     }
     Ok(ConvertResult {
         success: true,
@@ -530,6 +563,8 @@ fn txt_to_shp_split_by_plot(
     let mut subdir_count = 0usize;
     let mut fallback_count = 0usize; // 字段缺失/空值兜底为序号的地块数
     let mut conflict_count = 0usize; // 文件名冲突次数
+    let mut skipped_count = 0usize; // 无法确定带号而跳过的 TXT 数
+    let mut warnings: Vec<String> = Vec::new();
 
     for txt_path in txt_paths {
         let text = std::fs::read_to_string(txt_path)
@@ -539,6 +574,30 @@ fn txt_to_shp_split_by_plot(
             .file_stem()
             .map(|s| s.to_string_lossy().to_string())
             .unwrap_or_else(|| "output".to_string());
+
+        // 带号优先级：坐标提取值 > 表单值 > 无（跳过）
+        let extracted = extract_zone_from_coords(&parsed.plots);
+        let declared = parsed.attrs.get("带号").map(|s| s.as_str());
+        let final_zone = match (extracted, header_cfg.zone.as_str()) {
+            (Some(z), _) => {
+                if let Some(d) = declared {
+                    if let Ok(dz) = d.trim().parse::<i32>() {
+                        if dz != z {
+                            warnings.push(format!(
+                                "{}：声明带号{}与坐标提取{}不一致，已用提取值",
+                                txt_stem, dz, z
+                            ));
+                        }
+                    }
+                }
+                z.to_string()
+            }
+            (None, fz) if !fz.is_empty() => fz.to_string(),
+            (None, _) => {
+                skipped_count += 1;
+                continue;
+            }
+        };
 
         let subdir = output_dir.join(&txt_stem);
         std::fs::create_dir_all(&subdir)
@@ -581,7 +640,7 @@ fn txt_to_shp_split_by_plot(
                 &attributes,
                 &header_cfg.crs,
                 &header_cfg.band,
-                &header_cfg.zone,
+                &final_zone,
             )?;
             output_files.extend(shp_files);
         }
@@ -592,11 +651,17 @@ fn txt_to_shp_split_by_plot(
         .filter(|f| f.ends_with(".shp"))
         .count();
     let mut message = format!("成功拆分为 {} 个文件（位于 {} 个子目录）", count, subdir_count);
+    if skipped_count > 0 {
+        message.push_str(&format!("（{} 个 TXT 因无法确定带号已跳过，请手动填写带号）", skipped_count));
+    }
     if fallback_count > 0 {
         message.push_str(&format!("（{} 个地块未找到所选字段，已用序号命名）", fallback_count));
     }
     if conflict_count > 0 {
         message.push_str(&format!("（{} 个文件名冲突已自动追加序号）", conflict_count));
+    }
+    for w in &warnings {
+        message.push_str(&format!("；{}", w));
     }
     Ok(ConvertResult {
         success: true,
@@ -613,14 +678,62 @@ fn txt_to_shp_merge_all(
     header_cfg: &HeaderConfig,
     output_dir: &Path,
 ) -> Result<ConvertResult, String> {
-    // 按 TXT 分组构建几何+属性，每组构建后立即 tag 来源路径/名称，再合并
-    // （保证 geometry 与 attribute 顺序对齐，且每个 plot 记录正确的源 TXT）
-    let mut all_geometries: Vec<SurfaceGeometry> = Vec::new();
-    let mut all_attributes: Vec<HashMap<String, String>> = Vec::new();
+    // 逐文件提取带号，检测冲突：merge_all 要求所有 TXT 带号一致，冲突直接拒绝
+    let mut zones: Vec<Option<i32>> = Vec::new();
     for txt_path in txt_paths {
         let text = std::fs::read_to_string(txt_path)
             .map_err(|e| format!("读取 TXT 失败: {}", e))?;
         let parsed = txt::parse_txt(&text);
+        let z = extract_zone_from_coords(&parsed.plots);
+        if let Some(zv) = z {
+            zones.push(Some(zv));
+        } else if !header_cfg.zone.is_empty() {
+            // 提取失败时回退表单值（后续统一用表单值，此处只用于冲突检测）
+            zones.push(None);
+        } else {
+            return Err(format!(
+                "无法确定 {} 的带号（坐标无8位前缀且表单未填写），请手动填写带号",
+                txt_path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default()
+            ));
+        }
+    }
+    let distinct: Vec<i32> = zones.iter().filter_map(|z| *z).collect();
+    if distinct.len() > 1 {
+        let mut seen: Vec<i32> = Vec::new();
+        for z in &distinct {
+            if !seen.contains(z) {
+                seen.push(*z);
+            }
+        }
+        return Err(format!(
+            "合并失败：各 TXT 带号不一致（{}），无法合并为同一坐标系，请先统一带号",
+            seen.iter().map(|z| z.to_string()).collect::<Vec<_>>().join("/")
+        ));
+    }
+
+    // 按 TXT 分组构建几何+属性，每组构建后立即 tag 来源路径/名称，再合并
+    // （保证 geometry 与 attribute 顺序对齐，且每个 plot 记录正确的源 TXT）
+    let mut all_geometries: Vec<SurfaceGeometry> = Vec::new();
+    let mut all_attributes: Vec<HashMap<String, String>> = Vec::new();
+    let mut warnings: Vec<String> = Vec::new();
+    for txt_path in txt_paths {
+        let text = std::fs::read_to_string(txt_path)
+            .map_err(|e| format!("读取 TXT 失败: {}", e))?;
+        let parsed = txt::parse_txt(&text);
+        // 矛盾检测（merge 模式下带号已统一，仅记录矛盾提示）
+        if let Some(z) = extract_zone_from_coords(&parsed.plots) {
+            if let Some(d) = parsed.attrs.get("带号") {
+                if let Ok(dz) = d.trim().parse::<i32>() {
+                    if dz != z {
+                        warnings.push(format!(
+                            "{}：声明带号{}与坐标提取{}不一致，已用提取值",
+                            txt_path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default(),
+                            dz, z
+                        ));
+                    }
+                }
+            }
+        }
         let (geos, mut attrs) = plots_to_surfaces_and_attributes(&parsed.plots);
         tag_attrs_with_source(&mut attrs, txt_path, options.keep_lujin, options.keep_mingc);
         all_geometries.extend(geos);
@@ -630,6 +743,8 @@ fn txt_to_shp_merge_all(
     if options.output_shp {
         let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S").to_string();
         let filename = format!("merged_output_{}", timestamp);
+        // 确定最终带号：提取值优先，否则回退表单值（前面已保证不会两者皆空）
+        let final_zone = distinct.first().map(|z| z.to_string()).unwrap_or_else(|| header_cfg.zone.clone());
         let shp_files = shp::write_shapefile_structured(
             output_dir,
             &filename,
@@ -637,10 +752,13 @@ fn txt_to_shp_merge_all(
             &all_attributes,
             &header_cfg.crs,
             &header_cfg.band,
-            &header_cfg.zone,
+            &final_zone,
         )?;
         output_files.extend(shp_files);
-        let message = format!("已合并输出：{}.shp", filename);
+        let mut message = format!("已合并输出：{}.shp", filename);
+        for w in &warnings {
+            message.push_str(&format!("；{}", w));
+        }
         Ok(ConvertResult {
             success: true,
             message,
@@ -917,4 +1035,88 @@ fn make_header_attrs(cfg: &HeaderConfig) -> HashMap<String, String> {
     m.insert("精度".to_string(), cfg.precision.clone());
     m.insert("转换参数".to_string(), cfg.transform.clone());
     m
+}
+
+/// 从坐标点列表中提取高斯-克吕格带号。
+/// 扫描所有地块的所有点，找第一个整数部分为 8 位的 X 值（东坐标），
+/// 取其前两位作为带号，若前两位落在 13-45 区间则返回，否则继续扫描。
+/// 全部不合法返回 None，交由调用方回退。
+fn extract_zone_from_coords(plots: &[txt::PlotData]) -> Option<i32> {
+    for plot in plots {
+        // coords 存储为 (y, x) = (northing, easting)，x 在第二位
+        for &(_, x) in &plot.coords {
+            let abs_x = x.abs();
+            if abs_x >= 10_000_000.0 && abs_x < 100_000_000.0 {
+                let prefix = (abs_x / 1_000_000.0) as i32;
+                if (13..=45).contains(&prefix) {
+                    return Some(prefix);
+                }
+            }
+            // 同时检查 rings 里的坐标（多部件情况）
+        }
+        // rings 与 coords 内容重叠（parse 时同时填入），上面已遍历 coords 即可
+    }
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::txt::PlotData;
+
+    fn plot_with_coords(coords: Vec<(f64, f64)>) -> PlotData {
+        PlotData {
+            point_count: coords.len() as u32,
+            area: String::new(),
+            fid: String::new(),
+            name: String::new(),
+            geom_type: "面".to_string(),
+            tfh: String::new(),
+            use_field: String::new(),
+            dlbm: String::new(),
+            coords,
+            rings: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn extract_zone_8digit_prefix() {
+        // 38378508 -> 前两位 38
+        let p = plot_with_coords(vec![(2585776.157, 38378508.034)]);
+        assert_eq!(extract_zone_from_coords(&[p]), Some(38));
+    }
+
+    #[test]
+    fn extract_zone_6digit_natural_value() {
+        // 6位自然值，无带号前缀 -> None
+        let p = plot_with_coords(vec![(3000000.0, 450000.123)]);
+        assert_eq!(extract_zone_from_coords(&[p]), None);
+    }
+
+    #[test]
+    fn extract_zone_out_of_range_prefix() {
+        // 05xxxxxx -> 前两位 05，不在 13-45 范围 -> None
+        let p = plot_with_coords(vec![(1000000.0, 5000000.0)]);
+        assert_eq!(extract_zone_from_coords(&[p]), None);
+    }
+
+    #[test]
+    fn extract_zone_empty_coords() {
+        let p = plot_with_coords(vec![]);
+        assert_eq!(extract_zone_from_coords(&[p]), None);
+    }
+
+    #[test]
+    fn extract_zone_skips_invalid_finds_valid() {
+        // 第一个点 6 位不合法，第二个点 8 位合法 -> 返回第二个的带号
+        let p = plot_with_coords(vec![(3000000.0, 450000.0), (2585776.0, 39378508.0)]);
+        assert_eq!(extract_zone_from_coords(&[p]), Some(39));
+    }
+
+    #[test]
+    fn extract_zone_negative_x() {
+        // 负坐标取绝对值后判断（理论上东坐标不应为负，但防御性测试）
+        let p = plot_with_coords(vec![(-1000000.0, -38378508.0)]);
+        assert_eq!(extract_zone_from_coords(&[p]), Some(38));
+    }
 }

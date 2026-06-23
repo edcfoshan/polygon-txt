@@ -42,6 +42,8 @@ struct GdbImportResult {
     num_features: usize,
     /// 被过滤掉的非面状图层名（前端用于 toast 提示）
     skipped: Vec<String>,
+    /// 从坐标反推的带号（探测失败为 None，前端据此决定是否回填）
+    zone: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -81,6 +83,23 @@ struct ConvertResultPayload {
 fn is_polygon_geometry_type(t: &str) -> bool {
     let s = t.to_lowercase();
     s.contains("polygon") || s.contains("面") || s == "multipolygon"
+}
+
+/// 从东坐标采样反推高斯投影带号。中国高斯投影东坐标自带带号前缀
+/// （如 38500000 → 38 度带），与 SHP 从 .prj 中央经线反推口径一致。
+/// 无前缀数据（easting < 1e6）或空采样 → None，由用户手填 + 校验兜底。
+fn derive_zone_from_eastings(eastings: &[f64]) -> Option<String> {
+    let mut counts: HashMap<i32, usize> = HashMap::new();
+    for &e in eastings {
+        let zone = (e / 1_000_000.0).floor() as i32;
+        if (1..=60).contains(&zone) {
+            *counts.entry(zone).or_default() += 1;
+        }
+    }
+    counts
+        .into_iter()
+        .max_by_key(|(_, c)| *c)
+        .map(|(z, _)| z.to_string())
 }
 
 #[tauri::command]
@@ -229,6 +248,16 @@ fn import_gdb(app: tauri::AppHandle) -> Result<GdbImportResult, String> {
         field_names,
         num_features,
         skipped,
+        zone: {
+            // 采样东坐标反推带号（与 SHP 从 .prj 中央经线反推对齐）
+            let eastings: Vec<f64> = all_features
+                .iter()
+                .flat_map(|feats| feats.iter())
+                .flat_map(|f| f.points.iter())
+                .map(|(easting, _)| *easting)
+                .collect();
+            derive_zone_from_eastings(&eastings)
+        },
     })
 }
 
@@ -327,6 +356,9 @@ fn run_shp_to_txt(
     output_dir: String,
     selected_layers: Option<Vec<String>>,
 ) -> Result<ConvertResultPayload, String> {
+    if header_cfg.zone.trim().is_empty() {
+        return Err("带号不能为空，请填写带号后再输出".to_string());
+    }
     let out_dir = PathBuf::from(&output_dir);
     let shp_bufs: Vec<PathBuf> = shp_paths.iter().map(PathBuf::from).collect();
     let source_buf = source_path.as_ref().map(PathBuf::from);
@@ -548,4 +580,27 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("启动失败");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::derive_zone_from_eastings;
+
+    #[test]
+    fn derive_zone_from_eastings_with_prefix() {
+        assert_eq!(
+            derive_zone_from_eastings(&[38_383_243.0, 38_500_000.0]),
+            Some("38".to_string())
+        );
+    }
+
+    #[test]
+    fn derive_zone_from_eastings_without_prefix() {
+        assert_eq!(derive_zone_from_eastings(&[500_000.0]), None);
+    }
+
+    #[test]
+    fn derive_zone_from_eastings_empty() {
+        assert_eq!(derive_zone_from_eastings(&[]), None);
+    }
 }

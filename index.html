@@ -214,9 +214,13 @@ body::before{
   position:relative;
   transform:translateY(8px);
   transition:transform .3s cubic-bezier(.34,1.56,.64,1);
+  /* 限高 + 内部滚动，防止内容超长撑出屏幕 */
+  max-height:82vh;
+  display:flex;
+  flex-direction:column;
 }
-.modal-card[data-modal="about"]{max-width:var(--m-a-w,420px);padding:var(--m-a-p,24px 28px 20px);text-align:left}
-.modal-card[data-modal="sponsor"]{max-width:var(--m-s-w,300px);padding:var(--m-s-p,24px 28px 20px)}
+.modal-card[data-modal="about"]{max-width:var(--m-a-w,520px);width:var(--m-a-w,520px);padding:var(--m-a-p,24px 28px 20px);text-align:left}
+.modal-card[data-modal="sponsor"]{max-width:var(--m-s-w,520px);width:var(--m-s-w,520px);padding:var(--m-s-p,24px 28px 20px)}
 .modal-overlay.on .modal-card{transform:translateY(0)}
 .modal-close{
   position:absolute;top:8px;right:10px;
@@ -226,6 +230,8 @@ body::before{
   font-size:15px;line-height:1;
   display:flex;align-items:center;justify-content:center;
   transition:all .15s;
+  z-index:2;
+  flex:0 0 auto;
 }
 .modal-close:hover{color:var(--tx);background:var(--srf2)}
 .modal-close:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
@@ -236,15 +242,101 @@ body::before{
 .modal-card .modal-sub{
   font-size:11px;color:var(--tx3);margin-bottom:14px;
 }
+/* 内容区独立滚动：标题/关闭按钮固定，body 可滚 */
+.modal-body{
+  overflow-y:auto;
+  min-height:0;            /* flex 子项滚动必需 */
+  scrollbar-width:thin;
+}
+.modal-body::-webkit-scrollbar{width:6px}
+.modal-body::-webkit-scrollbar-thumb{background:var(--brd);border-radius:3px}
 .modal-body p,.modal-body li{font-size:var(--m-a-bs,12px);line-height:1.6}
 .modal-card[data-modal="sponsor"] .modal-body p,.modal-card[data-modal="sponsor"] .modal-body li{font-size:var(--m-s-bs,12px)}
 .modal-card img{
-  max-width:100%;max-height:var(--m-a-im,200px);border-radius:6px;
+  max-width:100%;max-height:var(--m-a-im,280px);border-radius:6px;
   border:1px solid var(--brd);
   display:block;margin:0 auto;
 }
 .modal-card[data-modal="sponsor"] h3{font-size:var(--m-s-ts,13px)}
-.modal-card[data-modal="sponsor"] img{max-height:var(--m-s-im,200px)}
+.modal-card[data-modal="sponsor"] img{max-height:var(--m-s-im,280px)}
+
+/* ═══ GDB 选择 Modal ═══ */
+.modal-card[data-modal="gdbSelect"]{
+  text-align:left;width:400px;max-width:90vw;padding:0;
+}
+.modal-card[data-modal="gdbSelect"] .gdb-sel-head{
+  padding:12px 14px 8px;border-bottom:1px solid var(--brd);
+}
+.modal-card[data-modal="gdbSelect"] .gdb-sel-title{
+  font-size:13px;font-weight:600;color:var(--tx);padding-right:24px;
+}
+.modal-card[data-modal="gdbSelect"] .gdb-sel-sub{
+  font-size:11px;color:var(--tx3);margin-top:2px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.modal-card[data-modal="gdbSelect"] .gdb-sel-body{
+  padding:8px 14px;overflow-y:auto;min-height:0;
+  scrollbar-width:thin;max-height:50vh;
+}
+.modal-card[data-modal="gdbSelect"] .gdb-sel-body::-webkit-scrollbar{width:6px}
+.modal-card[data-modal="gdbSelect"] .gdb-sel-body::-webkit-scrollbar-thumb{background:var(--brd);border-radius:3px}
+.modal-card[data-modal="gdbSelect"] .gdb-sel-foot{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:10px 14px;border-top:1px solid var(--brd);
+}
+.modal-card[data-modal="gdbSelect"] .gdb-sel-count{font-size:11px;color:var(--tx3)}
+.modal-card[data-modal="gdbSelect"] .gdb-sel-btns{display:flex;gap:8px}
+.modal-card[data-modal="gdbSelect"] .gdb-sel-confirm{
+  background:var(--ac);color:#fff;border-color:var(--ac);font-weight:600;
+}
+.modal-card[data-modal="gdbSelect"] .gdb-sel-confirm:hover:not(:disabled){
+  background:var(--ach);border-color:var(--ach);color:#fff;
+}
+.modal-card[data-modal="gdbSelect"] .gdb-sel-confirm:disabled{
+  opacity:.45;cursor:not-allowed;background:var(--ac);border-color:var(--ac);color:#fff;
+}
+/* 弹窗内要素类列表 */
+.gdb-sel-tbl{border:1px solid var(--brd);border-radius:6px;overflow:hidden}
+.gdb-sel-th{
+  display:flex;font-size:10px;color:var(--tx3);padding:4px 8px;
+  border-bottom:1px solid var(--brd);font-weight:600;background:var(--srf2);
+}
+.gdb-sel-th span:nth-child(1){flex:1}
+.gdb-sel-th span:nth-child(2){width:60px;text-align:center}
+.gdb-sel-th span:nth-child(3){width:55px;text-align:right}
+.gdb-sel-toolbar{
+  display:flex;gap:10px;padding:5px 8px;border-bottom:1px solid var(--brd);font-size:10.5px;
+}
+.gdb-sel-toolbar a{color:var(--ac);cursor:pointer;text-decoration:none}
+.gdb-sel-toolbar a:hover{text-decoration:underline}
+
+/* ═══ 左栏 GDB 汇总行 ═══ */
+.gitem{
+  display:flex;align-items:center;gap:6px;padding:6px 8px;
+  background:var(--acg);border:1px solid rgba(154,111,31,.25);
+  border-radius:6px;font-size:11px;cursor:pointer;position:relative;
+  transition:background .15s ease,border-color .15s ease;
+}
+.gitem:hover{background:rgba(154,111,31,.18);border-color:rgba(154,111,31,.4)}
+[data-t="dark"] .gitem{border-color:rgba(201,165,95,.3)}
+[data-t="dark"] .gitem:hover{background:rgba(201,165,95,.22);border-color:rgba(201,165,95,.5)}
+.gitem .gicon{color:var(--ac);font-size:12px;flex:0 0 auto}
+.gitem .gname{
+  color:var(--ac);font-weight:600;flex:1;min-width:0;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.gitem .gcnt{color:var(--ac);font-size:10px;font-weight:600;flex:0 0 auto}
+.gitem .gclose{
+  color:var(--tx3);font-size:14px;line-height:1;cursor:pointer;
+  padding:2px 4px;border-radius:3px;flex:0 0 auto;transition:color .15s,background .15s;
+}
+.gitem .gclose:hover{color:var(--er);background:rgba(168,69,62,.12)}
+/* GDB 汇总行待选择状态（导入后尚未确认要素类）：弱化、提示性 */
+.gitem.gitem-pending{background:transparent;border-style:dashed;border-color:var(--brd2)}
+.gitem.gitem-pending:hover{background:var(--srf2);border-color:var(--brd2)}
+.gitem.gitem-pending .gicon,
+.gitem.gitem-pending .gname{color:var(--tx2);font-weight:500}
+.gitem.gitem-pending .gcnt{color:var(--ac)}
 
 /* ═══ Tab bar ═══ */
 .tabbar{
@@ -298,8 +390,6 @@ body::before{
 .app[data-mode="t"] .pnl-l .pnl-bd .ck{font-size:12px}
 /* TXT mode: left panel scrollable */
 .app[data-mode="t"] .pnl-l .pnl-bd{overflow-y:auto}
-/* TXT mode: limit file list height */
-.app[data-mode="t"] .file-list{max-height:140px}
 /* TXT mode: compact output-settings row */
 .os-h{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 0 2px}
 .os-h .ck{white-space:nowrap;font-size:12px}
@@ -313,11 +403,11 @@ body::before{
 .pnl-m{width:260px;border-right:1px solid var(--brd);flex-shrink:0}
 /* Compact middle panel — no scroll */
 .pnl-m .pnl-bd{padding:6px 8px}
-.pnl-m .slabel{padding:4px 0 3px;font-size:10.5px}
+.pnl-m .slabel{padding:3px 0 2px;font-size:10.5px}
 .pnl-m .fld{margin-bottom:4px}
 .pnl-m .fld label{margin-bottom:2px;font-size:10px}
 .pnl-m .fld input,.pnl-m .fld select{padding:4px 6px;font-size:11px}
-.pnl-m .div{margin:14px 0}
+.pnl-m .div{margin:8px 0}
 .pnl-m .ck{padding:1px 0;font-size:11px;gap:5px}
 .pnl-m .ck input{width:13px;height:13px}
 .pnl-m .ck-grid{display:grid;grid-template-columns:1fr 1fr;gap:1px 4px}
@@ -446,7 +536,7 @@ body::before{
 }
 .drop:hover .drop-ic{background:var(--ac);color:#1a1a1c;border-color:var(--ac);transform:rotate(90deg)}
 .drop-tx{font-size:11px;color:var(--tx3);font-weight:500;letter-spacing:.2px}
-.file-list{max-height:360px;overflow-y:auto;margin-top:4px;border:1px solid var(--brd);border-radius:6px;padding:2px}
+.file-list{max-height:140px;overflow-y:auto;margin-top:4px;border:1px solid var(--brd);border-radius:6px;padding:2px}
 .file-list:empty::after{
   content:'暂无文件';
   display:flex;align-items:center;justify-content:center;
@@ -687,11 +777,24 @@ body::before{
         <div class="file-list" id="flT"></div>
         <div style="text-align:right;margin-top:2px"><button class="btn" id="btnClearT">清空全部</button></div>
         <div class="div"></div>
-        <div class="slabel">输出设置</div>
-        <div class="os-h" style="padding-top:0">
-          <span style="font-size:10.5px;color:var(--tx3);font-weight:500">组织</span>
-          <label class="ck"><input type="radio" name="org_mode" id="org_sep" checked>每个 TXT 单独输出</label>
-          <label class="ck"><input type="radio" name="org_mode" id="org_merge">合并为一个 SHP</label>
+        <div class="slabel">输出模式</div>
+        <div class="mode-group" style="display:flex;flex-direction:column;gap:4px;margin-bottom:4px">
+          <label class="ck"><input type="radio" name="t_output_mode" value="one_to_one" checked>一对一（每个 TXT 单独输出）</label>
+          <label class="ck"><input type="radio" name="t_output_mode" value="split_by_plot">按地块拆分（每个地块单独输出）</label>
+          <label class="ck"><input type="radio" name="t_output_mode" value="merge_all">全部合并为一个 SHP</label>
+        </div>
+        <div id="t_filenameFieldRow" style="display: none; margin-left: 20px; margin-bottom: 6px;">
+          <label style="font-size:11px;color:var(--tx3)">地块拆分文件名</label>
+          <select id="t_filename_field" style="margin-left:6px">
+            <option value="DKMC">地块名称(DKMC)</option>
+            <option value="FID">FID</option>
+            <option value="">序号</option>
+          </select>
+        </div>
+        <div class="slabel">附加属性</div>
+        <div class="ck-grid">
+          <label class="ck"><input type="checkbox" id="t_keep_lujin">保留输出路径</label>
+          <label class="ck"><input type="checkbox" id="t_keep_mingc">txt 名称</label>
         </div>
         <div class="fld">
           <label>输出目录</label>
@@ -710,12 +813,12 @@ body::before{
       <div class="pnl-h"><span class="pnl-label">参数设置</span></div>
       <div class="pnl-bd">
         <div class="slabel">输出模式</div>
-        <div class="mode-group" style="display:flex;flex-direction:column;gap:4px;margin-bottom:6px">
+        <div class="mode-group" style="display:flex;flex-direction:column;gap:4px;margin-bottom:4px">
           <label class="ck"><input type="radio" name="output_mode" value="one_to_one" checked>一对一（每个导入文件单独输出）</label>
           <label class="ck"><input type="radio" name="output_mode" value="split_by_plot">按地块拆分（每个地块单独输出）</label>
           <label class="ck"><input type="radio" name="output_mode" value="merge_all">全部合并为一个 TXT</label>
         </div>
-        <div id="filenameFieldRow" style="display:none;margin-left:20px;margin-bottom:6px">
+        <div id="filenameFieldRow" style="display: none; margin-left: 20px; margin-bottom: 6px;">
           <label style="font-size:11px;color:var(--tx3)">地块拆分文件名</label>
           <select id="filename_field" style="margin-left:6px">
             <option value="DKMC">地块名称(DKMC)</option>
@@ -728,12 +831,10 @@ body::before{
         <div class="slabel">转换选项</div>
         <div class="ck-grid">
         <label class="ck"><input type="checkbox" id="ox">XY 坐标标反</label>
-        <label class="ck"><input type="checkbox" id="oj" checked>点号前加"J"</label>
-        <label class="ck"><input type="checkbox" id="op">部件号从 1 开始</label>
+        <label class="ck"><input type="checkbox" id="oj">点号前加"J"</label>
         <label class="ck"><input type="checkbox" id="on">起始点西北角</label>
         <label class="ck"><input type="checkbox" id="oo" checked>首末点重合</label>
         </div>
-        <div class="fld"><label>缓冲区（米）</label><input type="number" id="pb" value="0" min="0"></div>
 
         <div class="div"></div>
 
@@ -767,10 +868,6 @@ body::before{
       <!-- 面→TXT mode -->
       <div class="mode-s ctr-inner">
         <div class="ctr-bd">
-          <div id="gdbLayerList" style="display:none;margin-bottom:8px">
-            <div class="slabel">GDB 图层（勾选要转换的）</div>
-            <div id="gdbLayers" style="border:1px solid var(--brd);border-radius:6px;padding:4px;max-height:180px;overflow-y:auto"></div>
-          </div>
           <div class="pv" id="pv">请先导入 SHP 或 GDB 文件
 
 输出示例格式：
@@ -816,6 +913,27 @@ J2,1,Y500.000,X301.000
   <div class="modal-card" data-modal="sponsor">
     <button class="modal-close" id="btnCloseSponsor" aria-label="关闭">×</button>
     <div class="modal-body" id="sponsorBody"></div>
+  </div>
+</div>
+
+<!-- GDB 要素类选择 Modal -->
+<div class="modal-overlay" id="gdbSelectModal">
+  <div class="modal-card" data-modal="gdbSelect">
+    <button class="modal-close" id="btnCloseGdbSelect" aria-label="关闭">×</button>
+    <div class="gdb-sel-head">
+      <div class="gdb-sel-title">选择要转换的要素类</div>
+      <div class="gdb-sel-sub" id="gdbSelectGdbName"></div>
+    </div>
+    <div class="gdb-sel-body">
+      <div id="gdbSelectList"></div>
+    </div>
+    <div class="gdb-sel-foot">
+      <span id="gdbSelectCount" class="gdb-sel-count">已选 0 / 0</span>
+      <div class="gdb-sel-btns">
+        <button class="btn" id="btnCancelGdbSelect">取消</button>
+        <button class="btn gdb-sel-confirm" id="btnConfirmGdbSelect" disabled>确认</button>
+      </div>
+    </div>
   </div>
 </div>
 

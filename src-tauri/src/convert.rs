@@ -6,6 +6,12 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+/// 判断几何类型字符串是否为面状（与 lib.rs::is_polygon_geometry_type 保持一致）
+fn is_polygon_geometry_type(t: &str) -> bool {
+    let s = t.to_lowercase();
+    s.contains("polygon") || s.contains("面") || s == "multipolygon"
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FieldMapping {
     pub name: String,
@@ -30,10 +36,13 @@ pub struct HeaderConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ShpToTxtOptions {
+    /// XY 坐标标反：勾选时 (X,Y)→(Y,X) 交换为 TXT 标准顺序
     pub ox: bool,
+    /// 点号前加 "J"
     pub oj: bool,
-    pub op: bool,
+    /// 起始点西北角
     pub on: bool,
+    /// 首末点重合
     pub oo: bool,
     /// 输出模式："one_to_one"（一对一）/ "split_by_plot"（按地块拆分）/ "merge_all"（全合并）
     #[serde(default)]
@@ -41,14 +50,24 @@ pub struct ShpToTxtOptions {
     /// 模式 2 下的文件名字段：DKMC / DKBH / FID / 空(序号)
     #[serde(default)]
     pub filename_field: String,
-    pub buffer: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TxtToShpOptions {
     pub output_shp: bool,
-    pub merge: bool,
+    /// 输出模式：one_to_one / split_by_plot / merge_all
+    #[serde(default)]
+    pub output_mode: String,
+    /// split_by_plot 模式下的文件名字段：DKMC / FID / ""(序号)
+    #[serde(default)]
+    pub filename_field: String,
     pub output_dir: String,
+    /// 保留输出路径：勾选后 DBF 增加 LUJIN 列（源 TXT 完整路径）
+    #[serde(default)]
+    pub keep_lujin: bool,
+    /// 保留 txt 名称：勾选后 DBF 增加 MINGC 列（源 TXT 文件名带 .txt）
+    #[serde(default)]
+    pub keep_mingc: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -441,22 +460,43 @@ pub fn convert_txt_to_shp(
     let output_dir = Path::new(&options.output_dir);
     std::fs::create_dir_all(output_dir)
         .map_err(|e| format!("创建输出目录失败: {}", e))?;
-    let mut output_files = Vec::new();
 
-    if options.merge {
-        // 合并模式：所有 TXT 的所有地块合并到一个 SHP
-        let mut all_plots: Vec<txt::PlotData> = Vec::new();
-        for txt_path in txt_paths {
-            let text = std::fs::read_to_string(txt_path)
-                .map_err(|e| format!("读取 TXT 失败: {}", e))?;
-            let parsed = txt::parse_txt(&text);
-            all_plots.extend(parsed.plots);
-        }
+    match options.output_mode.as_str() {
+        "split_by_plot" => txt_to_shp_split_by_plot(txt_paths, options, header_cfg, output_dir),
+        "merge_all" => txt_to_shp_merge_all(txt_paths, options, header_cfg, output_dir),
+        _ => txt_to_shp_one_to_one(txt_paths, options, header_cfg, output_dir),
+    }
+}
+
+/// 模式 1：一对一。每个 TXT 输出一个 SHP（含该 TXT 的所有地块作为要素），平铺到 output_dir 根目录。
+fn txt_to_shp_one_to_one(
+    txt_paths: &[PathBuf],
+    options: &TxtToShpOptions,
+    header_cfg: &HeaderConfig,
+    output_dir: &Path,
+) -> Result<ConvertResult, String> {
+    let mut output_files = Vec::new();
+    let mut used_names: HashMap<String, usize> = HashMap::new();
+    let mut conflict_count = 0usize;
+    for txt_path in txt_paths {
+        let text = std::fs::read_to_string(txt_path)
+            .map_err(|e| format!("读取 TXT 失败: {}", e))?;
+        let parsed = txt::parse_txt(&text);
+        let stem = txt_path
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_else(|| "output".to_string());
+
         if options.output_shp {
-            let (geometries, attributes) = plots_to_surfaces_and_attributes(&all_plots);
+            let (final_name, bumped) = allocate_unique_name(&stem, &mut used_names);
+            if bumped {
+                conflict_count += 1;
+            }
+            let (geometries, mut attributes) = plots_to_surfaces_and_attributes(&parsed.plots);
+            tag_attrs_with_source(&mut attributes, txt_path, options.keep_lujin, options.keep_mingc);
             let shp_files = shp::write_shapefile_structured(
                 output_dir,
-                "merged_output",
+                &final_name,
                 &geometries,
                 &attributes,
                 &header_cfg.crs,
@@ -465,53 +505,154 @@ pub fn convert_txt_to_shp(
             )?;
             output_files.extend(shp_files);
         }
-        Ok(ConvertResult {
-            success: true,
-            message: "已合并输出：merged_output.shp".to_string(),
-            output_files,
-            processed_count: 1,
-        })
-    } else {
-        // 一对一：平铺到 output_dir 根目录，文件名 = TXT stem
-        let mut used_names: HashMap<String, usize> = HashMap::new();
-        let mut conflict_count = 0usize;
-        for txt_path in txt_paths {
-            let text = std::fs::read_to_string(txt_path)
-                .map_err(|e| format!("读取 TXT 失败: {}", e))?;
-            let parsed = txt::parse_txt(&text);
-            let stem = txt_path
-                .file_stem()
-                .map(|s| s.to_string_lossy().to_string())
-                .unwrap_or_else(|| "output".to_string());
+    }
+    let count = txt_paths.len();
+    let mut message = format!("成功转换 {} 个 TXT 文件", count);
+    if conflict_count > 0 {
+        message.push_str(&format!("（{} 个文件名冲突已自动追加序号）", conflict_count));
+    }
+    Ok(ConvertResult {
+        success: true,
+        message,
+        output_files,
+        processed_count: count,
+    })
+}
 
-            if options.output_shp {
-                let (final_name, bumped) = allocate_unique_name(&stem, &mut used_names);
-                if bumped {
-                    conflict_count += 1;
-                }
-                let (geometries, attributes) = plots_to_surfaces_and_attributes(&parsed.plots);
-                let shp_files = shp::write_shapefile_structured(
-                    output_dir,
-                    &final_name,
-                    &geometries,
-                    &attributes,
-                    &header_cfg.crs,
-                    &header_cfg.band,
-                    &header_cfg.zone,
-                )?;
-                output_files.extend(shp_files);
+/// 模式 2：按地块拆分。每个 TXT 建子目录 output_dir/{txt_stem}/，内部每个地块一个 SHP。
+fn txt_to_shp_split_by_plot(
+    txt_paths: &[PathBuf],
+    options: &TxtToShpOptions,
+    header_cfg: &HeaderConfig,
+    output_dir: &Path,
+) -> Result<ConvertResult, String> {
+    let mut output_files = Vec::new();
+    let mut subdir_count = 0usize;
+    let mut fallback_count = 0usize; // 字段缺失/空值兜底为序号的地块数
+    let mut conflict_count = 0usize; // 文件名冲突次数
+
+    for txt_path in txt_paths {
+        let text = std::fs::read_to_string(txt_path)
+            .map_err(|e| format!("读取 TXT 失败: {}", e))?;
+        let parsed = txt::parse_txt(&text);
+        let txt_stem = txt_path
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_else(|| "output".to_string());
+
+        let subdir = output_dir.join(&txt_stem);
+        std::fs::create_dir_all(&subdir)
+            .map_err(|e| format!("创建子目录失败: {}", e))?;
+        subdir_count += 1;
+
+        // 冲突计数作用域：每个 TXT 子目录独立
+        let mut used_names: HashMap<String, usize> = HashMap::new();
+
+        for (idx, plot) in parsed.plots.iter().enumerate() {
+            // 选 filename_field：DKMC 取 plot.name，FID 取 plot.fid，"" 或未知字段走序号兜底
+            let raw = match options.filename_field.as_str() {
+                "DKMC" => plot.name.clone(),
+                "FID" => plot.fid.clone(),
+                _ => String::new(),
+            };
+            let base_name = sanitize_filename(&raw);
+            let base_name = if base_name.is_empty() {
+                fallback_count += 1;
+                format!("{}_{}", txt_stem, idx + 1)
+            } else {
+                base_name
+            };
+
+            let (final_name, bumped) = allocate_unique_name(&base_name, &mut used_names);
+            if bumped {
+                conflict_count += 1;
             }
+
+            // 每地块一个 SHP（单要素）
+            let (geometries, mut attributes) = plots_to_surfaces_and_attributes(std::slice::from_ref(plot));
+            if geometries.is_empty() {
+                continue; // 空地块跳过（与 plots_to_surfaces_and_attributes 的空 surface 跳过一致）
+            }
+            tag_attrs_with_source(&mut attributes, txt_path, options.keep_lujin, options.keep_mingc);
+            let shp_files = shp::write_shapefile_structured(
+                &subdir,
+                &final_name,
+                &geometries,
+                &attributes,
+                &header_cfg.crs,
+                &header_cfg.band,
+                &header_cfg.zone,
+            )?;
+            output_files.extend(shp_files);
         }
-        let count = txt_paths.len();
-        let mut message = format!("成功转换 {} 个 TXT 文件", count);
-        if conflict_count > 0 {
-            message.push_str(&format!("（{} 个文件名冲突已自动追加序号）", conflict_count));
-        }
+    }
+
+    let count = output_files
+        .iter()
+        .filter(|f| f.ends_with(".shp"))
+        .count();
+    let mut message = format!("成功拆分为 {} 个文件（位于 {} 个子目录）", count, subdir_count);
+    if fallback_count > 0 {
+        message.push_str(&format!("（{} 个地块未找到所选字段，已用序号命名）", fallback_count));
+    }
+    if conflict_count > 0 {
+        message.push_str(&format!("（{} 个文件名冲突已自动追加序号）", conflict_count));
+    }
+    Ok(ConvertResult {
+        success: true,
+        message,
+        output_files,
+        processed_count: count,
+    })
+}
+
+/// 模式 3：全合并为一个 SHP（文件名带时间戳，避免重跑覆盖）。
+fn txt_to_shp_merge_all(
+    txt_paths: &[PathBuf],
+    options: &TxtToShpOptions,
+    header_cfg: &HeaderConfig,
+    output_dir: &Path,
+) -> Result<ConvertResult, String> {
+    // 按 TXT 分组构建几何+属性，每组构建后立即 tag 来源路径/名称，再合并
+    // （保证 geometry 与 attribute 顺序对齐，且每个 plot 记录正确的源 TXT）
+    let mut all_geometries: Vec<SurfaceGeometry> = Vec::new();
+    let mut all_attributes: Vec<HashMap<String, String>> = Vec::new();
+    for txt_path in txt_paths {
+        let text = std::fs::read_to_string(txt_path)
+            .map_err(|e| format!("读取 TXT 失败: {}", e))?;
+        let parsed = txt::parse_txt(&text);
+        let (geos, mut attrs) = plots_to_surfaces_and_attributes(&parsed.plots);
+        tag_attrs_with_source(&mut attrs, txt_path, options.keep_lujin, options.keep_mingc);
+        all_geometries.extend(geos);
+        all_attributes.extend(attrs);
+    }
+    let mut output_files = Vec::new();
+    if options.output_shp {
+        let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S").to_string();
+        let filename = format!("merged_output_{}", timestamp);
+        let shp_files = shp::write_shapefile_structured(
+            output_dir,
+            &filename,
+            &all_geometries,
+            &all_attributes,
+            &header_cfg.crs,
+            &header_cfg.band,
+            &header_cfg.zone,
+        )?;
+        output_files.extend(shp_files);
+        let message = format!("已合并输出：{}.shp", filename);
         Ok(ConvertResult {
             success: true,
             message,
             output_files,
-            processed_count: count,
+            processed_count: 1,
+        })
+    } else {
+        Ok(ConvertResult {
+            success: true,
+            message: "未选择 SHP 输出".to_string(),
+            output_files,
+            processed_count: 0,
         })
     }
 }
@@ -614,11 +755,15 @@ fn gdb_to_sources(
     let mut sources = Vec::new();
 
     for (layer_idx, features) in info.all_features.iter().enumerate() {
-        let layer_name = info
-            .layers
-            .get(layer_idx)
-            .map(|l| l.name.as_str())
-            .unwrap_or("");
+        let layer_info = info.layers.get(layer_idx);
+        let layer_name = layer_info.map(|l| l.name.as_str()).unwrap_or("");
+        let geom_type = layer_info.map(|l| l.geometry_type.as_str()).unwrap_or("");
+
+        // 仅处理面状图层（导入时已过滤，这里兜底防止漏网）
+        if !is_polygon_geometry_type(geom_type) {
+            continue;
+        }
+
         if let Some(sel) = selected_layers {
             if !sel.is_empty() && !sel.iter().any(|n| n == layer_name) {
                 continue;
@@ -665,7 +810,10 @@ fn build_plot_data(
     plot_dlbm: String,
     options: &ShpToTxtOptions,
 ) -> txt::PlotData {
-    let rings = surface_to_indexed_rings(surface, options.on, options.oo);
+    // 默认输出 (X,Y) 顺序；勾选 ox 时交换为 (Y,X)（northing,easting，政府标准界址点格式）。
+    // 取反是因为 surface_to_indexed_rings 的 swap_xy=true 才执行交换，
+    // 而语义上"标反"对应"输出交换后的 (Y,X)"，故 ox=true 时 swap_xy 才应为 true。
+    let rings = surface_to_indexed_rings(surface, options.on, options.oo, options.ox);
     let coords = rings.iter().flat_map(|ring| ring.coords.iter().copied()).collect::<Vec<_>>();
 
     txt::PlotData {
@@ -679,6 +827,32 @@ fn build_plot_data(
         dlbm: plot_dlbm,
         coords,
         rings,
+    }
+}
+
+/// 给一批属性行注入来源 TXT 路径/名称（按勾选状态）。
+/// keep_lujin → 每行插入 "LUJIN" = 源 TXT 完整路径
+/// keep_mingc → 每行插入 "MINGC" = 源 TXT 文件名（带 .txt）
+fn tag_attrs_with_source(
+    attributes: &mut [HashMap<String, String>],
+    txt_path: &std::path::Path,
+    keep_lujin: bool,
+    keep_mingc: bool,
+) {
+    if keep_lujin {
+        let p = txt_path.to_string_lossy().to_string();
+        for a in attributes.iter_mut() {
+            a.insert("LUJIN".to_string(), p.clone());
+        }
+    }
+    if keep_mingc {
+        let n = txt_path
+            .file_name()
+            .map(|f| f.to_string_lossy().to_string())
+            .unwrap_or_default();
+        for a in attributes.iter_mut() {
+            a.insert("MINGC".to_string(), n.clone());
+        }
     }
 }
 

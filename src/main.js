@@ -73,7 +73,7 @@ const FIELD_MATCH_RULES = {
 };
 
 const PP = [
-  { id: "usr", n: "自定义", h: { c: "2000国家大地坐标系", b: "3", j: "高斯克吕格", u: "米", z: "", a: "0.001", t: ",,,,,," }, p: { pp: 3, pz: "auto", pb: 0, ox: 0, oj: 1, op: 0, on: 0, oo: 1, om: 0 }, f: { fn: "DKMC", fi: "DKBH", fa: "", fu: "", fm: "", fd: "" } },
+  { id: "usr", n: "自定义", h: { c: "2000国家大地坐标系", b: "3", j: "高斯克吕格", u: "米", z: "", a: "0.001", t: ",,,,,," }, p: { pp: 3, pz: "auto", ox: 0, oj: 0, on: 0, oo: 1, om: 0 }, f: { fn: "DKMC", fi: "DKBH", fa: "", fu: "", fm: "", fd: "" } },
 ];
 
 const $ = (id) => document.getElementById(id);
@@ -132,7 +132,9 @@ function renderMarkdown(md) {
     t = t.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
     t = t.replace(/!\[(.+?)\]\((.+?)\)/g, (_, alt, src) => {
       const normalizedSrc = normalizeMdImageSrc(src);
-      return `<img src="${escHtml(normalizedSrc)}" alt="${alt}" style="max-width:160px;border-radius:6px;border:1px solid var(--brd);display:block;margin:0 auto">`;
+      // 不再硬编码小尺寸，交给 modal CSS 的 max-width/max-height 控制，
+      // 二维码图片可放大到 280×280 方便扫码
+      return `<img src="${escHtml(normalizedSrc)}" alt="${alt}" style="border-radius:6px;border:1px solid var(--brd);display:block;margin:0 auto">`;
     });
     t = t.replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" target="_blank" style="color:var(--ac)">$1</a>');
     return t;
@@ -144,6 +146,9 @@ function renderMarkdown(md) {
 window.importShp = async function () {
   try {
     const result = await tauriInvoke("pick_shp_files");
+    if (result.skipped && result.skipped.length) {
+      toast(`以下文件不是面状要素，已忽略：${result.skipped.join("、")}`);
+    }
     if (!result.files || result.files.length === 0) return;
     loadedFiles = result.files;
     sourceType = null;
@@ -159,102 +164,166 @@ window.importShp = async function () {
 };
 
 // ═══ GDB 导入 ═══
+// 流程：选 .gdb 文件夹 → 后端枚举面状要素类 → 自动弹出选择框（默认不选）
+// → 用户勾选并确认 → 结果以单行汇总落在左栏，预览区刷新。
 window.importGdb = async function () {
   try {
     const result = await tauriInvoke("import_gdb");
     if (!result || !result.path) return;
+    if (result.skipped && result.skipped.length) {
+      toast(`以下图层不是面状要素，已过滤：${result.skipped.join("、")}`);
+    }
     sourceType = "gdb";
     sourcePath = result.path;
-    loadedFiles = [];
-    const fl = $("fl");
-    if (fl) fl.innerHTML = `<div class="fitem"><span class="fn">◈ ${result.name}.gdb</span><span class="fs">${result.num_features}个要素</span></div>`;
+    loadedFiles = [];           // SHP/GDB 互斥：导入 GDB 清空 SHP 列表
+    gdbLayers = result.layers || [];
+    selectedLayers = [];        // 弹窗内默认不选；确认时才提交
+    window._gdbName = result.name;
     autoMatchFields(result.field_names);
     autoSetOutputDirS(result.path);
-    gdbLayers = result.layers || [];
-    // 默认选中由 renderGdbLayers 内的初始化逻辑处理（仅面状要素类）
-    selectedLayers = [];
-    window._gdbLayersInited = false;
-    renderGdbLayers();
-    toast(`已导入 GDB: ${result.name} (${result.layers.length} 个要素类)`);
-    updatePreview();
+    toast(`已读取 GDB: ${result.name}（${result.layers.length} 个面状要素类），请在弹窗中勾选`);
+    renderLeftGdbSummary();     // 左栏先显示"待选择"占位行
+    openGdbSelectModal();       // 直接弹出要素类选择框
   } catch (e) {
     toast("导入 GDB 失败: " + e);
   }
 };
 
-function renderGdbLayers() {
-  const container = $("gdbLayerList");
-  const list = $("gdbLayers");
-  if (!container || !list) return;
-  if (sourceType !== "gdb" || !gdbLayers.length) { container.style.display = "none"; return; }
-  container.style.display = "block";
+// ── 弹窗临时态：弹窗打开期间记录勾选，确认时才写入 selectedLayers ──
+let gdbTempSelected = [];
 
-  // 默认只勾选面状要素类（Polygon / MultiPolygon / 面）
-  const isPolygonType = (t) => {
-    const s = (t || "").toLowerCase();
-    return s.includes("polygon") || s.includes("面") || s === "multipolygon";
+// 打开要素类选择弹窗（用当前 selectedLayers 初始化临时态，实现"重开恢复上次勾选"）
+window.openGdbSelectModal = function () {
+  const m = $("gdbSelectModal");
+  if (!m) return;
+  gdbTempSelected = [...selectedLayers];
+  const sub = $("gdbSelectGdbName");
+  if (sub && window._gdbName) sub.textContent = `${window._gdbName}.gdb · 共 ${gdbLayers.length} 个面状要素类`;
+  renderGdbSelectList();
+  m.classList.add("on");
+};
+
+// 关闭弹窗：不改 selectedLayers（保留上次确认值）；点遮罩/取消/Esc 走这里
+window.closeGdbSelectModal = function (e) {
+  if (e && e.target && e.target.id && e.target.id !== "gdbSelectModal" && e.type === "click") return;
+  const m = $("gdbSelectModal");
+  if (m) m.classList.remove("on");
+};
+
+// 确认：提交临时态 → 关闭 → 刷新左栏汇总 + 右栏预览
+window.confirmGdbSelect = function () {
+  if (gdbTempSelected.length === 0) {
+    toast("请至少选择一个要素类");
+    return;
+  }
+  selectedLayers = [...gdbTempSelected];
+  window.closeGdbSelectModal();
+  renderLeftGdbSummary();
+  toast(`已选定 ${selectedLayers.length}/${gdbLayers.length} 个要素类`);
+  updatePreview();
+};
+
+// 渲染弹窗内的要素类勾选列表（操作 gdbTempSelected，不动 selectedLayers）
+function renderGdbSelectList() {
+  const list = $("gdbSelectList");
+  if (!list) return;
+  const updateCount = () => {
+    const c = $("gdbSelectCount");
+    if (c) c.textContent = `已选 ${gdbTempSelected.length} / ${gdbLayers.length}`;
+    const btn = $("btnConfirmGdbSelect");
+    if (btn) {
+      const empty = gdbTempSelected.length === 0;
+      btn.disabled = empty;
+      btn.textContent = empty ? "确认" : `确认（${gdbTempSelected.length} 个）`;
+    }
   };
 
-  // 首次渲染（selectedLayers 为空）时初始化为所有面状要素类
-  if (selectedLayers.length === 0 && !window._gdbLayersInited) {
-    selectedLayers = gdbLayers.filter((l) => isPolygonType(l.geometry_type)).map((l) => l.name);
-    window._gdbLayersInited = true;
-  }
-
-  // 列表为空提示
-  const hasPolygon = gdbLayers.some((l) => isPolygonType(l.geometry_type));
-  let header = '<div style="display:flex;font-size:10px;color:var(--tx3);padding:2px 6px;border-bottom:1px solid var(--brd);font-weight:500">'
-    + '<span style="flex:1">要素类名</span><span style="width:60px;text-align:center">几何类型</span><span style="width:60px;text-align:right">要素数</span></div>';
-  if (!hasPolygon) {
-    header += '<div style="padding:4px 6px;font-size:10.5px;color:var(--tx3)">未发现面状要素类，可手动勾选其他类型</div>';
-  }
-
-  // 全选/全不选/反选
-  const toolbar = '<div style="display:flex;gap:6px;padding:4px 6px;border-bottom:1px solid var(--brd);font-size:10.5px">'
-    + '<a href="#" data-act="all" style="color:var(--ac)">全选</a>'
-    + '<a href="#" data-act="none" style="color:var(--ac)">全不选</a>'
-    + '<a href="#" data-act="invert" style="color:var(--ac)">反选</a>'
-    + '<a href="#" data-act="polygon" style="color:var(--ac)">仅面状</a>'
+  const header = '<div class="gdb-sel-th"><span>要素类名</span><span>几何类型</span><span>要素数</span></div>';
+  const toolbar = '<div class="gdb-sel-toolbar">'
+    + '<a data-act="all">全选</a><a data-act="none">全不选</a><a data-act="invert">反选</a>'
     + '</div>';
-
-  list.innerHTML = header + toolbar + gdbLayers.map((layer) => {
-    const checked = selectedLayers.includes(layer.name) ? "checked" : "";
+  const rows = gdbLayers.map((layer) => {
+    const checked = gdbTempSelected.includes(layer.name) ? "checked" : "";
     const gtype = layer.geometry_type || "?";
-    return `<label class="ck" style="padding:4px 6px;border-bottom:1px solid var(--brd);font-size:11px"><input type="checkbox" data-layer="${layer.name}" ${checked}><span style="flex:1">${layer.name}</span><span style="width:60px;text-align:center;color:var(--tx3);font-size:10px">${gtype}</span><span style="width:60px;text-align:right;color:var(--tx3);font-size:10px">${layer.num_features}</span></label>`;
+    return `<label class="ck" style="padding:5px 8px;border-bottom:1px solid var(--brd);font-size:11px"><input type="checkbox" data-layer="${layer.name}" ${checked}><span style="flex:1">${layer.name}</span><span style="width:60px;text-align:center;color:var(--tx3);font-size:10px">${gtype}</span><span style="width:55px;text-align:right;color:var(--tx3);font-size:10px">${layer.num_features}</span></label>`;
   }).join("");
 
-  // checkbox 事件
+  list.innerHTML = `<div class="gdb-sel-tbl">${header}${toolbar}${rows}</div>`;
+
+  // checkbox 变化 → 更新临时态 + 计数/按钮态（不刷新预览，预览留到确认时）
   list.querySelectorAll("input[type=checkbox]").forEach((cb) => {
     cb.addEventListener("change", () => {
+      const name = cb.dataset.layer;
       if (cb.checked) {
-        if (!selectedLayers.includes(cb.dataset.layer)) selectedLayers.push(cb.dataset.layer);
+        if (!gdbTempSelected.includes(name)) gdbTempSelected.push(name);
       } else {
-        selectedLayers = selectedLayers.filter((n) => n !== cb.dataset.layer);
+        gdbTempSelected = gdbTempSelected.filter((n) => n !== name);
       }
-      updatePreview();
+      updateCount();
     });
   });
 
-  // 工具栏事件
+  // 全选/全不选/反选
   list.querySelectorAll("a[data-act]").forEach((a) => {
     a.addEventListener("click", (e) => {
       e.preventDefault();
       const act = a.dataset.act;
       if (act === "all") {
-        selectedLayers = gdbLayers.map((l) => l.name);
+        gdbTempSelected = gdbLayers.map((l) => l.name);
       } else if (act === "none") {
-        selectedLayers = [];
+        gdbTempSelected = [];
       } else if (act === "invert") {
-        selectedLayers = gdbLayers.filter((l) => !selectedLayers.includes(l.name)).map((l) => l.name);
-      } else if (act === "polygon") {
-        selectedLayers = gdbLayers.filter((l) => isPolygonType(l.geometry_type)).map((l) => l.name);
+        gdbTempSelected = gdbLayers.filter((l) => !gdbTempSelected.includes(l.name)).map((l) => l.name);
       }
-      window._gdbLayersInited = true;
-      renderGdbLayers();
-      updatePreview();
+      renderGdbSelectList();
     });
   });
+
+  updateCount();
 }
+
+// ═══ 左栏 GDB 单行汇总 ═══
+// 渲染为一行 ◈ xxx.gdb 选中N/M ×，点行重开弹窗、点×清空导入
+// selectedLayers 为空（尚未确认选择）时显示"待选择"提示，避免误触发后端"空=全选"
+function renderLeftGdbSummary() {
+  const fl = $("fl");
+  if (!fl) return;
+  if (sourceType !== "gdb" || !gdbLayers.length) { fl.innerHTML = ""; return; }
+  const total = gdbLayers.length;
+  const sel = selectedLayers.length;
+  const name = window._gdbName || "GDB";
+  const cntText = sel === 0 ? "待选择" : `选中 ${sel}/${total}`;
+  fl.innerHTML = `<div class="gitem${sel === 0 ? " gitem-pending" : ""}" id="gdbSumRow" title="点击选择要素类">`
+    + `<span class="gicon">◈</span>`
+    + `<span class="gname">${name}.gdb</span>`
+    + `<span class="gcnt">${cntText}</span>`
+    + `<span class="gclose" id="gdbSumClose" title="移除 GDB 导入">×</span>`
+    + `</div>`;
+  const row = $("gdbSumRow");
+  if (row) row.addEventListener("click", (e) => {
+    if (e.target.id === "gdbSumClose") return;   // × 单独处理
+    openGdbSelectModal();
+  });
+  const close = $("gdbSumClose");
+  if (close) close.addEventListener("click", (e) => {
+    e.stopPropagation();
+    clearGdbImport();
+  });
+}
+
+// 清空 GDB 导入（× 按钮触发；与 clearAllFiles 共用清理逻辑，但不清输出目录、不 toast "已清空"）
+function clearGdbImport() {
+  sourceType = null;
+  sourcePath = null;
+  gdbLayers = [];
+  selectedLayers = [];
+  gdbTempSelected = [];
+  window._gdbName = "";
+  renderFileList();   // 复用现有函数清空 #fl
+  updatePreview();
+  toast("已移除 GDB 导入");
+}
+
 
 function renderFileList() {
   const fl = $("fl");
@@ -382,7 +451,7 @@ function renderTxtParseLog() {
     : "等待导入 TXT 文件…";
 }
 
-window.clearAllFiles = function () { loadedFiles = []; sourceType = null; sourcePath = null; gdbLayers = []; selectedLayers = []; const fl = $("fl"); if (fl) fl.innerHTML = ""; const out = $("out_dir_s"); if (out) out.value = ""; const gl = $("gdbLayerList"); if (gl) gl.style.display = "none"; toast("已清空"); };
+window.clearAllFiles = function () { loadedFiles = []; sourceType = null; sourcePath = null; gdbLayers = []; selectedLayers = []; gdbTempSelected = []; window._gdbName = ""; const fl = $("fl"); if (fl) fl.innerHTML = ""; const out = $("out_dir_s"); if (out) out.value = ""; toast("已清空"); };
 window.clearAllFilesTxt = function () { txtFiles = []; const fl = $("flT"); if (fl) fl.innerHTML = ""; const pv = $("pvT"); if (pv) pv.textContent = "等待导入 TXT 文件…"; const out = $("out_dir"); if (out) out.value = ""; toast("已清空"); };
 
 // ═══ Preview ═══
@@ -417,6 +486,10 @@ window.up = async function () {
 window.runShpToTxt = async function () {
   const shpPaths = loadedFiles.map((f) => f.shp_path).filter(Boolean);
   if (!shpPaths.length && !sourcePath) { toast("请先导入 SHP 或 GDB 文件"); return; }
+  // GDB 已导入但未勾选任何要素类：拦截，避免后端把"空"当作"全选"
+  if (sourceType === "gdb" && selectedLayers.length === 0) {
+    toast("请先在左栏点击 GDB 行，勾选要转换的要素类"); return;
+  }
 
   const outDir = $("out_dir_s")?.value || "";
   if (!outDir) { toast("请先导入文件以设置输出路径"); return; }
@@ -442,7 +515,14 @@ window.runTxtToShp = async function () {
   try {
     const result = await tauriInvoke("run_txt_to_shp", {
       txtPaths,
-      options: { output_shp: true, merge: $("org_merge")?.checked || false, output_dir: outDir },
+      options: {
+        output_shp: true,
+        output_mode: document.querySelector('input[name="t_output_mode"]:checked')?.value || "one_to_one",
+        filename_field: $("t_filename_field")?.value ?? "",
+        output_dir: outDir,
+        keep_lujin: $("t_keep_lujin")?.checked || false,
+        keep_mingc: $("t_keep_mingc")?.checked || false,
+      },
       headerCfg: cfg.h,
     });
     toast("✓ " + result.message);
@@ -465,12 +545,10 @@ function getOptions() {
   return {
     ox: $("ox")?.checked || false,
     oj: $("oj")?.checked || false,
-    op: $("op")?.checked || false,
     on: $("on")?.checked || false,
     oo: $("oo")?.checked || false,
     output_mode: outputMode,
     filename_field: filenameField,
-    buffer: parseFloat($("pb")?.value) || 0,
   };
 }
 
@@ -565,10 +643,8 @@ window.ld = function (id) {
   cur = id;
   if (c.h) { $("hc").value = c.h.c; $("hb").value = c.h.b; $("hj").value = c.h.j; $("hu").value = c.h.u; $("hz").value = c.h.z; $("ha").value = c.h.a; $("ht").value = c.h.t; }
   if (c.p) {
-    if ($("pb")) $("pb").value = c.p.pb ?? 0;
     if ($("ox")) $("ox").checked = !!c.p.ox;
     if ($("oj")) $("oj").checked = !!c.p.oj;
-    if ($("op")) $("op").checked = !!c.p.op;
     if ($("on")) $("on").checked = !!c.p.on;
     if ($("oo")) $("oo").checked = !!c.p.oo;
     if ($("om")) $("om").checked = !!c.p.om;
@@ -629,7 +705,7 @@ window.closeSponsor = function (e) { if (e && e.target !== $("sponsorModal")) re
 window.openAbout = function () { const m = $("aboutModal"); if (m) m.classList.add("on"); };
 window.closeAbout = function (e) { if (e && e.target !== $("aboutModal")) return; const m = $("aboutModal"); if (m) m.classList.remove("on"); };
 document.addEventListener("keydown", function (e) {
-  if (e.key === "Escape") { const sm = $("sponsorModal"); const am = $("aboutModal"); if (sm) sm.classList.remove("on"); if (am) am.classList.remove("on"); }
+  if (e.key === "Escape") { const sm = $("sponsorModal"); const am = $("aboutModal"); const gm = $("gdbSelectModal"); if (sm) sm.classList.remove("on"); if (am) am.classList.remove("on"); if (gm) gm.classList.remove("on"); }
 });
 
 // ═══ Init ═══
@@ -684,6 +760,27 @@ function init() {
   });
   const ff = $("filename_field");
   if (ff) ff.addEventListener("change", () => { lastPreviewKey = ""; updatePreview(); });
+
+  // TXT→面 输出模式切换：控制地块拆分文件名下拉框显示
+  const tOutputModeRadios = document.querySelectorAll('input[name="t_output_mode"]');
+  tOutputModeRadios.forEach((r) => {
+    r.addEventListener("change", () => {
+      const row = $("t_filenameFieldRow");
+      if (row) row.style.display = r.checked && r.value === "split_by_plot" ? "block" : "none";
+    });
+  });
+
+  // 初始化：确保两个 filenameFieldRow 的显隐与当前选中模式一致
+  // （防御 WebView2 对部分 inline style 的解析差异）
+  function syncFilenameRows() {
+    const sMode = document.querySelector('input[name="output_mode"]:checked')?.value;
+    const tMode = document.querySelector('input[name="t_output_mode"]:checked')?.value;
+    const sf = $("filenameFieldRow");
+    if (sf) sf.style.display = sMode === "split_by_plot" ? "block" : "none";
+    const tf = $("t_filenameFieldRow");
+    if (tf) tf.style.display = tMode === "split_by_plot" ? "block" : "none";
+  }
+  syncFilenameRows();
   bind("dropZoneTxt", () => importTxt());
   bind("btnClearT", () => clearAllFilesTxt());
   bind("out_btn", () => selectOutputDir());
@@ -695,6 +792,9 @@ function init() {
   bind("btnRunTts", () => runTxtToShp());
   bind("btnCloseAbout", () => closeAbout());
   bind("btnCloseSponsor", () => closeSponsor());
+  bind("btnCloseGdbSelect", () => closeGdbSelectModal());
+  bind("btnCancelGdbSelect", () => closeGdbSelectModal());
+  bind("btnConfirmGdbSelect", () => confirmGdbSelect());
 
   // Tab bar switching
   document.querySelectorAll(".tab[data-t]").forEach((tab) => {
@@ -706,6 +806,8 @@ function init() {
   if (aboutModal) aboutModal.addEventListener("click", (e) => { if (e.target === aboutModal) closeAbout(); });
   const sponsorModal = $("sponsorModal");
   if (sponsorModal) sponsorModal.addEventListener("click", (e) => { if (e.target === sponsorModal) closeSponsor(); });
+  const gdbSelectModal = $("gdbSelectModal");
+  if (gdbSelectModal) gdbSelectModal.addEventListener("click", (e) => { if (e.target === gdbSelectModal) closeGdbSelectModal(); });
   // Prevent modal card click from closing
   document.querySelectorAll(".modal-card").forEach((card) => {
     card.addEventListener("click", (e) => e.stopPropagation());
@@ -759,6 +861,9 @@ function init() {
       try {
         const paths = files.map((f) => f.path || f.name);
         const result = await tauriInvoke("pick_shp_files_from_paths", { paths });
+        if (result.skipped && result.skipped.length) {
+          toast(`以下文件不是面状要素，已忽略：${result.skipped.join("、")}`);
+        }
         if (result.files && result.files.length > 0) {
           loadedFiles = result.files; sourceType = null; sourcePath = null; gdbLayers = []; selectedLayers = []; renderFileList(); processImport();
         }

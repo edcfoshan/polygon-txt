@@ -12,6 +12,12 @@ src-tauri/target/
 # 浏览器测试缓存
 .playwright-mcp/
 
+# ArcGIS FileGDB 运行时锁文件（不提交）
+*.sr.lock
+
+# 测试数据（体积大，不入库）
+00测试数据/
+
 # 外部共享资源（非项目代码）
 CC工具箱_共享/
 

@@ -4,10 +4,15 @@ version = "1.0.0"
 description = "界址点互转工具 — SHP/GDB ↔ TXT 双向转换"
 authors = ["极思G"]
 edition = "2021"
+default-run = "jisig-bpoint-converter"
 
 [lib]
 name = "jisig_bpoint_converter_lib"
 crate-type = ["lib", "cdylib", "staticlib"]
+
+[[bin]]
+name = "diag_read_gdb"
+path = "bin/diag_read_gdb.rs"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

@@ -16,6 +16,8 @@ use convert::{FieldMapping, HeaderConfig, ShpToTxtOptions, TxtToShpOptions};
 struct ShpImportResult {
     files: Vec<ShpFileItem>,
     dir: String,
+    /// 被拒收的非面状 SHP 文件名（前端用于 toast 提示）
+    skipped: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -38,6 +40,8 @@ struct GdbImportResult {
     layers: Vec<GdbLayerItem>,
     field_names: Vec<String>,
     num_features: usize,
+    /// 被过滤掉的非面状图层名（前端用于 toast 提示）
+    skipped: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -73,6 +77,12 @@ struct ConvertResultPayload {
 
 // ─── Commands ───
 
+/// 判断几何类型字符串是否为面状（Polygon / MultiPolygon / 面）
+fn is_polygon_geometry_type(t: &str) -> bool {
+    let s = t.to_lowercase();
+    s.contains("polygon") || s.contains("面") || s == "multipolygon"
+}
+
 #[tauri::command]
 fn pick_shp_files(app: tauri::AppHandle) -> Result<ShpImportResult, String> {
     use tauri_plugin_dialog::DialogExt;
@@ -89,6 +99,7 @@ fn pick_shp_files(app: tauri::AppHandle) -> Result<ShpImportResult, String> {
             return Ok(ShpImportResult {
                 files: vec![],
                 dir: String::new(),
+                skipped: vec![],
             })
         }
     };
@@ -101,6 +112,7 @@ fn pick_shp_files(app: tauri::AppHandle) -> Result<ShpImportResult, String> {
         .unwrap_or_default();
 
     let mut items = Vec::new();
+    let mut skipped = Vec::new();
     for file in &picked {
         let shp_path = match file.as_path() {
             Some(p) => p.to_path_buf(),
@@ -110,17 +122,28 @@ fn pick_shp_files(app: tauri::AppHandle) -> Result<ShpImportResult, String> {
             continue;
         }
         match shp::read_shp_file_group(&shp_path) {
-            Ok(info) => items.push(ShpFileItem {
-                shp_path: info.shp_path,
-                dbf_path: info.dbf_path,
-                prj_path: info.prj_path,
-                name: info.name,
-                field_names: info.field_names,
-                num_features: info.num_features,
-                shape_type: info.shape_type,
-                prj_text: info.prj_text,
-                crs_info: info.crs_info,
-            }),
+            Ok(info) => {
+                // 仅接收面状 SHP；非面状（点/线等）拒收并记录
+                if is_polygon_geometry_type(&info.shape_type) {
+                    items.push(ShpFileItem {
+                        shp_path: info.shp_path,
+                        dbf_path: info.dbf_path,
+                        prj_path: info.prj_path,
+                        name: info.name,
+                        field_names: info.field_names,
+                        num_features: info.num_features,
+                        shape_type: info.shape_type,
+                        prj_text: info.prj_text,
+                        crs_info: info.crs_info,
+                    });
+                } else {
+                    skipped.push(format!(
+                        "{}.shp（{}）",
+                        info.name, info.shape_type
+                    ));
+                    eprintln!("拒收非面状 SHP: {} ({})", info.name, info.shape_type);
+                }
+            }
             Err(e) => eprintln!("读 SHP 失败: {}", e),
         }
     }
@@ -128,6 +151,7 @@ fn pick_shp_files(app: tauri::AppHandle) -> Result<ShpImportResult, String> {
     Ok(ShpImportResult {
         files: items,
         dir: base_dir,
+        skipped,
     })
 }
 
@@ -159,10 +183,36 @@ fn import_gdb(app: tauri::AppHandle) -> Result<GdbImportResult, String> {
         .map(|s| s.to_string_lossy().to_string())
         .unwrap_or_default();
 
-    let field_names = info.all_field_names.first().cloned().unwrap_or_default();
-    let num_features = info.layers.first().map(|l| l.num_features).unwrap_or(0);
-    let layers = info
-        .layers
+    // 按几何类型过滤：仅保留面状图层，非面状（点/线/注记等）跳过
+    let mut skipped = Vec::new();
+    let mut filtered_layers: Vec<gdb::GdbLayerInfo> = Vec::new();
+    let mut all_field_names: Vec<Vec<String>> = Vec::new();
+    let mut all_features: Vec<Vec<gdb::GdbFeature>> = Vec::new();
+    for (li, layer) in info.layers.iter().enumerate() {
+        if is_polygon_geometry_type(&layer.geometry_type) {
+            filtered_layers.push(layer.clone());
+            all_field_names.push(info.all_field_names[li].clone());
+            all_features.push(info.all_features[li].clone());
+        } else {
+            skipped.push(format!("{}（{}）", layer.name, layer.geometry_type));
+            eprintln!(
+                "过滤非面状 GDB 图层: {} ({})",
+                layer.name, layer.geometry_type
+            );
+        }
+    }
+
+    // 仅当面状图层全部被过滤掉时才报错
+    if filtered_layers.is_empty() {
+        return Err(format!(
+            "该 GDB 没有面状要素类（共 {} 个图层均为非面状），无法导入",
+            info.layers.len()
+        ));
+    }
+
+    let field_names = all_field_names.first().cloned().unwrap_or_default();
+    let num_features: usize = filtered_layers.iter().map(|l| l.num_features).sum();
+    let layers = filtered_layers
         .iter()
         .map(|l| GdbLayerItem {
             name: l.name.clone(),
@@ -178,6 +228,7 @@ fn import_gdb(app: tauri::AppHandle) -> Result<GdbImportResult, String> {
         layers,
         field_names,
         num_features,
+        skipped,
     })
 }
 
@@ -326,6 +377,7 @@ fn pick_output_dir(app: tauri::AppHandle) -> Result<Option<String>, String> {
 #[tauri::command]
 fn pick_shp_files_from_paths(paths: Vec<String>) -> Result<ShpImportResult, String> {
     let mut items = Vec::new();
+    let mut skipped = Vec::new();
     let base_dir = paths
         .first()
         .and_then(|p| Path::new(p).parent())
@@ -338,21 +390,28 @@ fn pick_shp_files_from_paths(paths: Vec<String>) -> Result<ShpImportResult, Stri
             continue;
         }
         match shp::read_shp_file_group(&shp_path) {
-            Ok(info) => items.push(ShpFileItem {
-                shp_path: info.shp_path,
-                dbf_path: info.dbf_path,
-                prj_path: info.prj_path,
-                name: info.name,
-                field_names: info.field_names,
-                num_features: info.num_features,
-                shape_type: info.shape_type,
-                prj_text: info.prj_text,
-                crs_info: info.crs_info,
-            }),
+            Ok(info) => {
+                if is_polygon_geometry_type(&info.shape_type) {
+                    items.push(ShpFileItem {
+                        shp_path: info.shp_path,
+                        dbf_path: info.dbf_path,
+                        prj_path: info.prj_path,
+                        name: info.name,
+                        field_names: info.field_names,
+                        num_features: info.num_features,
+                        shape_type: info.shape_type,
+                        prj_text: info.prj_text,
+                        crs_info: info.crs_info,
+                    });
+                } else {
+                    skipped.push(format!("{}.shp（{}）", info.name, info.shape_type));
+                    eprintln!("拒收非面状 SHP: {} ({})", info.name, info.shape_type);
+                }
+            }
             Err(e) => eprintln!("拖放读 SHP 失败: {}", e),
         }
     }
-    Ok(ShpImportResult { files: items, dir: base_dir })
+    Ok(ShpImportResult { files: items, dir: base_dir, skipped })
 }
 
 #[tauri::command]

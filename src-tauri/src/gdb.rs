@@ -106,6 +106,13 @@ fn read_gdb_via_library(
         return Err("GDB 中未找到可用图层".to_string());
     }
 
+    // 库能列出图层但 Pro 的 Z/M 几何会让库迭代器对整层抛错。
+    // 这里先解析目录，便于在库路径失败时按物理文件手动抢救单个图层。
+    let catalog_entries = parse_catalog_manual(path).unwrap_or_default();
+    let find_entry = |name: &str| -> Option<LayerEntry> {
+        catalog_entries.iter().find(|e| e.name == name).cloned()
+    };
+
     let mut layers = Vec::new();
     let mut all_features = Vec::new();
     let mut all_field_names = Vec::new();
@@ -118,11 +125,20 @@ fn read_gdb_via_library(
                     schema.fields.iter().map(|f| f.name.clone()).collect();
 
                 let mut features = Vec::new();
+                let mut hit_zm = false;
                 for result in layer.read() {
                     let feature = match result {
                         Ok(f) => f,
                         Err(e) => {
-                            eprintln!("读取要素记录失败: {:?}", e);
+                            let msg = e.to_string();
+                            // ArcGIS Pro 默认带 Z 通道：库会抛
+                            // "Z/M geometry not supported (type 0xA0000033)"
+                            // 坐标本体仍是 XY delta 编码 → 切手动抢救
+                            if msg.contains("Z/M geometry") || msg.contains("Z/M ordinates") {
+                                hit_zm = true;
+                            } else {
+                                eprintln!("读取要素记录失败: {:?}", e);
+                            }
                             continue;
                         }
                     };
@@ -137,7 +153,6 @@ fn read_gdb_via_library(
                         gdb_feat.surface = extract_surface_geometry(geom);
                         extract_coords(geom, &mut gdb_feat.points);
                     }
-
                     for (i, val) in feature.attributes.iter().enumerate() {
                         if i < field_names.len() {
                             let attr_str = value_to_string(val);
@@ -147,6 +162,27 @@ fn read_gdb_via_library(
                         }
                     }
                     features.push(gdb_feat);
+                }
+
+                // 库路径整层失败（Z/M）→ 用手动路径 + Z/M 剥离抢救该层
+                if hit_zm {
+                    if let Some(entry) = find_entry(&info.name) {
+                        eprintln!(
+                            "图层 {} 含 Z/M 几何，切手动抢救路径…",
+                            info.name
+                        );
+                        match read_layer_manual(path, &entry) {
+                            Ok((layer_info, feats, fields)) => {
+                                layers.push(layer_info);
+                                all_features.push(feats);
+                                all_field_names.push(fields);
+                                continue;
+                            }
+                            Err(e) => {
+                                eprintln!("图层 {} 手动抢救失败: {}", info.name, e);
+                            }
+                        }
+                    }
                 }
 
                 let geom_type = infer_geom_type(&features);
@@ -308,7 +344,9 @@ fn read_layer_manual(
         // 解码几何
         if let (Some(geom_blob), Some(gidx)) = (&row.geometry_blob, geom_field_idx) {
             if let Some(meta) = schema.fields[gidx].geometry.as_ref() {
-                if let Ok(geom) = fgdb::decode_shape_buffer(geom_blob, meta) {
+                // ArcGIS Pro 默认带 Z 通道 → 剥离 Z/M 标志后再解码
+                let cleaned = strip_shape_zm_flags(geom_blob);
+                if let Ok(geom) = fgdb::decode_shape_buffer(&cleaned, meta) {
                     gdb_feat.surface = extract_surface_geometry(&geom);
                     extract_coords(&geom, &mut gdb_feat.points);
                 }
@@ -341,6 +379,56 @@ fn read_layer_manual(
     };
 
     Ok((layer_info, features, field_names))
+}
+
+// ─── Z/M 标志剥离（ArcGIS Pro 兼容） ───
+
+/// 从 shape buffer 的第一个 varuint（几何类型字段）中剥离 Z / M 标志位。
+///
+/// ArcGIS Pro 默认导出的 GDB 会附加 Z 通道（type |= 0x8000_0000），
+/// 而 geonative-filegdb v0.2 一旦看到 Z/M 位就整层报错、跳过所有要素。
+/// 对我们（2D 界址点）而言 Z/M 无意义，坐标本体仍是 XY delta 编码，
+/// 所以这里直接清掉高位的 Z/M 标志再交给解码器即可正常读取。
+///
+/// 保留 curve 标志位（0x2000_0000），库已支持 General* 曲面（线性采样）。
+fn strip_shape_zm_flags(blob: &[u8]) -> std::borrow::Cow<'_, [u8]> {
+    // 解出第一个 varuint（几何类型）
+    let mut n = 0u64;
+    let mut shift = 0u32;
+    let mut consumed = 0usize;
+    for (i, &b) in blob.iter().enumerate() {
+        n |= ((b & 0x7F) as u64) << shift;
+        consumed = i + 1;
+        if b & 0x80 == 0 {
+            break;
+        }
+        shift += 7;
+        if shift >= 64 {
+            // 异常 varuint，原样返回避免误判
+            return std::borrow::Cow::Borrowed(blob);
+        }
+    }
+
+    const Z_FLAG: u64 = 0x8000_0000;
+    const M_FLAG: u64 = 0x4000_0000;
+    let stripped = n & !(Z_FLAG | M_FLAG);
+    if stripped == n {
+        return std::borrow::Cow::Borrowed(blob); // 无 Z/M，原样返回
+    }
+
+    // 重编码 stripped varuint，拼接剩余字节
+    let mut out = Vec::with_capacity(blob.len());
+    let mut v = stripped;
+    loop {
+        if v < 0x80 {
+            out.push(v as u8);
+            break;
+        }
+        out.push(((v & 0x7F) as u8) | 0x80);
+        v >>= 7;
+    }
+    out.extend_from_slice(&blob[consumed..]);
+    std::borrow::Cow::Owned(out)
 }
 
 // ─── 通用辅助 ───

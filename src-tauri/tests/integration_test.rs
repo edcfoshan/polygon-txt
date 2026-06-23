@@ -102,9 +102,8 @@ fn test_shp_to_txt_one_to_one() {
         use_field: "DKYT".into(), tfh: "TFH".into(), dlbm: "DLBM".into(),
     };
     let options = convert::ShpToTxtOptions {
-        ox: false, oj: true, op: false, on: false, oo: true,
+        ox: false, oj: true, on: false, oo: true,
         output_mode: "one_to_one".into(), filename_field: String::new(),
-        buffer: 0.0,
     };
 
     let result = convert::convert_shp_to_txt(
@@ -118,6 +117,76 @@ fn test_shp_to_txt_one_to_one() {
     let txt = std::fs::read_to_string(&result.output_files[0]).unwrap();
     assert!(txt.contains("[属性描述]"));
     assert!(txt.contains("[地块坐标]"));
+}
+
+// ─── 测试 1b2: XY 坐标标反（ox）— 勾选 vs 不勾选坐标列顺序不同 ───
+
+#[test]
+fn test_shp_to_txt_xy_swap() {
+    let shp_path = test_shp_stem();
+
+    let header = convert::HeaderConfig {
+        crs: "2000国家大地坐标系".into(), band: "3".into(),
+        proj: "高斯克吕格".into(), unit: "米".into(), zone: "38".into(),
+        precision: "0.001".into(), transform: ",,,,,,".into(),
+        project_info: String::new(),
+    };
+    let field_mapping = convert::FieldMapping {
+        name: "DKMC".into(), id: "DKBH".into(), area: "MJ".into(),
+        use_field: "DKYT".into(), tfh: "TFH".into(), dlbm: "DLBM".into(),
+    };
+
+    // ox=false（不交换，输出原始 X,Y 顺序）
+    let opts_off = convert::ShpToTxtOptions {
+        ox: false, oj: true, on: false, oo: true,
+        output_mode: "one_to_one".into(), filename_field: String::new(),
+    };
+    let dir_off = tempfile::tempdir().expect("temp dir");
+    let _ = convert::convert_shp_to_txt(
+        &[shp_path.clone()], None, None, &header, &field_mapping, &opts_off,
+        dir_off.path(), None,
+    ).expect("转换失败");
+    let txt_off = std::fs::read_to_string(dir_off.path().join("plot_000.txt")).unwrap();
+
+    // ox=true（交换为标准 Y,X 顺序）
+    let opts_on = convert::ShpToTxtOptions {
+        ox: true, oj: true, on: false, oo: true,
+        output_mode: "one_to_one".into(), filename_field: String::new(),
+    };
+    let dir_on = tempfile::tempdir().expect("temp dir");
+    let _ = convert::convert_shp_to_txt(
+        &[shp_path], None, None, &header, &field_mapping, &opts_on,
+        dir_on.path(), None,
+    ).expect("转换失败");
+    let txt_on = std::fs::read_to_string(dir_on.path().join("plot_000.txt")).unwrap();
+
+    // 提取第一个坐标行的第3、4列（Y, X 或 X, Y）
+    fn first_coord(txt: &str) -> Option<(f64, f64)> {
+        for line in txt.lines() {
+            let line = line.trim_start_matches('J');
+            let parts: Vec<&str> = line.split(',').collect();
+            if parts.len() == 4 {
+                if let (Ok(a), Ok(b)) = (parts[2].parse::<f64>(), parts[3].parse::<f64>()) {
+                    return Some((a, b));
+                }
+            }
+        }
+        None
+    }
+
+    let (c3_off, c4_off) = first_coord(&txt_off).expect("ox=false 应有坐标行");
+    let (c3_on, c4_on) = first_coord(&txt_on).expect("ox=true 应有坐标行");
+
+    // 交换后第3列应等于原第4列，第4列等于原第3列
+    assert!(
+        (c3_on - c4_off).abs() < 1e-6 && (c4_on - c3_off).abs() < 1e-6,
+        "ox=true 应交换坐标列: off=({}, {}) on=({}, {})", c3_off, c4_off, c3_on, c4_on
+    );
+    // ox=false 时两版本坐标不应相同（证明确实有差异）
+    assert!(
+        (c3_off - c3_on).abs() > 1e-6,
+        "ox 开关应改变坐标输出"
+    );
 }
 
 // ─── 测试 1c: 三模式 — 全合并（文件名带时间戳） ───
@@ -138,9 +207,8 @@ fn test_shp_to_txt_merge_all() {
         use_field: "DKYT".into(), tfh: "TFH".into(), dlbm: "DLBM".into(),
     };
     let options = convert::ShpToTxtOptions {
-        ox: false, oj: true, op: false, on: false, oo: true,
+        ox: false, oj: true, on: false, oo: true,
         output_mode: "merge_all".into(), filename_field: String::new(),
-        buffer: 0.0,
     };
 
     let result = convert::convert_shp_to_txt(
@@ -176,9 +244,8 @@ fn test_shp_to_txt_split_by_plot() {
     };
     // 用序号命名（filename_field 为空）
     let options = convert::ShpToTxtOptions {
-        ox: false, oj: true, op: false, on: false, oo: true,
+        ox: false, oj: true, on: false, oo: true,
         output_mode: "split_by_plot".into(), filename_field: String::new(),
-        buffer: 0.0,
     };
 
     let result = convert::convert_shp_to_txt(
@@ -210,8 +277,11 @@ fn test_txt_to_shp_merge() {
 
     let options = convert::TxtToShpOptions {
         output_shp: true,
-        merge: true,
+        output_mode: String::from("merge_all"),
+        filename_field: String::new(),
         output_dir: out_dir.path().to_string_lossy().to_string(),
+        keep_lujin: false,
+        keep_mingc: false,
     };
     let header = convert::HeaderConfig {
         crs: "2000国家大地坐标系".into(), band: "3".into(),
@@ -223,9 +293,256 @@ fn test_txt_to_shp_merge() {
     let result = convert::convert_txt_to_shp(&[txt_path], &options, &header)
         .expect("TXT→面合并失败");
     assert!(result.success);
-    assert!(result.message.contains("merged_output.shp"));
-    let merged = out_dir.path().join("merged_output.shp");
-    assert!(merged.exists(), "应生成 merged_output.shp");
+    // 新行为：文件名带时间戳 merged_output_YYYYMMDD_HHMMSS.shp
+    assert!(result.message.contains("merged_output_"), "消息应含时间戳文件名: {}", result.message);
+    let merged = std::fs::read_dir(out_dir.path())
+        .expect("read_dir")
+        .filter_map(|e| e.ok())
+        .map(|e| e.file_name().to_string_lossy().to_string())
+        .find(|n| n.starts_with("merged_output_") && n.ends_with(".shp"))
+        .expect("应生成一个 merged_output_*.shp");
+    assert!(merged.starts_with("merged_output_") && merged.ends_with(".shp"));
+}
+
+// ─── 测试 1e2: TXT→面 附加属性（LUJIN/MINGC）勾选验证 ───
+
+#[test]
+fn test_txt_to_shp_keep_lujin_mingc() {
+    let txt_path = test_txt_path();
+    let out_dir = tempfile::tempdir().expect("temp dir");
+    let header = convert::HeaderConfig {
+        crs: "2000国家大地坐标系".into(), band: "3".into(),
+        proj: "高斯克吕格".into(), unit: "米".into(), zone: "38".into(),
+        precision: "0.001".into(), transform: ",,,,,,".into(),
+        project_info: String::new(),
+    };
+
+    // 勾选两个附加属性
+    let options = convert::TxtToShpOptions {
+        output_shp: true,
+        output_mode: String::from("one_to_one"),
+        filename_field: String::new(),
+        output_dir: out_dir.path().to_string_lossy().to_string(),
+        keep_lujin: true,
+        keep_mingc: true,
+    };
+    let result = convert::convert_txt_to_shp(&[txt_path.clone()], &options, &header)
+        .expect("转换失败");
+    assert!(result.success);
+
+    // 读回 DBF
+    let dbf_path = out_dir.path().join("plot_000.dbf");
+    assert!(dbf_path.exists(), "应有 plot_000.dbf");
+    let (field_names, records) = shp::read_dbf(&dbf_path).expect("读 DBF 失败");
+
+    println!("DBF 字段: {:?}", field_names);
+    // 应含 LUJIN 和 MINGC
+    assert!(field_names.iter().any(|n| n == "LUJIN"), "应含 LUJIN 字段: {:?}", field_names);
+    assert!(field_names.iter().any(|n| n == "MINGC"), "应含 MINGC 字段: {:?}", field_names);
+
+    let lujin_idx = field_names.iter().position(|n| n == "LUJIN").unwrap();
+    let mingc_idx = field_names.iter().position(|n| n == "MINGC").unwrap();
+    let row = records.first().expect("应有记录");
+    // LUJIN = 源 TXT 完整路径
+    assert!(
+        row[lujin_idx].trim().ends_with("plot_000.txt"),
+        "LUJIN 应为源 TXT 完整路径，实际: {:?}",
+        row[lujin_idx]
+    );
+    assert!(
+        row[lujin_idx].trim().contains("plot_000"),
+        "LUJIN 应含完整路径"
+    );
+    // MINGC = 文件名带 .txt
+    assert_eq!(
+        row[mingc_idx].trim(),
+        "plot_000.txt",
+        "MINGC 应为 plot_000.txt，实际: {:?}",
+        row[mingc_idx]
+    );
+}
+
+#[test]
+fn test_txt_to_shp_no_extra_fields_by_default() {
+    let txt_path = test_txt_path();
+    let out_dir = tempfile::tempdir().expect("temp dir");
+    let header = convert::HeaderConfig {
+        crs: "2000国家大地坐标系".into(), band: "3".into(),
+        proj: "高斯克吕格".into(), unit: "米".into(), zone: "38".into(),
+        precision: "0.001".into(), transform: ",,,,,,".into(),
+        project_info: String::new(),
+    };
+    // 不勾选附加属性 → DBF 不应含 LUJIN/MINGC
+    let options = convert::TxtToShpOptions {
+        output_shp: true,
+        output_mode: String::from("one_to_one"),
+        filename_field: String::new(),
+        output_dir: out_dir.path().to_string_lossy().to_string(),
+        keep_lujin: false,
+        keep_mingc: false,
+    };
+    let result = convert::convert_txt_to_shp(&[txt_path], &options, &header)
+        .expect("转换失败");
+    assert!(result.success);
+
+    let dbf_path = out_dir.path().join("plot_000.dbf");
+    let (field_names, _records) = shp::read_dbf(&dbf_path).expect("读 DBF 失败");
+    assert!(!field_names.iter().any(|n| n == "LUJIN"), "不勾选时不应有 LUJIN: {:?}", field_names);
+    assert!(!field_names.iter().any(|n| n == "MINGC"), "不勾选时不应有 MINGC: {:?}", field_names);
+}
+
+// ─── 测试 1f: TXT→面 split_by_plot 模式（多地块 TXT，按 DKMC 拆分） ───
+
+/// 合成多地块 TXT（3 个地块，含 DKMC 名称），写入临时文件返回路径。
+fn write_multi_plot_txt(dir: &std::path::Path) -> PathBuf {
+    // 3 个地块：两个有 DKMC 名称（"地块甲" / "地块乙"），一个 DKMC 为空（走序号兜底）
+    // 每地块 4 个不重复点，确保 strip_closing_point 后仍 ≥3 点构成有效面
+    let content = "\
+[属性描述]
+坐标系=2000国家大地坐标系
+几度分带=3
+投影类型=高斯克吕格
+计量单位=米
+带号=38
+精度=0.001
+转换参数=,,,,,,
+[地块坐标]
+4,100.5,FID_A,地块甲,面, , , ,@
+J1,1,2582988.976,38383243.971
+J2,1,2582983.339,38383261.067
+J3,1,2582960.000,38383250.000
+J4,1,2582990.000,38383270.000
+4,200.5,FID_B,地块乙,面, , , ,@
+J1,1,2582988.976,38383243.971
+J2,1,2582983.339,38383261.067
+J3,1,2582960.000,38383250.000
+J4,1,2582990.000,38383270.000
+4,300.5,FID_C,,面, , , ,@
+J1,1,2582988.976,38383243.971
+J2,1,2582983.339,38383261.067
+J3,1,2582960.000,38383250.000
+J4,1,2582990.000,38383270.000
+";
+    let path = dir.join("multi_plot.txt");
+    std::fs::write(&path, content).expect("写测试 TXT");
+    path
+}
+
+fn make_header() -> convert::HeaderConfig {
+    convert::HeaderConfig {
+        crs: "2000国家大地坐标系".into(),
+        band: "3".into(),
+        proj: "高斯克吕格".into(),
+        unit: "米".into(),
+        zone: "38".into(),
+        precision: "0.001".into(),
+        transform: ",,,,,,".into(),
+        project_info: String::new(),
+    }
+}
+
+#[test]
+fn test_txt_to_shp_split_by_plot_dkmc() {
+    let tmp = tempfile::tempdir().expect("temp dir");
+    let txt_path = write_multi_plot_txt(tmp.path());
+    let out_dir = tempfile::tempdir().expect("output temp dir");
+
+    let options = convert::TxtToShpOptions {
+        output_shp: true,
+        output_mode: String::from("split_by_plot"),
+        filename_field: String::from("DKMC"),
+        output_dir: out_dir.path().to_string_lossy().to_string(),
+        keep_lujin: false,
+        keep_mingc: false,
+    };
+
+    let result = convert::convert_txt_to_shp(&[txt_path], &options, &make_header())
+        .expect("TXT→面拆分失败");
+    assert!(result.success, "应成功: {}", result.message);
+
+    // 应建子目录 {txt_stem}/ = multi_plot/
+    let subdir = out_dir.path().join("multi_plot");
+    assert!(subdir.is_dir(), "应建 multi_plot 子目录");
+
+    // 子目录内应有 3 个 .shp：地块甲.shp / 地块乙.shp / multi_plot_3.shp（序号兜底）
+    let shps: Vec<String> = std::fs::read_dir(&subdir)
+        .expect("read_dir")
+        .filter_map(|e| e.ok())
+        .map(|e| e.file_name().to_string_lossy().to_string())
+        .filter(|n| n.ends_with(".shp"))
+        .collect();
+    assert_eq!(shps.len(), 3, "应拆出 3 个 SHP: {:?}", shps);
+    assert!(shps.iter().any(|n| n == "地块甲.shp"), "应有 地块甲.shp: {:?}", shps);
+    assert!(shps.iter().any(|n| n == "地块乙.shp"), "应有 地块乙.shp: {:?}", shps);
+    assert!(shps.iter().any(|n| n == "multi_plot_3.shp"), "DKMC 空应兜底为 multi_plot_3.shp: {:?}", shps);
+}
+
+// ─── 测试 1g: TXT→面 split_by_plot 序号兜底 + 同名冲突 ───
+
+#[test]
+fn test_txt_to_shp_split_by_plot_index_fallback_and_conflict() {
+    let tmp = tempfile::tempdir().expect("temp dir");
+    let txt_path = write_multi_plot_txt(tmp.path());
+    let out_dir = tempfile::tempdir().expect("output temp dir");
+
+    // filename_field 为空 → 全部走序号兜底 multi_plot_1/2/3
+    let options = convert::TxtToShpOptions {
+        output_shp: true,
+        output_mode: String::from("split_by_plot"),
+        filename_field: String::new(),
+        output_dir: out_dir.path().to_string_lossy().to_string(),
+        keep_lujin: false,
+        keep_mingc: false,
+    };
+
+    let result = convert::convert_txt_to_shp(&[txt_path.clone()], &options, &make_header())
+        .expect("TXT→面拆分失败");
+    assert!(result.success);
+
+    let subdir = out_dir.path().join("multi_plot");
+    let shps: Vec<String> = std::fs::read_dir(&subdir)
+        .expect("read_dir")
+        .filter_map(|e| e.ok())
+        .map(|e| e.file_name().to_string_lossy().to_string())
+        .filter(|n| n.ends_with(".shp"))
+        .collect();
+    assert_eq!(shps.len(), 3, "序号兜底应 3 个: {:?}", shps);
+    assert!(shps.iter().all(|n| n.starts_with("multi_plot_")), "应全部为 multi_plot_N 序号兜底: {:?}", shps);
+}
+
+// ─── 测试 1h: TXT→面 split_by_plot FID 命名 ───
+
+#[test]
+fn test_txt_to_shp_split_by_plot_fid() {
+    let tmp = tempfile::tempdir().expect("temp dir");
+    let txt_path = write_multi_plot_txt(tmp.path());
+    let out_dir = tempfile::tempdir().expect("output temp dir");
+
+    let options = convert::TxtToShpOptions {
+        output_shp: true,
+        output_mode: String::from("split_by_plot"),
+        filename_field: String::from("FID"),
+        output_dir: out_dir.path().to_string_lossy().to_string(),
+        keep_lujin: false,
+        keep_mingc: false,
+    };
+
+    let result = convert::convert_txt_to_shp(&[txt_path.clone()], &options, &make_header())
+        .expect("TXT→面拆分失败");
+    assert!(result.success);
+
+    let subdir = out_dir.path().join("multi_plot");
+    let shps: Vec<String> = std::fs::read_dir(&subdir)
+        .expect("read_dir")
+        .filter_map(|e| e.ok())
+        .map(|e| e.file_name().to_string_lossy().to_string())
+        .filter(|n| n.ends_with(".shp"))
+        .collect();
+    assert_eq!(shps.len(), 3, "FID 拆分应 3 个: {:?}", shps);
+    assert!(shps.iter().any(|n| n == "FID_A.shp"), "应有 FID_A.shp: {:?}", shps);
+    assert!(shps.iter().any(|n| n == "FID_B.shp"), "应有 FID_B.shp: {:?}", shps);
+    // 第三个 FID_C 存在 → FID_C.shp
+    assert!(shps.iter().any(|n| n == "FID_C.shp"), "应有 FID_C.shp: {:?}", shps);
 }
 
 // ─── 测试 2: DBF 读取 ───
@@ -354,8 +671,11 @@ fn test_txt_to_shp_full() {
 
     let options = convert::TxtToShpOptions {
         output_shp: true,
-        merge: false,
+        output_mode: String::from("one_to_one"),
+        filename_field: String::new(),
         output_dir: out_dir.path().to_string_lossy().to_string(),
+        keep_lujin: false,
+        keep_mingc: false,
     };
 
     let header = convert::HeaderConfig {
@@ -429,12 +749,10 @@ fn test_shp_to_txt_full() {
     let options = convert::ShpToTxtOptions {
         ox: false,
         oj: true,
-        op: false,
         on: false,
         oo: false,
         output_mode: "one_to_one".into(),
         filename_field: String::new(),
-        buffer: 0.0,
     };
 
     let result = convert::convert_shp_to_txt(
@@ -480,8 +798,11 @@ fn test_shp_txt_roundtrip() {
     // Step 1: TXT → SHP
     let txt_to_shp_opts = convert::TxtToShpOptions {
         output_shp: true,
-        merge: false,
+        output_mode: String::from("one_to_one"),
+        filename_field: String::new(),
         output_dir: out_dir1.path().to_string_lossy().to_string(),
+        keep_lujin: false,
+        keep_mingc: false,
     };
 
     let header = convert::HeaderConfig {
@@ -524,12 +845,10 @@ fn test_shp_txt_roundtrip() {
     let options = convert::ShpToTxtOptions {
         ox: false,
         oj: true,
-        op: false,
         on: false,
         oo: false,
         output_mode: "one_to_one".into(),
         filename_field: String::new(),
-        buffer: 0.0,
     };
 
     let r2 = convert::convert_shp_to_txt(
@@ -596,12 +915,10 @@ fn test_preview() {
     let options = convert::ShpToTxtOptions {
         ox: false,
         oj: true,
-        op: false,
         on: false,
         oo: false,
         output_mode: "one_to_one".into(),
         filename_field: String::new(),
-        buffer: 0.0,
     };
 
     let preview = convert::shp_to_txt_preview(
@@ -732,8 +1049,11 @@ J1,2,30.000,30.000";
 
     let txt_to_shp = convert::TxtToShpOptions {
         output_shp: true,
-        merge: false,
+        output_mode: String::from("one_to_one"),
+        filename_field: String::new(),
         output_dir: shp_dir.path().to_string_lossy().to_string(),
+        keep_lujin: false,
+        keep_mingc: false,
     };
 
     let shp_result = convert::convert_txt_to_shp(&[txt_path], &txt_to_shp, &header)
@@ -757,12 +1077,10 @@ J1,2,30.000,30.000";
     let shp_to_txt = convert::ShpToTxtOptions {
         ox: false,
         oj: true,
-        op: false,
         on: false,
         oo: true,
         output_mode: "one_to_one".into(),
         filename_field: String::new(),
-        buffer: 0.0,
     };
 
     let txt_result = convert::convert_shp_to_txt(
@@ -828,8 +1146,11 @@ J1,2,2.000,2.000";
 
     let txt_to_shp = convert::TxtToShpOptions {
         output_shp: true,
-        merge: false,
+        output_mode: String::from("one_to_one"),
+        filename_field: String::new(),
         output_dir: shp_dir.path().to_string_lossy().to_string(),
+        keep_lujin: false,
+        keep_mingc: false,
     };
 
     let shp_result = convert::convert_txt_to_shp(&[txt_path], &txt_to_shp, &header)
@@ -850,14 +1171,12 @@ J1,2,2.000,2.000";
         dlbm: "DLBM".into(),
     };
     let shp_to_txt = convert::ShpToTxtOptions {
-        ox: false,
+        ox: true,
         oj: true,
-        op: false,
         on: true,
         oo: true,
         output_mode: "one_to_one".into(),
         filename_field: String::new(),
-        buffer: 0.0,
     };
 
     let txt_result = convert::convert_shp_to_txt(

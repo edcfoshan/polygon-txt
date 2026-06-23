@@ -175,6 +175,7 @@ pub fn surface_to_indexed_rings(
     surface: &SurfaceGeometry,
     reorder_northwest: bool,
     close_rings: bool,
+    swap_xy: bool,
 ) -> Vec<IndexedRing> {
     let mut rings = Vec::new();
     let mut part_index = 1u32;
@@ -187,9 +188,10 @@ pub fn surface_to_indexed_rings(
         if close_rings {
             exterior = ensure_closed(&exterior);
         }
+        let coords = if swap_xy { xy_to_yx(&exterior) } else { exterior.clone() };
         rings.push(IndexedRing {
             part_index,
-            coords: xy_to_yx(&exterior),
+            coords,
         });
         part_index += 1;
 
@@ -201,9 +203,10 @@ pub fn surface_to_indexed_rings(
             if close_rings {
                 ring = ensure_closed(&ring);
             }
+            let coords = if swap_xy { xy_to_yx(&ring) } else { ring.clone() };
             rings.push(IndexedRing {
                 part_index,
-                coords: xy_to_yx(&ring),
+                coords,
             });
             part_index += 1;
         }

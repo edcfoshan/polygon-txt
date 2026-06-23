@@ -455,7 +455,8 @@ fn write_dbf_manual(
     path: &Path,
     attributes: &[std::collections::HashMap<String, String>],
 ) -> Result<(), String> {
-    let field_defs: Vec<(&str, u8, u8, u8)> = vec![
+    // 基础 6 字段始终存在；LUJIN/MINGC 仅在任一属性行含对应 key 时附加（勾选才有）
+    let mut field_defs: Vec<(&str, u8, u8, u8)> = vec![
         ("DKMC", b'C', 50, 0),
         ("DKBH", b'C', 30, 0),
         ("MJ", b'N', 14, 3),
@@ -463,6 +464,12 @@ fn write_dbf_manual(
         ("TFH", b'C', 20, 0),
         ("DLBM", b'C', 10, 0),
     ];
+    if attributes.iter().any(|a| a.contains_key("LUJIN")) {
+        field_defs.push(("LUJIN", b'C', 254, 0));
+    }
+    if attributes.iter().any(|a| a.contains_key("MINGC")) {
+        field_defs.push(("MINGC", b'C', 100, 0));
+    }
 
     let num_fields = field_defs.len();
     let header_len: u16 = 32 + (num_fields as u16 * 32) + 1;
@@ -500,23 +507,17 @@ fn write_dbf_manual(
 
     for attr in attributes {
         buf.push(0x20);
-        let vals = [
-            attr.get("DKMC").map(|s| s.as_str()).unwrap_or(""),
-            attr.get("DKBH").map(|s| s.as_str()).unwrap_or(""),
-            attr.get("MJ").map(|s| s.as_str()).unwrap_or(""),
-            attr.get("DKYT").map(|s| s.as_str()).unwrap_or(""),
-            attr.get("TFH").map(|s| s.as_str()).unwrap_or(""),
-            attr.get("DLBM").map(|s| s.as_str()).unwrap_or(""),
-        ];
-        for (i, &(_, _, len, _)) in field_defs.iter().enumerate() {
+        // 按 field_defs 顺序取值（缺失 key 视为空串）
+        for (field_name, _, len, _) in &field_defs {
+            let val = attr.get(*field_name).map(|s| s.as_str()).unwrap_or("");
             // Encode string to GBK; fallback to UTF-8 if encoding fails
-            let (encoded, _, had_errors) = encoding_rs::GBK.encode(vals[i]);
+            let (encoded, _, had_errors) = encoding_rs::GBK.encode(val);
             let vb = if had_errors {
-                vals[i].as_bytes().to_vec()
+                val.as_bytes().to_vec()
             } else {
                 encoded.into_owned()
             };
-            for j in 0..len as usize {
+            for j in 0..*len as usize {
                 buf.push(if j < vb.len() { vb[j] } else { b' ' });
             }
         }

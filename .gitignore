@@ -6,7 +6,6 @@ dist/
 src-tauri/target/
 
 # 打包文件
-*.exe
 *.zip
 
 # 浏览器测试缓存

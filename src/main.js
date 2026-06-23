@@ -73,7 +73,7 @@ const FIELD_MATCH_RULES = {
 };
 
 const PP = [
-  { id: "usr", n: "自定义", h: { c: "2000国家大地坐标系", b: "3", j: "高斯克吕格", u: "米", z: "", a: "0.001", t: ",,,,,," }, p: { pp: 3, pz: "auto", ox: 1, oj: 0, on: 0, oo: 1, om: 0 }, f: { fn: "DKMC", fi: "DKBH", fa: "", fu: "", fm: "", fd: "" } },
+  { id: "usr", n: "自定义", h: { c: "2000国家大地坐标系", b: "3", j: "高斯克吕格", u: "米", z: "", a: "0.001", t: ",,,,,," }, p: { pp: 3, pz: "auto", ox: 0, oj: 0, on: 0, oo: 1, om: 0 }, f: { fn: "DKMC", fi: "DKBH", fa: "", fu: "", fm: "", fd: "" } },
 ];
 
 const $ = (id) => document.getElementById(id);
@@ -218,6 +218,12 @@ window.confirmGdbSelect = function () {
     return;
   }
   selectedLayers = [...gdbTempSelected];
+  // 所选图层字段可能与导入时（取第一个图层）填充的不同，按所选图层刷新字段下拉框，
+  // 否则下拉框停在别的图层字段、当前图层取不到值，预览字段会全空
+  const firstSel = gdbLayers.find((l) => l.name === selectedLayers[0]);
+  if (firstSel && firstSel.field_names && firstSel.field_names.length) {
+    autoMatchFields(firstSel.field_names);
+  }
   window.closeGdbSelectModal();
   renderLeftGdbSummary();
   toast(`已选定 ${selectedLayers.length}/${gdbLayers.length} 个要素类`);
@@ -372,12 +378,19 @@ function autoSetOutputDirT(filePath) {
 }
 
 function autoMatchFields(fieldNames) {
+  // 命中规则→自动选对应字段；未命中→按序选字段(fn→field[0], fi→field[1]…)，
+  // 让预览即时有值（避免下拉框停在「无」、用户以为映射没反应），用户可再手动调整。
+  let fallbackIdx = 0;
   for (const [key, rules] of Object.entries(FIELD_MATCH_RULES)) {
     const sel = $(key);
     if (!sel) continue;
     let matched = "";
     for (const r of rules) {
       if (fieldNames.includes(r)) { matched = r; break; }
+    }
+    if (!matched && fieldNames.length > 0) {
+      matched = fieldNames[fallbackIdx % fieldNames.length];
+      fallbackIdx++;
     }
     sel.innerHTML = "";
     if (!matched) sel.innerHTML = '<option value="">无</option>';
@@ -766,6 +779,12 @@ function init() {
   });
   const ff = $("filename_field");
   if (ff) ff.addEventListener("change", () => { lastPreviewKey = ""; updatePreview(); });
+
+  // 字段映射下拉框改选后刷新预览（fn/fi/fa/fu/fm/fd = 地块名/编号/面积/用途/图幅号/地类编码）
+  ["fn", "fi", "fa", "fu", "fm", "fd"].forEach((id) => {
+    const el = $(id);
+    if (el) el.addEventListener("change", () => { lastPreviewKey = ""; updatePreview(); });
+  });
 
   // TXT→面 输出模式切换：控制地块拆分文件名下拉框显示
   const tOutputModeRadios = document.querySelectorAll('input[name="t_output_mode"]');

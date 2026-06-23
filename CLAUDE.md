@@ -22,6 +22,7 @@ cargo build --release                # 仅 Rust 编译（不会嵌入前端）
 cargo test                           # 全部测试
 cargo test --test integration_test   # 集成测试（SHP/DBF/PRJ/TXT/GDB 往返 + 三模式输出）
 cargo test --test debug_output_test  # 调试用：从 TXT 生成 SHP/GDB 输出验证
+cargo run --bin diag_read_gdb -- [gdb路径]  # 诊断：打印 GDB 图层/首尾坐标点，对照 arcpy（不传参走默认路径）
 ```
 
 测试数据依赖 `test_arcpy/` 目录（ArcPy 生成的标准 SHP/TXT/GDB）和 `test_data/` 目录。
@@ -70,6 +71,7 @@ index.html (CSS 内联, Google Fonts CDN)
 拖放导入：`pick_shp_files_from_paths`、`pick_txt_files_from_paths`
 预览：`read_shp_to_txt_preview`、`read_txt_preview`
 转换：`run_shp_to_txt`、`run_txt_to_shp`
+窗口控制（无边框标题栏必需）：`minimize_window`、`close_window`
 
 ## 项目目录结构
 
@@ -78,7 +80,7 @@ index.html (CSS 内联, Google Fonts CDN)
 ├─ package.json / vite.config.js
 ├─ CLAUDE.md / AGENTS.md   ← Claude / Qoder 指导文件
 │
-├─ content/                ← Markdown 弹窗内容 + 图片资源（?raw 导入，热更新）
+├─ content/                ← Markdown 弹窗内容 + 图片资源 + modal-config.json（弹窗尺寸/字体，热更新）
 │   ├─ about.md
 │   ├─ sponsor.md
 │   ├─ 关注、赞赏码.png
@@ -91,7 +93,7 @@ index.html (CSS 内联, Google Fonts CDN)
 │   ├─ templates/          ←   GDB 写入模板二进制
 │   └─ capabilities/       ←   Tauri 权限声明
 │
-├─ scripts/                ← Python 验证/测试脚本 + PowerShell 发布脚本
+├─ scripts/                ← Python 验证/测试脚本（check_ogr / compare_gdb / test_arcpy 等）
 ├─ docs/                   ← 设计文档 + screenshots/
 ├─ versions/               ← 历史 UI 原型 (v7/v8/v9) + mockups
 ├─ _archive/               ← 逆向工程资料（tbx 解码、分析脚本）
@@ -132,7 +134,7 @@ SHP 存储 (X, Y) = (东坐标, 北坐标)。TXT 存储 (Y, X) = (北坐标, 东
 
 1. **政府 SHP 格式**：`test_data/` 中部分 `.shp` 使用非标准格式（magic ≠ 9994），标准库无法读取
 2. **GDB 写入**：最小化 OpenFileGDB 实现，ArcGIS Pro 兼容性有限。回退方案：`ogr2ogr -f "OpenFileGDB"`
-3. **MSI 打包**：WiX 工具可能缺失导致失败，不影响 exe 生成
+3. **打包方式**：`bundle.targets` 为 `nsis`（不含 MSI/WiX）。若 NSIS 打包失败，`src-tauri/target/release/jisig-bpoint-converter.exe` 仍可直接运行
 4. **Google Fonts**：需联网加载 Inter/Noto Sans SC/JetBrains Mono，离线回退系统字体
 
 ## 依赖
@@ -141,6 +143,6 @@ SHP 存储 (X, Y) = (东坐标, 北坐标)。TXT 存储 (Y, X) = (北坐标, 东
 `@tauri-apps/api ^2`、`@tauri-apps/plugin-dialog ^2`、`@tauri-apps/plugin-shell ^2`、`vite ^6`、`vite-plugin-singlefile ^2`、`@tauri-apps/cli ^2`
 
 ### Rust（Cargo.toml）
-`tauri 2`、`tauri-plugin-dialog/fs/shell 2`、`shapefile 0.8`、`dbase 0.3`、`geonative-core/filegdb/shapefile 0.2`、`chrono 0.4`、`encoding_rs 0.8`、`geo-types 0.7`、`serde 1`、`tempfile 3`
+`tauri 2`、`tauri-plugin-dialog/fs/shell 2`、`shapefile 0.8`、`dbase 0.3`、`geonative-core/filegdb/shapefile 0.2`、`chrono 0.4`、`encoding_rs 0.8`、`geo-types 0.7`、`serde 1`、`serde_json 1`、`tempfile 3`
 
 **GPKG 已移除**（v1.1+）：读取仅 SHP/GDB，输出仅 SHP。`gpkg.rs`/`smoke.rs`/`rusqlite` 依赖已删除。

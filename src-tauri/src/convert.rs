@@ -36,7 +36,7 @@ pub struct HeaderConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ShpToTxtOptions {
-    /// XY 坐标标反：勾选时 (X,Y)→(Y,X) 交换为 TXT 标准顺序
+    /// XY 坐标标反：勾选时输出 (X,Y) 顺序（东坐标在前）；默认 (Y,X) 北坐标在前（标准界址点格式）
     pub ox: bool,
     /// 点号前加 "J"
     pub oj: bool,
@@ -808,6 +808,10 @@ fn single_shp_to_source(
         let plot_use = get_field_value(&field_mapping.use_field, &info.field_names, &record);
         let plot_tfh = get_field_value(&field_mapping.tfh, &info.field_names, &record);
         let plot_dlbm = get_field_value(&field_mapping.dlbm, &info.field_names, &record);
+        let plot_id = {
+            let v = get_field_value(&field_mapping.id, &info.field_names, &record);
+            if v.is_empty() { format!("FID_{}", fi) } else { v }
+        };
 
         // 完整属性表（用于模式 2 按字段命名）
         let mut attributes = HashMap::new();
@@ -820,6 +824,7 @@ fn single_shp_to_source(
         plots.push(PlotWithSource {
             plot: build_plot_data(
                 &feat.surface,
+                plot_id,
                 plot_name,
                 plot_area,
                 plot_use,
@@ -897,10 +902,15 @@ fn gdb_to_sources(
                 get_field_value_map(&field_mapping.use_field, &feat.attributes).to_string();
             let plot_tfh = get_field_value_map(&field_mapping.tfh, &feat.attributes).to_string();
             let plot_dlbm = get_field_value_map(&field_mapping.dlbm, &feat.attributes).to_string();
+            let plot_id = {
+                let v = get_field_value_map(&field_mapping.id, &feat.attributes).to_string();
+                if v.is_empty() { format!("FID_{}", fi) } else { v }
+            };
 
             plots.push(PlotWithSource {
                 plot: build_plot_data(
                     &feat.surface,
+                    plot_id,
                     plot_name,
                     plot_area,
                     plot_use,
@@ -921,6 +931,7 @@ fn gdb_to_sources(
 
 fn build_plot_data(
     surface: &SurfaceGeometry,
+    plot_id: String,
     plot_name: String,
     plot_area: String,
     plot_use: String,
@@ -928,16 +939,15 @@ fn build_plot_data(
     plot_dlbm: String,
     options: &ShpToTxtOptions,
 ) -> txt::PlotData {
-    // 默认输出 (X,Y) 顺序；勾选 ox 时交换为 (Y,X)（northing,easting，政府标准界址点格式）。
-    // 取反是因为 surface_to_indexed_rings 的 swap_xy=true 才执行交换，
-    // 而语义上"标反"对应"输出交换后的 (Y,X)"，故 ox=true 时 swap_xy 才应为 true。
-    let rings = surface_to_indexed_rings(surface, options.on, options.oo, options.ox);
+    // 默认 (ox=false) 输出标准 (Y,X)（北坐标在前，与 TXT→SHP 认定的输入顺序一致，保证往返）；
+    // 勾选 ox 时输出 (X,Y)（东坐标在前，标反）。取反是因为 swap_xy=true 才执行 xy_to_yx 交换。
+    let rings = surface_to_indexed_rings(surface, options.on, options.oo, !options.ox);
     let coords = rings.iter().flat_map(|ring| ring.coords.iter().copied()).collect::<Vec<_>>();
 
     txt::PlotData {
         point_count: coords.len() as u32,
         area: plot_area,
-        fid: "FID_0".to_string(),
+        fid: plot_id,
         name: plot_name,
         geom_type: "面".to_string(),
         tfh: plot_tfh,

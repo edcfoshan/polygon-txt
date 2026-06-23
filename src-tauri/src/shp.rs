@@ -39,40 +39,13 @@ pub fn read_shp(path: &Path) -> Result<Vec<ShpFeature>, String> {
         let shape = result.map_err(|e| format!("读取 SHP 图形: {}", e))?;
         match shape {
             shapefile::Shape::Polygon(poly) => {
-                let mut parts = Vec::new();
-                let mut current_exterior: Option<Vec<(f64, f64)>> = None;
-                let mut current_holes: Vec<Vec<(f64, f64)>> = Vec::new();
-
-                for ring in poly.rings() {
-                    match ring {
-                        shapefile::PolygonRing::Outer(pts) => {
-                            if let Some(exterior) = current_exterior.take() {
-                                parts.push(PolygonPart {
-                                    exterior,
-                                    holes: std::mem::take(&mut current_holes),
-                                });
-                            }
-                            current_exterior = Some(pts.iter().map(|p| (p.x, p.y)).collect());
-                        }
-                        shapefile::PolygonRing::Inner(pts) => {
-                            current_holes.push(pts.iter().map(|p| (p.x, p.y)).collect());
-                        }
-                    }
+                if let Some(f) = polygon_rings_to_feature(poly.rings(), |p| (p.x, p.y)) {
+                    features.push(f);
                 }
-
-                if let Some(exterior) = current_exterior.take() {
-                    parts.push(PolygonPart {
-                        exterior,
-                        holes: current_holes,
-                    });
-                }
-
-                if !parts.is_empty() {
-                    let points = parts[0].exterior.clone();
-                    features.push(ShpFeature {
-                        points,
-                        surface: SurfaceGeometry { parts },
-                    });
+            }
+            shapefile::Shape::PolygonZ(polyz) => {
+                if let Some(f) = polygon_rings_to_feature(polyz.rings(), |p| (p.x, p.y)) {
+                    features.push(f);
                 }
             }
             shapefile::Shape::Polyline(pl) => {
@@ -105,6 +78,51 @@ pub fn read_shp(path: &Path) -> Result<Vec<ShpFeature>, String> {
         }
     }
     Ok(features)
+}
+
+/// 从 GenericPolygon 的环构建单个 ShpFeature（Point / PointZ 通用）。
+/// 洞（Inner ring）挂在最近的外环上；points 取首个外环（与原 Polygon 分支一致）。
+fn polygon_rings_to_feature<P>(
+    rings: &[shapefile::PolygonRing<P>],
+    xy: impl Fn(&P) -> (f64, f64),
+) -> Option<ShpFeature> {
+    let mut parts = Vec::new();
+    let mut current_exterior: Option<Vec<(f64, f64)>> = None;
+    let mut current_holes: Vec<Vec<(f64, f64)>> = Vec::new();
+
+    for ring in rings {
+        match ring {
+            shapefile::PolygonRing::Outer(pts) => {
+                if let Some(exterior) = current_exterior.take() {
+                    parts.push(PolygonPart {
+                        exterior,
+                        holes: std::mem::take(&mut current_holes),
+                    });
+                }
+                current_exterior = Some(pts.iter().map(|p| xy(p)).collect());
+            }
+            shapefile::PolygonRing::Inner(pts) => {
+                current_holes.push(pts.iter().map(|p| xy(p)).collect());
+            }
+        }
+    }
+
+    if let Some(exterior) = current_exterior.take() {
+        parts.push(PolygonPart {
+            exterior,
+            holes: current_holes,
+        });
+    }
+
+    if parts.is_empty() {
+        None
+    } else {
+        let points = parts[0].exterior.clone();
+        Some(ShpFeature {
+            points,
+            surface: SurfaceGeometry { parts },
+        })
+    }
 }
 
 /// 解析 .dbf 文件，返回字段名列表和所有记录
@@ -258,6 +276,7 @@ pub fn read_shp_file_group(shp_path: &Path) -> Result<ShpFileInfo, String> {
         3 => "PolyLine",
         5 => "Polygon",
         8 => "MultiPoint",
+        15 => "PolygonZ",
         _ => "Other",
     }
     .to_string();

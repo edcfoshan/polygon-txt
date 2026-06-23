@@ -80,6 +80,51 @@ fn test_read_shp() {
 
 }
 
+// ─── 测试 1c: PolygonZ (type 15) SHP 读取 ───
+
+#[test]
+fn test_read_polygonz_shp() {
+    use shapefile::{PolygonRing, PointZ, PolygonZ, ShapeWriter};
+
+    let tmp = tempfile::tempdir().expect("temp dir");
+    let shp_path = tmp.path().join("polygonz_test.shp");
+
+    // 写一个 PolygonZ：外环（矩形）+ 一个洞（小矩形），Z/M 填 0
+    let exterior = vec![
+        PointZ::new(0.0, 0.0, 0.0, 0.0),
+        PointZ::new(10.0, 0.0, 0.0, 0.0),
+        PointZ::new(10.0, 10.0, 0.0, 0.0),
+        PointZ::new(0.0, 0.0, 0.0, 0.0),
+    ];
+    let hole = vec![
+        PointZ::new(2.0, 2.0, 0.0, 0.0),
+        PointZ::new(4.0, 2.0, 0.0, 0.0),
+        PointZ::new(4.0, 4.0, 0.0, 0.0),
+        PointZ::new(2.0, 2.0, 0.0, 0.0),
+    ];
+    let polyz = PolygonZ::with_rings(vec![
+        PolygonRing::Outer(exterior),
+        PolygonRing::Inner(hole),
+    ]);
+
+    let mut swriter = ShapeWriter::from_path(&shp_path).expect("创建 PolygonZ 写入器");
+    swriter.write_shape(&polyz).expect("写 PolygonZ 图形");
+    drop(swriter);
+
+    // 1) 文件组信息：shape_type=15 应识别为 PolygonZ
+    let info = shp::read_shp_file_group(&shp_path).expect("读取 PolygonZ 文件组失败");
+    assert_eq!(info.shape_type, "PolygonZ", "shape_type=15 应映射为 PolygonZ");
+    assert_eq!(info.num_features, 1, "应有 1 个要素");
+
+    // 2) 图形解析：外环 + 1 个洞（Z 值丢弃，仅取 x/y）
+    let features = shp::read_shp(&shp_path).expect("读取 PolygonZ 要素失败");
+    assert_eq!(features.len(), 1, "应解析出 1 个多边形");
+    let feat = &features[0];
+    assert!(feat.points.len() >= 3, "外环点数应 >= 3");
+    assert_eq!(feat.surface.parts.len(), 1, "应有 1 个 part");
+    assert_eq!(feat.surface.parts[0].holes.len(), 1, "该 part 应含 1 个洞");
+}
+
 // ─── 测试 1b: 三模式 — 一对一 ───
 
 #[test]
@@ -136,7 +181,7 @@ fn test_shp_to_txt_xy_swap() {
         use_field: "DKYT".into(), tfh: "TFH".into(), dlbm: "DLBM".into(),
     };
 
-    // ox=false（不交换，输出原始 X,Y 顺序）
+    // ox=false（默认，输出标准 Y,X 顺序：北坐标在前）
     let opts_off = convert::ShpToTxtOptions {
         ox: false, oj: true, on: false, oo: true,
         output_mode: "one_to_one".into(), filename_field: String::new(),
@@ -148,7 +193,7 @@ fn test_shp_to_txt_xy_swap() {
     ).expect("转换失败");
     let txt_off = std::fs::read_to_string(dir_off.path().join("plot_000.txt")).unwrap();
 
-    // ox=true（交换为标准 Y,X 顺序）
+    // ox=true（勾选标反，输出 X,Y 顺序：东坐标在前）
     let opts_on = convert::ShpToTxtOptions {
         ox: true, oj: true, on: false, oo: true,
         output_mode: "one_to_one".into(), filename_field: String::new(),
@@ -1171,7 +1216,7 @@ J1,2,2.000,2.000";
         dlbm: "DLBM".into(),
     };
     let shp_to_txt = convert::ShpToTxtOptions {
-        ox: true,
+        ox: false,
         oj: true,
         on: true,
         oo: true,

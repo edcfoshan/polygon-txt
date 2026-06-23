@@ -9,7 +9,7 @@ extern crate jisig_bpoint_converter_lib;
 
 // 测试用的模块
 use jisig_bpoint_converter_lib::{
-    shp, txt, gdb, gpkg, convert,
+    shp, txt, gdb, convert,
 };
 
 fn repo_root() -> PathBuf {
@@ -76,54 +76,156 @@ fn test_read_shp() {
     for (i, feat) in features.iter().enumerate().take(5) {
         println!("  要素 {}: {} 个坐标点", i, feat.points.len());
         assert!(!feat.points.is_empty(), "要素 {} 应有坐标", i);
-}
+    }
 
 }
+
+// ─── 测试 1b: 三模式 — 一对一 ───
 
 #[test]
-fn test_txt_to_gpkg_band6_roundtrip() {
-    let txt_path = test_txt_path();
+fn test_shp_to_txt_one_to_one() {
+    let shp_path = test_shp_stem();
     let out_dir = tempfile::tempdir().expect("temp dir");
 
-    let options = convert::TxtToShpOptions {
-        output_shp: false,
-        output_gpkg: true,
-        merge: false,
-        output_dir: out_dir.path().to_string_lossy().to_string(),
-    };
-
     let header = convert::HeaderConfig {
-        crs: "2000".into(),
-        band: "6".into(),
-        proj: "Gauss-Kruger".into(),
-        unit: "m".into(),
-        zone: "20".into(),
+        crs: "2000国家大地坐标系".into(),
+        band: "3".into(),
+        proj: "高斯克吕格".into(),
+        unit: "米".into(),
+        zone: "38".into(),
         precision: "0.001".into(),
         transform: ",,,,,,".into(),
         project_info: String::new(),
     };
+    let field_mapping = convert::FieldMapping {
+        name: "DKMC".into(), id: "DKBH".into(), area: "MJ".into(),
+        use_field: "DKYT".into(), tfh: "TFH".into(), dlbm: "DLBM".into(),
+    };
+    let options = convert::ShpToTxtOptions {
+        ox: false, oj: true, op: false, on: false, oo: true,
+        output_mode: "one_to_one".into(), filename_field: String::new(),
+        buffer: 0.0,
+    };
+
+    let result = convert::convert_shp_to_txt(
+        &[shp_path], None, None, &header, &field_mapping, &options,
+        out_dir.path(), None,
+    ).expect("一对一转换失败");
+
+    assert!(result.success);
+    assert_eq!(result.output_files.len(), 1);
+    assert!(result.output_files[0].ends_with("plot_000.txt"));
+    let txt = std::fs::read_to_string(&result.output_files[0]).unwrap();
+    assert!(txt.contains("[属性描述]"));
+    assert!(txt.contains("[地块坐标]"));
+}
+
+// ─── 测试 1c: 三模式 — 全合并（文件名带时间戳） ───
+
+#[test]
+fn test_shp_to_txt_merge_all() {
+    let shp_path = test_shp_stem();
+    let out_dir = tempfile::tempdir().expect("temp dir");
+
+    let header = convert::HeaderConfig {
+        crs: "2000国家大地坐标系".into(), band: "3".into(),
+        proj: "高斯克吕格".into(), unit: "米".into(), zone: "38".into(),
+        precision: "0.001".into(), transform: ",,,,,,".into(),
+        project_info: String::new(),
+    };
+    let field_mapping = convert::FieldMapping {
+        name: "DKMC".into(), id: "DKBH".into(), area: "MJ".into(),
+        use_field: "DKYT".into(), tfh: "TFH".into(), dlbm: "DLBM".into(),
+    };
+    let options = convert::ShpToTxtOptions {
+        ox: false, oj: true, op: false, on: false, oo: true,
+        output_mode: "merge_all".into(), filename_field: String::new(),
+        buffer: 0.0,
+    };
+
+    let result = convert::convert_shp_to_txt(
+        &[shp_path], None, None, &header, &field_mapping, &options,
+        out_dir.path(), None,
+    ).expect("全合并转换失败");
+
+    assert_eq!(result.output_files.len(), 1);
+    let p = std::path::Path::new(&result.output_files[0]);
+    let fname = p.file_name().unwrap().to_string_lossy().to_string();
+    assert!(fname.starts_with("merged_output_"), "文件名应以 merged_output_ 开头: {}", fname);
+    assert!(fname.ends_with(".txt"));
+    // 时间戳格式 YYYYMMDD_HHMMSS，长度 = "merged_output_"(14) + 15 + ".txt"(4) = 33
+    assert_eq!(fname.len(), 33, "文件名应含时间戳: {}", fname);
+}
+
+// ─── 测试 1d: 三模式 — 按地块拆分（建子目录 + 文件名字段） ───
+
+#[test]
+fn test_shp_to_txt_split_by_plot() {
+    let shp_path = test_shp_stem();
+    let out_dir = tempfile::tempdir().expect("temp dir");
+
+    let header = convert::HeaderConfig {
+        crs: "2000国家大地坐标系".into(), band: "3".into(),
+        proj: "高斯克吕格".into(), unit: "米".into(), zone: "38".into(),
+        precision: "0.001".into(), transform: ",,,,,,".into(),
+        project_info: String::new(),
+    };
+    let field_mapping = convert::FieldMapping {
+        name: "DKMC".into(), id: "DKBH".into(), area: "MJ".into(),
+        use_field: "DKYT".into(), tfh: "TFH".into(), dlbm: "DLBM".into(),
+    };
+    // 用序号命名（filename_field 为空）
+    let options = convert::ShpToTxtOptions {
+        ox: false, oj: true, op: false, on: false, oo: true,
+        output_mode: "split_by_plot".into(), filename_field: String::new(),
+        buffer: 0.0,
+    };
+
+    let result = convert::convert_shp_to_txt(
+        &[shp_path], None, None, &header, &field_mapping, &options,
+        out_dir.path(), None,
+    ).expect("按地块拆分失败");
+
+    assert!(result.success);
+    // 应建子目录 plot_000/
+    let subdir = out_dir.path().join("plot_000");
+    assert!(subdir.exists(), "应建子目录 plot_000");
+    // 至少一个 txt
+    let txts: Vec<_> = std::fs::read_dir(&subdir).unwrap()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().extension().map(|x| x == "txt").unwrap_or(false))
+        .collect();
+    assert!(!txts.is_empty(), "子目录内应至少有一个 txt");
+    // 文件名应为 plot_000_1.txt（序号兜底）
+    let first_name = txts[0].file_name().to_string_lossy().to_string();
+    assert!(first_name.starts_with("plot_000_"), "序号兜底文件名错误: {}", first_name);
+}
+
+// ─── 测试 1e: TXT→面 合并模式 ───
+
+#[test]
+fn test_txt_to_shp_merge() {
+    let txt_path = test_txt_path();
+    let out_dir = tempfile::tempdir().expect("temp dir");
+
+    let options = convert::TxtToShpOptions {
+        output_shp: true,
+        merge: true,
+        output_dir: out_dir.path().to_string_lossy().to_string(),
+    };
+    let header = convert::HeaderConfig {
+        crs: "2000国家大地坐标系".into(), band: "3".into(),
+        proj: "高斯克吕格".into(), unit: "米".into(), zone: "38".into(),
+        precision: "0.001".into(), transform: ",,,,,,".into(),
+        project_info: String::new(),
+    };
 
     let result = convert::convert_txt_to_shp(&[txt_path], &options, &header)
-        .expect("txt to gpkg failed");
-    let gpkg_path = result
-        .output_files
-        .iter()
-        .find(|f| f.ends_with(".gpkg"))
-        .expect("missing gpkg");
-
-    let conn = rusqlite::Connection::open(gpkg_path).expect("open gpkg failed");
-    let geom_type: String = conn
-        .query_row(
-            r#"SELECT type FROM pragma_table_info('plot_000') WHERE name='geom'"#,
-            [],
-            |row| row.get(0),
-        )
-        .expect("geom type");
-    assert_eq!(geom_type.to_uppercase(), "POLYGON");
-
-    let info = gpkg::read_gpkg(std::path::Path::new(gpkg_path)).expect("read gpkg failed");
-    assert!(!info.layers.is_empty());
-    assert!(info.layers.iter().map(|l| l.num_features).sum::<usize>() > 0);
+        .expect("TXT→面合并失败");
+    assert!(result.success);
+    assert!(result.message.contains("merged_output.shp"));
+    let merged = out_dir.path().join("merged_output.shp");
+    assert!(merged.exists(), "应生成 merged_output.shp");
 }
 
 // ─── 测试 2: DBF 读取 ───
@@ -252,7 +354,6 @@ fn test_txt_to_shp_full() {
 
     let options = convert::TxtToShpOptions {
         output_shp: true,
-        output_gpkg: false,
         merge: false,
         output_dir: out_dir.path().to_string_lossy().to_string(),
     };
@@ -331,7 +432,8 @@ fn test_shp_to_txt_full() {
         op: false,
         on: false,
         oo: false,
-        om: false,
+        output_mode: "one_to_one".into(),
+        filename_field: String::new(),
         buffer: 0.0,
     };
 
@@ -378,7 +480,6 @@ fn test_shp_txt_roundtrip() {
     // Step 1: TXT → SHP
     let txt_to_shp_opts = convert::TxtToShpOptions {
         output_shp: true,
-        output_gpkg: false,
         merge: false,
         output_dir: out_dir1.path().to_string_lossy().to_string(),
     };
@@ -426,7 +527,8 @@ fn test_shp_txt_roundtrip() {
         op: false,
         on: false,
         oo: false,
-        om: false,
+        output_mode: "one_to_one".into(),
+        filename_field: String::new(),
         buffer: 0.0,
     };
 
@@ -497,7 +599,8 @@ fn test_preview() {
         op: false,
         on: false,
         oo: false,
-        om: false,
+        output_mode: "one_to_one".into(),
+        filename_field: String::new(),
         buffer: 0.0,
     };
 
@@ -539,132 +642,7 @@ fn test_read_gdb() {
     }
 }
 
-// ─── 测试 11: TXT→GPKG ───
-
-#[test]
-fn test_txt_to_gpkg() {
-    let out_dir = tempfile::tempdir().expect("创建临时目录失败");
-    let txt_path = test_txt_path();
-
-    let options = convert::TxtToShpOptions {
-        output_shp: false,
-        output_gpkg: true,
-        merge: false,
-        output_dir: out_dir.path().to_string_lossy().to_string(),
-    };
-
-    let header = convert::HeaderConfig {
-        crs: "2000国家大地坐标系".into(),
-        band: "3".into(),
-        proj: "高斯克吕格".into(),
-        unit: "米".into(),
-        zone: "38".into(),
-        precision: "0.001".into(),
-        transform: ",,,,,, ".into(),
-        project_info: String::new(),
-    };
-
-    let result = convert::convert_txt_to_shp(
-        &[txt_path.clone()],
-        &options,
-        &header,
-    ).expect("TXT→GPKG 转换失败");
-
-    println!("TXT→GPKG 结果: {}", result.message);
-    for f in &result.output_files {
-        println!("  输出: {}", f);
-    }
-
-    assert!(result.success, "转换应成功");
-    assert!(!result.output_files.is_empty(), "应有输出文件");
-
-    let gpkg_path_str = result.output_files.iter()
-        .find(|f| f.ends_with(".gpkg"))
-        .expect("应输出 .gpkg 文件");
-    let gpkg_path = PathBuf::from(gpkg_path_str);
-    assert!(gpkg_path.is_file(), ".gpkg 应为文件");
-
-    let info = gpkg::read_gpkg(&gpkg_path).expect("读回 GPKG 失败");
-    println!("  读回 GPKG: {} 个图层", info.layers.len());
-    assert!(!info.layers.is_empty(), "读回应有图层");
-    let total_features: usize = info.layers.iter().map(|l| l.num_features).sum();
-    assert!(total_features > 0, "读回应有要素");
-    assert_eq!(total_features, 1, "应有 1 个要素");
-}
-
-// ─── 测试 12: GPKG→TXT ───
-
-#[test]
-fn test_gpkg_to_txt_full() {
-    let prep_dir = tempfile::tempdir().expect("创建临时目录失败");
-    let out_dir = tempfile::tempdir().expect("创建临时目录失败");
-    let txt_path = test_txt_path();
-
-    let header = convert::HeaderConfig {
-        crs: "2000国家大地坐标系".into(),
-        band: "3".into(),
-        proj: "高斯克吕格".into(),
-        unit: "米".into(),
-        zone: "38".into(),
-        precision: "0.001".into(),
-        transform: ",,,,,,".into(),
-        project_info: String::new(),
-    };
-
-    let make_gpkg = convert::TxtToShpOptions {
-        output_shp: false,
-        output_gpkg: true,
-        merge: false,
-        output_dir: prep_dir.path().to_string_lossy().to_string(),
-    };
-
-    let gpkg_result = convert::convert_txt_to_shp(
-        &[txt_path.clone()],
-        &make_gpkg,
-        &header,
-    ).expect("准备 GPKG 失败");
-
-    let gpkg_path = gpkg_result.output_files.iter()
-        .find(|f| f.ends_with(".gpkg"))
-        .map(PathBuf::from)
-        .expect("应生成 gpkg");
-
-    let field_mapping = convert::FieldMapping {
-        name: "DKMC".into(),
-        id: "DKBH".into(),
-        area: "MJ".into(),
-        use_field: "DKYT".into(),
-        tfh: "TFH".into(),
-        dlbm: "DLBM".into(),
-    };
-
-    let options = convert::ShpToTxtOptions {
-        ox: false,
-        oj: true,
-        op: false,
-        on: false,
-        oo: false,
-        om: false,
-        buffer: 0.0,
-    };
-
-    let result = convert::convert_shp_to_txt(
-        &[],
-        Some("gpkg"),
-        Some(&gpkg_path),
-        &header,
-        &field_mapping,
-        &options,
-        out_dir.path(),
-        None,
-    ).expect("GPKG→TXT 转换失败");
-
-    assert!(result.success, "转换应成功");
-    assert_eq!(result.output_files.len(), 1, "应生成 1 个 TXT");
-    let content = std::fs::read_to_string(&result.output_files[0]).expect("读取 TXT 失败");
-    assert!(content.contains("[属性描述]"), "应包含属性描述");
-    assert!(content.contains("[地块坐标]"), "应包含地块坐标");
-}
+// ─── 测试 11/12 (GPKG) 已移除：GPKG 不再支持 ───
 
 // ─── 测试 13: Default1.gdb 手动回退读取 ───
 
@@ -712,141 +690,6 @@ fn test_read_default_gdb() {
     }
 }
 
-// ─── 测试 15: TXT→GPKG→TXT 完整双向往返 (2 轮) ───
-
-#[test]
-fn test_txt_gpkg_roundtrip_2_rounds() {
-    let user_dir = std::path::PathBuf::from(r"C:\Users\Administrator\Documents\txt与gdb互转\00测试数据");
-    if !user_dir.exists() {
-        eprintln!("跳过: 00测试数据 不存在");
-        return;
-    }
-
-    let txt_entries: Vec<_> = std::fs::read_dir(&user_dir).unwrap()
-        .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().map(|ext| ext == "txt").unwrap_or(false))
-        .collect();
-
-    assert!(!txt_entries.is_empty(), "00测试数据 中应有 TXT 文件");
-
-    for entry in &txt_entries {
-        let original_path = entry.path();
-        let stem = original_path.file_stem().unwrap().to_string_lossy().to_string();
-        let original_text = std::fs::read_to_string(&original_path).expect("读取原始 TXT");
-
-        eprintln!("═══ 往返测试: {} ═══", stem);
-
-        let mut current_text = original_text.clone();
-
-        for round in 1..=2 {
-            eprintln!("  --- 第 {} 轮 ---", round);
-
-            // 解析当前 TXT
-            let parsed = txt::parse_txt(&current_text);
-            assert!(!parsed.plots.is_empty(), "{} 第{}轮: 应有地块", stem, round);
-
-            // 从 TXT 自身属性构建 header（不依赖前端）
-            let header = convert::HeaderConfig {
-                crs: parsed.attrs.get("坐标系").cloned().unwrap_or_default(),
-                band: parsed.attrs.get("几度分带").cloned().unwrap_or_default(),
-                proj: parsed.attrs.get("投影类型").cloned().unwrap_or_default(),
-                unit: parsed.attrs.get("计量单位").cloned().unwrap_or_default(),
-                zone: parsed.attrs.get("带号").cloned().unwrap_or_default(),
-                precision: parsed.attrs.get("精度").cloned().unwrap_or_default(),
-                transform: parsed.attrs.get("转换参数").cloned().unwrap_or_default(),
-                project_info: parsed.project_info.clone(),
-            };
-
-            // TXT → GPKG
-            let gpkg_dir = tempfile::tempdir().expect("创建临时目录");
-            let txt_to_gpkg_opts = convert::TxtToShpOptions {
-                output_shp: false,
-                output_gpkg: true,
-                merge: false,
-                output_dir: gpkg_dir.path().to_string_lossy().to_string(),
-            };
-            let gpkg_result = convert::convert_txt_to_shp(
-                &[original_path.clone()],
-                &txt_to_gpkg_opts,
-                &header,
-            ).unwrap_or_else(|e| panic!("{} 第{}轮 TXT→GPKG 失败: {}", stem, round, e));
-
-            let gpkg_path = gpkg_result.output_files.iter()
-                .find(|f| f.ends_with(".gpkg"))
-                .map(std::path::PathBuf::from)
-                .unwrap_or_else(|| panic!("{} 第{}轮: 应生成 .gpkg", stem, round));
-
-            eprintln!("    TXT→GPKG: {} 要素写入 {}", gpkg_result.processed_count, gpkg_path.display());
-
-            // GPKG → TXT
-            let txt_dir = tempfile::tempdir().expect("创建临时目录");
-            let field_mapping = convert::FieldMapping {
-                name: "DKMC".into(),
-                id: "DKBH".into(),
-                area: "MJ".into(),
-                use_field: "DKYT".into(),
-                tfh: "TFH".into(),
-                dlbm: "DLBM".into(),
-            };
-            let shp_to_txt_opts = convert::ShpToTxtOptions {
-                ox: false,
-                oj: true,
-                op: false,
-                on: false,
-                oo: false,
-                om: false,
-                buffer: 0.0,
-            };
-
-            let txt_result = convert::convert_shp_to_txt(
-                &[],
-                Some("gpkg"),
-                Some(&gpkg_path),
-                &header,
-                &field_mapping,
-                &shp_to_txt_opts,
-                txt_dir.path(),
-                None,
-            ).unwrap_or_else(|e| panic!("{} 第{}轮 GPKG→TXT 失败: {}", stem, round, e));
-
-            eprintln!("    GPKG→TXT: {} 文件生成", txt_result.output_files.len());
-
-            // 读取生成的 TXT
-            let generated_txt_path = &txt_result.output_files[0];
-            current_text = std::fs::read_to_string(generated_txt_path)
-                .unwrap_or_else(|e| panic!("读取第{}轮 TXT 失败: {}", round, e));
-        }
-
-        // 比较原始和经过 2 轮后的 TXT
-        let original_lines: Vec<&str> = original_text.lines().collect();
-        let final_lines: Vec<&str> = current_text.lines().collect();
-
-        if original_lines != final_lines {
-            eprintln!("  差异 ({} 行 vs {} 行):", original_lines.len(), final_lines.len());
-            for (i, (o, f)) in original_lines.iter().zip(final_lines.iter()).enumerate() {
-                if o != f {
-                    eprintln!("    行 {}: 原始={} | 最终={}", i + 1, o, f);
-                }
-            }
-            // 显示仅在一方存在的行
-            if original_lines.len() != final_lines.len() {
-                let max_len = original_lines.len().max(final_lines.len());
-                for i in 0..max_len {
-                    let o = original_lines.get(i).unwrap_or(&"");
-                    let f = final_lines.get(i).unwrap_or(&"");
-                    if o != f {
-                        eprintln!("    行 {}: 原始=\"{}\" | 最终=\"{}\"", i + 1, o, f);
-                    }
-                }
-            }
-        }
-
-        assert_eq!(original_lines, final_lines,
-            "{}: 经过 2 轮 TXT→GPKG→TXT 后内容应一致", stem);
-
-        eprintln!("  ✓ {} 往返测试通过", stem);
-    }
-}
 
 #[test]
 fn test_multi_part_txt_to_shp_roundtrip_preserves_part_index() {
@@ -889,7 +732,6 @@ J1,2,30.000,30.000";
 
     let txt_to_shp = convert::TxtToShpOptions {
         output_shp: true,
-        output_gpkg: false,
         merge: false,
         output_dir: shp_dir.path().to_string_lossy().to_string(),
     };
@@ -918,7 +760,8 @@ J1,2,30.000,30.000";
         op: false,
         on: false,
         oo: true,
-        om: false,
+        output_mode: "one_to_one".into(),
+        filename_field: String::new(),
         buffer: 0.0,
     };
 
@@ -985,7 +828,6 @@ J1,2,2.000,2.000";
 
     let txt_to_shp = convert::TxtToShpOptions {
         output_shp: true,
-        output_gpkg: false,
         merge: false,
         output_dir: shp_dir.path().to_string_lossy().to_string(),
     };
@@ -1013,7 +855,8 @@ J1,2,2.000,2.000";
         op: false,
         on: true,
         oo: true,
-        om: false,
+        output_mode: "one_to_one".into(),
+        filename_field: String::new(),
         buffer: 0.0,
     };
 
@@ -1033,99 +876,6 @@ J1,2,2.000,2.000";
     assert!(
         roundtrip.contains("J1,2,8.000,2.000") || roundtrip.contains("J1,2,2.000,2.000"),
         "内环应以独立 part 输出，实际输出为:\n{}",
-        roundtrip
-    );
-}
-
-#[test]
-fn test_multi_part_txt_to_gpkg_roundtrip_preserves_part_index() {
-    let text = "[属性描述]
-坐标系=2000国家大地坐标系
-几度分带=3
-投影类型=高斯克吕格
-计量单位=米
-带号=38
-精度=0.001
-转换参数=,,,,,,
-[地块坐标]
-8,1,FID_0,多部件地块,面,,,@
-J1,1,10.000,10.000
-J2,1,10.000,20.000
-J3,1,20.000,20.000
-J1,1,10.000,10.000
-J1,2,30.000,30.000
-J2,2,30.000,40.000
-J3,2,40.000,40.000
-J1,2,30.000,30.000";
-
-    let temp = tempfile::tempdir().expect("tempdir");
-    let txt_path = temp.path().join("multipart_gpkg.txt");
-    std::fs::write(&txt_path, text).expect("write txt");
-
-    let gpkg_dir = tempfile::tempdir().expect("tempdir");
-    let back_dir = tempfile::tempdir().expect("tempdir");
-
-    let header = convert::HeaderConfig {
-        crs: "2000国家大地坐标系".into(),
-        band: "3".into(),
-        proj: "高斯克吕格".into(),
-        unit: "米".into(),
-        zone: "38".into(),
-        precision: "0.001".into(),
-        transform: ",,,,,,".into(),
-        project_info: String::new(),
-    };
-
-    let txt_to_gpkg = convert::TxtToShpOptions {
-        output_shp: false,
-        output_gpkg: true,
-        merge: false,
-        output_dir: gpkg_dir.path().to_string_lossy().to_string(),
-    };
-
-    let gpkg_result = convert::convert_txt_to_shp(&[txt_path], &txt_to_gpkg, &header)
-        .expect("TXT->GPKG should succeed");
-    let gpkg_path = gpkg_result
-        .output_files
-        .iter()
-        .find(|f| f.ends_with(".gpkg"))
-        .map(PathBuf::from)
-        .expect("应有 gpkg 输出");
-
-    let field_mapping = convert::FieldMapping {
-        name: "DKMC".into(),
-        id: "DKBH".into(),
-        area: "MJ".into(),
-        use_field: "DKYT".into(),
-        tfh: "TFH".into(),
-        dlbm: "DLBM".into(),
-    };
-    let gpkg_to_txt = convert::ShpToTxtOptions {
-        ox: false,
-        oj: true,
-        op: false,
-        on: false,
-        oo: true,
-        om: false,
-        buffer: 0.0,
-    };
-
-    let txt_result = convert::convert_shp_to_txt(
-        &[],
-        Some("gpkg"),
-        Some(&gpkg_path),
-        &header,
-        &field_mapping,
-        &gpkg_to_txt,
-        back_dir.path(),
-        None,
-    )
-    .expect("GPKG->TXT should succeed");
-
-    let roundtrip = std::fs::read_to_string(&txt_result.output_files[0]).expect("read roundtrip");
-    assert!(
-        roundtrip.contains("J1,2,"),
-        "GPKG 往返后第二个部件的 part index 不应丢失，实际输出为:\n{}",
         roundtrip
     );
 }

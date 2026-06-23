@@ -29,5 +29,5 @@ encoding_rs = "0.8"
 geonative-core = "0.2"
 geonative-filegdb = "0.2"
 geonative-shapefile = "0.2"
-rusqlite = { version = "0.31", features = ["bundled"] }
 geo-types = "0.7"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }

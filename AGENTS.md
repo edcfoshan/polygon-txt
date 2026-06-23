@@ -4,7 +4,7 @@ This file provides guidance to Qoder (qoder.com) when working with code in this 
 
 ## Project Overview
 
-**极思G界址点互转工具** — GIS utility for bidirectional conversion between polygon features (SHP/GDB/GPKG) and standard boundary-point TXT files. Tauri v2 desktop app (Rust backend + Vite/HTML frontend).
+**极思G界址点互转工具** — GIS utility for bidirectional conversion between polygon features (SHP/GDB) and standard boundary-point TXT files. Tauri v2 desktop app (Rust backend + Vite/HTML frontend).
 
 **GitHub:** https://github.com/edcfoshan/boundary-point-converter
 
@@ -60,7 +60,7 @@ cd src-tauri; cargo build --release  # Rust only (no frontend embed, for compile
 ### Tests
 ```powershell
 cd src-tauri
-cargo test --test integration_test          # 10 integration tests (SHP/DBF/PRJ/TXT/GDB round-trips)
+cargo test --test integration_test          # 17 integration tests (SHP/DBF/PRJ/TXT/GDB round-trips + 三模式输出)
 cargo test --test debug_output_test         # Debug: generate SHP/GDB output from test TXT
 cargo test                                   # All tests
 ```
@@ -84,19 +84,23 @@ src-tauri/
   capabilities/
     default.json      ← Tauri permissions
   tests/
-    integration_test.rs   ← 10 integration tests
+    integration_test.rs   ← 17 integration tests（SHP/DBF/PRJ/TXT/GDB 往返 + 三模式输出）
     debug_output_test.rs  ← Debug output generation tests
   src/
-    lib.rs            ← 12 Tauri IPC commands + serde types
+    lib.rs            ← Tauri IPC commands + serde types
     main.rs           ← Entry point
     shp.rs            ← SHP/DBF/PRJ read/write
     txt.rs            ← TXT 3-section parse/generate
     gdb.rs            ← GDB read (geonative-filegdb) + minimal write
     gdb/
       gdb_templates.rs  ← GDB template binary data for minimal writer
-    gpkg.rs           ← GeoPackage read/write (rusqlite, OGC standard)
-    convert.rs        ← Conversion orchestration
+    convert.rs        ← Conversion orchestration（三模式输出：一对一/按地块拆分/全合并）
 ```
+
+### Output Modes (面→TXT)
+- **一对一 (`one_to_one`)**: 每个导入源（SHP 文件 / GDB 要素类）输出一个 TXT。同名冲突自动追加 `_2/_3`
+- **按地块拆分 (`split_by_plot`)**: 按源建子目录 `output_dir/{source_stem}/`，内部每个 feature 一个 TXT。文件名可选 DKMC/DKBH/序号/FID；字段缺失自动用序号兜底，重名追加序号，非法字符替换为 `_`
+- **全合并 (`merge_all`)**: 所有源所有地块合并为 `merged_output_YYYYMMDD_HHMMSS.txt`（本地时间秒级时间戳）
 
 ## Key Gotchas
 
@@ -136,9 +140,10 @@ SHP stores (X, Y) = (easting, northing). TXT stores (Y, X) = (northing, easting)
 | Format | Module | Read | Write | Notes |
 |--------|--------|------|-------|-------|
 | SHP    | shp.rs | shapefile crate | shapefile crate + manual DBF | Standard ESRI Shapefile only |
-| GDB    | gdb.rs + gdb/gdb_templates.rs | geonative-filegdb | Minimal OpenFileGDB (template-based) | ArcGIS Pro compat limited |
-| GPKG   | gpkg.rs | rusqlite (OGC GeoPackage) | rusqlite | SQLite-based vector format |
+| GDB    | gdb.rs + gdb/gdb_templates.rs | geonative-filegdb | Minimal OpenFileGDB (template-based) | ArcGIS Pro compat limited；多要素类支持 |
 | TXT    | txt.rs | Custom parser | Custom generator | 3-section boundary point format |
+
+**GPKG 已移除**（v1.1+）。读取仅支持 SHP/GDB，输出仅 SHP。
 
 ## Known Issues
 

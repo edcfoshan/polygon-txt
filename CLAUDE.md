@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目概述
 
-**极思G界址点互转工具** — 测绘与国土行业 GIS 桌面工具，实现面要素（SHP/GDB/GPKG）与标准界址点 TXT 文件的双向转换。Tauri v2 桌面应用（Rust 后端 + Vite/HTML 前端）。
+**极思G界址点互转工具** — 测绘与国土行业 GIS 桌面工具，实现面要素（SHP/GDB）与标准界址点 TXT 文件的双向转换。Tauri v2 桌面应用（Rust 后端 + Vite/HTML 前端）。
 
 - 仓库：https://github.com/edcfoshan/boundary-point-converter
 - 窗口：880×600px，无边框（`decorations: false`），自定义标题栏，支持浅色/暗色主题
@@ -20,8 +20,7 @@ npm run build                        # 仅前端（dist/ 单文件 HTML）
 cd src-tauri
 cargo build --release                # 仅 Rust 编译（不会嵌入前端）
 cargo test                           # 全部测试
-cargo test --test integration_test   # 集成测试（SHP/DBF/PRJ/TXT/GDB/GPKG）
-cargo test --test release_smoke_test # Release 冒烟测试（TXT→GPKG 往返）
+cargo test --test integration_test   # 集成测试（SHP/DBF/PRJ/TXT/GDB 往返 + 三模式输出）
 cargo test --test debug_output_test  # 调试用：从 TXT 生成 SHP/GDB 输出验证
 ```
 
@@ -34,7 +33,7 @@ index.html (CSS 内联, Google Fonts CDN)
   ← Vite (vite-plugin-singlefile) 打包 JS 内联到单文件 HTML
   ← Tauri WebView 嵌入 dist/index.html
        ↕ window.__TAURI__.core.invoke() IPC
-  Rust 后端 (shapefile / geonative-filegdb / rusqlite)
+  Rust 后端 (shapefile / geonative-filegdb / chrono)
        ↕ std::fs
   原生文件系统
 ```
@@ -53,18 +52,21 @@ index.html (CSS 内联, Google Fonts CDN)
 
 | 模块 | 功能 |
 |------|------|
-| `lib.rs` | 12 个 Tauri IPC 命令 + IPC 类型定义 |
+| `lib.rs` | Tauri IPC 命令 + IPC 类型定义 |
 | `geometry.rs` | 多边形几何共享类型（SurfaceGeometry/PolygonPart/IndexedRing）+ 环向归一化、洞识别、坐标系交换 |
 | `shp.rs` | SHP 读写（shapefile crate）、DBF 解析、PRJ 坐标系识别 |
 | `txt.rs` | TXT 三段式格式解析与生成 |
 | `gdb.rs` + `gdb/gdb_templates.rs` | GDB 读取（geonative-filegdb）+ 模板化最小 OpenFileGDB 写入 |
-| `gpkg.rs` | GeoPackage 读写（rusqlite，OGC 标准） |
-| `convert.rs` | 转换编排：SHP/GDB/GPKG→TXT、TXT→SHP/GPKG |
-| `smoke.rs` | Release 冒烟测试逻辑 |
+| `convert.rs` | 转换编排：SHP/GDB→TXT（三模式：一对一/按地块拆分/全合并）、TXT→SHP（一对一/合并） |
 
-### Tauri IPC 命令（12 个）
+### 输出模式（面→TXT）
+- **一对一 (`one_to_one`)**: 每个导入源（SHP 文件 / GDB 要素类）输出一个 TXT。同名冲突自动追加 `_2/_3`
+- **按地块拆分 (`split_by_plot`)**: 按源建子目录 `output_dir/{source_stem}/`，内部每个 feature 一个 TXT。文件名可选 DKMC/DKBH/序号/FID；字段缺失自动用序号兜底，重名追加序号，非法字符替换为 `_`
+- **全合并 (`merge_all`)**: 所有源所有地块合并为 `merged_output_YYYYMMDD_HHMMSS.txt`（本地时间秒级时间戳）
 
-文件选择：`pick_shp_files`、`import_gdb`、`import_gpkg`、`pick_txt_files`、`pick_output_dir`
+### Tauri IPC 命令
+
+文件选择：`pick_shp_files`、`import_gdb`、`pick_txt_files`、`pick_output_dir`
 拖放导入：`pick_shp_files_from_paths`、`pick_txt_files_from_paths`
 预览：`read_shp_to_txt_preview`、`read_txt_preview`
 转换：`run_shp_to_txt`、`run_txt_to_shp`
@@ -84,8 +86,8 @@ index.html (CSS 内联, Google Fonts CDN)
 ├─ src/                    ← 前端源码
 │   └─ main.js
 ├─ src-tauri/              ← Rust 后端
-│   ├─ src/                ←   lib/geometry/shp/txt/gdb/gpkg/convert/smoke
-│   ├─ tests/              ←   integration_test / release_smoke_test / debug_output_test
+│   ├─ src/                ←   lib/geometry/shp/txt/gdb/convert
+│   ├─ tests/              ←   integration_test / debug_output_test
 │   ├─ templates/          ←   GDB 写入模板二进制
 │   └─ capabilities/       ←   Tauri 权限声明
 │
@@ -139,4 +141,6 @@ SHP 存储 (X, Y) = (东坐标, 北坐标)。TXT 存储 (Y, X) = (北坐标, 东
 `@tauri-apps/api ^2`、`@tauri-apps/plugin-dialog ^2`、`@tauri-apps/plugin-shell ^2`、`vite ^6`、`vite-plugin-singlefile ^2`、`@tauri-apps/cli ^2`
 
 ### Rust（Cargo.toml）
-`tauri 2`、`tauri-plugin-dialog/fs/shell 2`、`shapefile 0.8`、`dbase 0.3`、`geonative-core/filegdb/shapefile 0.2`、`rusqlite 0.31`（bundled）、`encoding_rs 0.8`、`geo-types 0.7`、`serde 1`、`tempfile 3`
+`tauri 2`、`tauri-plugin-dialog/fs/shell 2`、`shapefile 0.8`、`dbase 0.3`、`geonative-core/filegdb/shapefile 0.2`、`chrono 0.4`、`encoding_rs 0.8`、`geo-types 0.7`、`serde 1`、`tempfile 3`
+
+**GPKG 已移除**（v1.1+）：读取仅 SHP/GDB，输出仅 SHP。`gpkg.rs`/`smoke.rs`/`rusqlite` 依赖已删除。

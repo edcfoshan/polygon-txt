@@ -6,9 +6,7 @@ pub mod shp;
 pub mod txt;
 pub mod convert;
 pub mod gdb;
-pub mod gpkg;
 pub mod geometry;
-pub mod smoke;
 
 use convert::{FieldMapping, HeaderConfig, ShpToTxtOptions, TxtToShpOptions};
 
@@ -43,24 +41,11 @@ struct GdbImportResult {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct GpkgImportResult {
-    files: Vec<GpkgFileItem>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct GpkgFileItem {
-    path: String,
-    name: String,
-    layers: Vec<GdbLayerItem>,
-    field_names: Vec<String>,
-    num_features: usize,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 struct GdbLayerItem {
     name: String,
     field_names: Vec<String>,
     num_features: usize,
+    geometry_type: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -84,12 +69,6 @@ struct ConvertResultPayload {
     success: bool,
     message: String,
     output_files: Vec<String>,
-}
-
-#[derive(Debug, Clone)]
-pub struct SmokeTestConfig {
-    pub txt_path: PathBuf,
-    pub output_dir: PathBuf,
 }
 
 // ─── Commands ───
@@ -189,6 +168,7 @@ fn import_gdb(app: tauri::AppHandle) -> Result<GdbImportResult, String> {
             name: l.name.clone(),
             field_names: l.field_names.clone(),
             num_features: l.num_features,
+            geometry_type: l.geometry_type.clone(),
         })
         .collect();
 
@@ -199,66 +179,6 @@ fn import_gdb(app: tauri::AppHandle) -> Result<GdbImportResult, String> {
         field_names,
         num_features,
     })
-}
-
-#[tauri::command]
-fn import_gpkg(app: tauri::AppHandle) -> Result<GpkgImportResult, String> {
-    use tauri_plugin_dialog::DialogExt;
-
-    let files = app
-        .dialog()
-        .file()
-        .add_filter("GeoPackage 文件", &["gpkg"])
-        .blocking_pick_files();
-
-    let picked = match files {
-        Some(f) => f,
-        None => return Ok(GpkgImportResult { files: vec![] }),
-    };
-
-    let mut items = Vec::new();
-    for file in &picked {
-        let gpkg_path = match file.as_path() {
-            Some(p) => p.to_path_buf(),
-            None => continue,
-        };
-        if gpkg_path
-            .extension()
-            .map(|e| e.to_string_lossy().to_lowercase() != "gpkg")
-            .unwrap_or(true)
-        {
-            continue;
-        }
-        match gpkg::read_gpkg(&gpkg_path) {
-            Ok(info) => {
-                let name = gpkg_path
-                    .file_stem()
-                    .map(|s| s.to_string_lossy().to_string())
-                    .unwrap_or_default();
-                let field_names = info.all_field_names.first().cloned().unwrap_or_default();
-                let num_features: usize = info.layers.iter().map(|l| l.num_features).sum();
-                let layers = info
-                    .layers
-                    .iter()
-                    .map(|l| GdbLayerItem {
-                        name: l.name.clone(),
-                        field_names: l.field_names.clone(),
-                        num_features: l.num_features,
-                    })
-                    .collect();
-                items.push(GpkgFileItem {
-                    path: gpkg_path.to_string_lossy().to_string(),
-                    name,
-                    layers,
-                    field_names,
-                    num_features,
-                });
-            }
-            Err(e) => eprintln!("读 GPKG 失败: {}", e),
-        }
-    }
-
-    Ok(GpkgImportResult { files: items })
 }
 
 #[tauri::command]
@@ -556,7 +476,6 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             pick_shp_files,
             import_gdb,
-            import_gpkg,
             pick_txt_files,
             pick_output_dir,
             pick_shp_files_from_paths,

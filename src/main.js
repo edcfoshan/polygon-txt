@@ -158,29 +158,6 @@ window.importShp = async function () {
   }
 };
 
-window.importGpkg = async function () {
-  try {
-    const result = await tauriInvoke("import_gpkg");
-    if (!result || !result.files || result.files.length === 0) return;
-    sourceType = "gpkg";
-    sourcePath = result.files[0].path;
-    loadedFiles = [];
-    gdbLayers = [];
-    selectedLayers = [];
-    const fl = $("fl");
-    if (fl) fl.innerHTML = result.files.map((f) =>
-      `<div class="fitem"><span class="fn">◈ ${f.name}.gpkg</span><span class="fs">${f.num_features}个要素</span></div>`
-    ).join("");
-    autoMatchFields(result.files[0].field_names);
-    autoSetOutputDirS(result.files[0].path);
-    renderGdbLayers();
-    toast(`已导入 ${result.files.length} 个 GPKG 文件 (共 ${result.files.reduce((s, f) => s + f.num_features, 0)} 个要素)`);
-    updatePreview();
-  } catch (e) {
-    toast("导入 GPKG 失败: " + e);
-  }
-};
-
 // ═══ GDB 导入 ═══
 window.importGdb = async function () {
   try {
@@ -194,9 +171,11 @@ window.importGdb = async function () {
     autoMatchFields(result.field_names);
     autoSetOutputDirS(result.path);
     gdbLayers = result.layers || [];
-    selectedLayers = gdbLayers.map((l) => l.name);
+    // 默认选中由 renderGdbLayers 内的初始化逻辑处理（仅面状要素类）
+    selectedLayers = [];
+    window._gdbLayersInited = false;
     renderGdbLayers();
-    toast(`已导入 GDB: ${result.name} (${result.layers.length} 个图层)`);
+    toast(`已导入 GDB: ${result.name} (${result.layers.length} 个要素类)`);
     updatePreview();
   } catch (e) {
     toast("导入 GDB 失败: " + e);
@@ -209,11 +188,42 @@ function renderGdbLayers() {
   if (!container || !list) return;
   if (sourceType !== "gdb" || !gdbLayers.length) { container.style.display = "none"; return; }
   container.style.display = "block";
-  list.innerHTML = "";
-  gdbLayers.forEach((layer) => {
+
+  // 默认只勾选面状要素类（Polygon / MultiPolygon / 面）
+  const isPolygonType = (t) => {
+    const s = (t || "").toLowerCase();
+    return s.includes("polygon") || s.includes("面") || s === "multipolygon";
+  };
+
+  // 首次渲染（selectedLayers 为空）时初始化为所有面状要素类
+  if (selectedLayers.length === 0 && !window._gdbLayersInited) {
+    selectedLayers = gdbLayers.filter((l) => isPolygonType(l.geometry_type)).map((l) => l.name);
+    window._gdbLayersInited = true;
+  }
+
+  // 列表为空提示
+  const hasPolygon = gdbLayers.some((l) => isPolygonType(l.geometry_type));
+  let header = '<div style="display:flex;font-size:10px;color:var(--tx3);padding:2px 6px;border-bottom:1px solid var(--brd);font-weight:500">'
+    + '<span style="flex:1">要素类名</span><span style="width:60px;text-align:center">几何类型</span><span style="width:60px;text-align:right">要素数</span></div>';
+  if (!hasPolygon) {
+    header += '<div style="padding:4px 6px;font-size:10.5px;color:var(--tx3)">未发现面状要素类，可手动勾选其他类型</div>';
+  }
+
+  // 全选/全不选/反选
+  const toolbar = '<div style="display:flex;gap:6px;padding:4px 6px;border-bottom:1px solid var(--brd);font-size:10.5px">'
+    + '<a href="#" data-act="all" style="color:var(--ac)">全选</a>'
+    + '<a href="#" data-act="none" style="color:var(--ac)">全不选</a>'
+    + '<a href="#" data-act="invert" style="color:var(--ac)">反选</a>'
+    + '<a href="#" data-act="polygon" style="color:var(--ac)">仅面状</a>'
+    + '</div>';
+
+  list.innerHTML = header + toolbar + gdbLayers.map((layer) => {
     const checked = selectedLayers.includes(layer.name) ? "checked" : "";
-    list.innerHTML += `<label class="ck" style="padding:4px 6px;border-bottom:1px solid var(--brd);font-size:11px"><input type="checkbox" data-layer="${layer.name}" ${checked}><span style="flex:1">${layer.name}</span><span style="color:var(--tx3);font-size:10px">${layer.num_features}个要素</span></label>`;
-  });
+    const gtype = layer.geometry_type || "?";
+    return `<label class="ck" style="padding:4px 6px;border-bottom:1px solid var(--brd);font-size:11px"><input type="checkbox" data-layer="${layer.name}" ${checked}><span style="flex:1">${layer.name}</span><span style="width:60px;text-align:center;color:var(--tx3);font-size:10px">${gtype}</span><span style="width:60px;text-align:right;color:var(--tx3);font-size:10px">${layer.num_features}</span></label>`;
+  }).join("");
+
+  // checkbox 事件
   list.querySelectorAll("input[type=checkbox]").forEach((cb) => {
     cb.addEventListener("change", () => {
       if (cb.checked) {
@@ -221,6 +231,26 @@ function renderGdbLayers() {
       } else {
         selectedLayers = selectedLayers.filter((n) => n !== cb.dataset.layer);
       }
+      updatePreview();
+    });
+  });
+
+  // 工具栏事件
+  list.querySelectorAll("a[data-act]").forEach((a) => {
+    a.addEventListener("click", (e) => {
+      e.preventDefault();
+      const act = a.dataset.act;
+      if (act === "all") {
+        selectedLayers = gdbLayers.map((l) => l.name);
+      } else if (act === "none") {
+        selectedLayers = [];
+      } else if (act === "invert") {
+        selectedLayers = gdbLayers.filter((l) => !selectedLayers.includes(l.name)).map((l) => l.name);
+      } else if (act === "polygon") {
+        selectedLayers = gdbLayers.filter((l) => isPolygonType(l.geometry_type)).map((l) => l.name);
+      }
+      window._gdbLayersInited = true;
+      renderGdbLayers();
       updatePreview();
     });
   });
@@ -379,14 +409,14 @@ window.up = async function () {
     } catch (e) { console.log("Preview error:", e); }
   }
   const pv = $("pv");
-  if (pv) pv.textContent = out || "等待导入 SHP、GPKG 或 GDB 文件…";
+  if (pv) pv.textContent = out || "请先导入 SHP 或 GDB 文件";
   lastPreviewKey = out;
 }
 
 // ═══ Run ═══
 window.runShpToTxt = async function () {
   const shpPaths = loadedFiles.map((f) => f.shp_path).filter(Boolean);
-  if (!shpPaths.length && !sourcePath) { toast("请先导入 SHP、GPKG 或 GDB 文件"); return; }
+  if (!shpPaths.length && !sourcePath) { toast("请先导入 SHP 或 GDB 文件"); return; }
 
   const outDir = $("out_dir_s")?.value || "";
   if (!outDir) { toast("请先导入文件以设置输出路径"); return; }
@@ -407,16 +437,12 @@ window.runTxtToShp = async function () {
   const outDir = $("out_dir")?.value || "";
   if (!outDir) { toast("请先导入文件以设置输出路径"); return; }
 
-  const outputShp = $("of_shp")?.checked || false;
-  const outputGpkg = $("of_gpkg")?.checked || false;
-  if (!outputShp && !outputGpkg) { toast("请至少选择一种输出格式"); return; }
-
   const txtPaths = txtFiles.map((f) => f.path);
   const cfg = getConfig();
   try {
     const result = await tauriInvoke("run_txt_to_shp", {
       txtPaths,
-      options: { output_shp: outputShp, output_gpkg: outputGpkg, merge: $("org_merge")?.checked || false, output_dir: outDir },
+      options: { output_shp: true, merge: $("org_merge")?.checked || false, output_dir: outDir },
       headerCfg: cfg.h,
     });
     toast("✓ " + result.message);
@@ -434,7 +460,18 @@ function getConfig() {
 }
 
 function getOptions() {
-  return { ox: $("ox")?.checked || false, oj: $("oj")?.checked || false, op: $("op")?.checked || false, on: $("on")?.checked || false, oo: $("oo")?.checked || false, om: $("om")?.checked || false, buffer: parseFloat($("pb")?.value) || 0 };
+  const outputMode = document.querySelector('input[name="output_mode"]:checked')?.value || "one_to_one";
+  const filenameField = $("filename_field")?.value ?? "";
+  return {
+    ox: $("ox")?.checked || false,
+    oj: $("oj")?.checked || false,
+    op: $("op")?.checked || false,
+    on: $("on")?.checked || false,
+    oo: $("oo")?.checked || false,
+    output_mode: outputMode,
+    filename_field: filenameField,
+    buffer: parseFloat($("pb")?.value) || 0,
+  };
 }
 
 // ═══ Tab switch ═══
@@ -632,10 +669,21 @@ function init() {
     await runWindowCommand("close_window");
   });
   bind("dropZone", () => importShp());
-  bind("dropGpkg", () => importGpkg());
   bind("dropGdb", () => importGdb());
   bind("btnClearS", () => clearAllFiles());
   bind("btnBrowseS", () => selectOutputDirS());
+
+  // 输出模式切换：控制文件名字段下拉框显示，并立即刷新预览
+  const outputModeRadios = document.querySelectorAll('input[name="output_mode"]');
+  outputModeRadios.forEach((r) => {
+    r.addEventListener("change", () => {
+      const row = $("filenameFieldRow");
+      if (row) row.style.display = r.checked && r.value === "split_by_plot" ? "block" : "none";
+      if (r.checked) { lastPreviewKey = ""; updatePreview(); }
+    });
+  });
+  const ff = $("filename_field");
+  if (ff) ff.addEventListener("change", () => { lastPreviewKey = ""; updatePreview(); });
   bind("dropZoneTxt", () => importTxt());
   bind("btnClearT", () => clearAllFilesTxt());
   bind("out_btn", () => selectOutputDir());

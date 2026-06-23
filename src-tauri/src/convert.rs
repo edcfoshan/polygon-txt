@@ -1,6 +1,5 @@
 use crate::gdb;
 use crate::geometry::{indexed_rings_to_surface, surface_to_indexed_rings, SurfaceGeometry};
-use crate::gpkg;
 use crate::shp;
 use crate::txt;
 use serde::{Deserialize, Serialize};
@@ -36,14 +35,18 @@ pub struct ShpToTxtOptions {
     pub op: bool,
     pub on: bool,
     pub oo: bool,
-    pub om: bool,
+    /// 输出模式："one_to_one"（一对一）/ "split_by_plot"（按地块拆分）/ "merge_all"（全合并）
+    #[serde(default)]
+    pub output_mode: String,
+    /// 模式 2 下的文件名字段：DKMC / DKBH / FID / 空(序号)
+    #[serde(default)]
+    pub filename_field: String,
     pub buffer: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TxtToShpOptions {
     pub output_shp: bool,
-    pub output_gpkg: bool,
     pub merge: bool,
     pub output_dir: String,
 }
@@ -54,6 +57,28 @@ pub struct ConvertResult {
     pub message: String,
     pub output_files: Vec<String>,
     pub processed_count: usize,
+}
+
+/// 单个地块 + 源信息（模式 2 按地块拆分用）
+#[derive(Debug, Clone)]
+struct PlotWithSource {
+    plot: txt::PlotData,
+    /// 源的 stem（shp 文件名 / GDB 文件夹名_图层名），用于建子目录
+    #[allow(dead_code)]
+    source_stem: String,
+    /// 该地块在源内的序号（0-based）
+    index_in_source: usize,
+    /// 该地块的完整属性表（用于按字段取文件名）
+    attributes: HashMap<String, String>,
+}
+
+/// 一个导入源：SHP 文件或 GDB 单个要素类
+#[derive(Debug, Clone)]
+struct ImportSource {
+    /// 源的 stem，用于命名（SHP 文件名 / GDB 文件夹名_图层名）
+    stem: String,
+    /// 源内所有地块
+    plots: Vec<PlotWithSource>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -122,31 +147,6 @@ pub fn read_gdb_source(gdb_path: &Path) -> Result<ShpSourceInfo, String> {
     })
 }
 
-pub fn read_gpkg_source(gpkg_path: &Path) -> Result<ShpSourceInfo, String> {
-    let info = gpkg::read_gpkg(gpkg_path)?;
-
-    let layers = info
-        .layers
-        .iter()
-        .map(|l| GdbLayerItem {
-            name: l.name.clone(),
-            field_names: l.field_names.clone(),
-            num_features: l.num_features,
-        })
-        .collect();
-
-    Ok(ShpSourceInfo {
-        file_type: "gpkg".to_string(),
-        shp_paths: vec![],
-        source_path: Some(gpkg_path.to_string_lossy().to_string()),
-        field_names: info.all_field_names.first().cloned().unwrap_or_default(),
-        field_records: vec![],
-        num_features: info.layers.first().map(|l| l.num_features).unwrap_or(0),
-        crs_info: HashMap::new(),
-        layers,
-    })
-}
-
 pub fn shp_to_txt_preview(
     shp_paths: &[PathBuf],
     source_type: Option<&str>,
@@ -162,17 +162,6 @@ pub fn shp_to_txt_preview(
             let info = gdb::read_gdb(path)?;
             let plots =
                 gdb_features_to_plots(&info, field_mapping, options, selected_layers)?;
-            txt::generate_txt(
-                &header_cfg.project_info,
-                &make_header_attrs(header_cfg),
-                &plots,
-                options.oj,
-            )
-        }
-        Some("gpkg") => {
-            let path = source_path.ok_or_else(|| "缺少 GPKG 路径".to_string())?;
-            let info = gpkg::read_gpkg(path)?;
-            let plots = gpkg_features_to_plots(&info, field_mapping, options);
             txt::generate_txt(
                 &header_cfg.project_info,
                 &make_header_attrs(header_cfg),
@@ -213,92 +202,235 @@ pub fn convert_shp_to_txt(
 ) -> Result<ConvertResult, String> {
     std::fs::create_dir_all(output_dir)
         .map_err(|e| format!("创建输出目录失败: {}", e))?;
-    let mut output_files = Vec::new();
 
+    // 统一展开成「导入源列表」
+    let sources = collect_import_sources(
+        shp_paths,
+        source_type,
+        source_path,
+        field_mapping,
+        options,
+        selected_layers,
+    )?;
+
+    match options.output_mode.as_str() {
+        "split_by_plot" => convert_split_by_plot(sources, header_cfg, options, output_dir),
+        "merge_all" => convert_merge_all(sources, header_cfg, options, output_dir),
+        _ => convert_one_to_one(sources, header_cfg, options, output_dir),
+    }
+}
+
+/// 把 SHP / GDB 统一展开成 ImportSource 列表
+fn collect_import_sources(
+    shp_paths: &[PathBuf],
+    source_type: Option<&str>,
+    source_path: Option<&PathBuf>,
+    field_mapping: &FieldMapping,
+    options: &ShpToTxtOptions,
+    selected_layers: Option<&[String]>,
+) -> Result<Vec<ImportSource>, String> {
+    let mut sources = Vec::new();
     match source_type {
         Some("gdb") => {
             let path = source_path.ok_or_else(|| "缺少 GDB 路径".to_string())?;
             let info = gdb::read_gdb(path)?;
-            let plots =
-                gdb_features_to_plots(&info, field_mapping, options, selected_layers)?;
-            let txt_content = txt::generate_txt(
-                &header_cfg.project_info,
-                &make_header_attrs(header_cfg),
-                &plots,
-                options.oj,
-            );
-            let stem = path
-                .file_stem()
-                .map(|s| s.to_string_lossy().to_string())
-                .unwrap_or_else(|| "output".to_string());
-            let txt_path = output_dir.join(format!("{}.txt", stem));
-            std::fs::write(&txt_path, &txt_content)
-                .map_err(|e| format!("写 TXT 失败: {}", e))?;
-            output_files.push(txt_path.to_string_lossy().to_string());
-        }
-        Some("gpkg") => {
-            let path = source_path.ok_or_else(|| "缺少 GPKG 路径".to_string())?;
-            let info = gpkg::read_gpkg(path)?;
-            let plots = gpkg_features_to_plots(&info, field_mapping, options);
-            let txt_content = txt::generate_txt(
-                &header_cfg.project_info,
-                &make_header_attrs(header_cfg),
-                &plots,
-                options.oj,
-            );
-            let stem = path
-                .file_stem()
-                .map(|s| s.to_string_lossy().to_string())
-                .unwrap_or_else(|| "output".to_string());
-            let txt_path = output_dir.join(format!("{}.txt", stem));
-            std::fs::write(&txt_path, &txt_content)
-                .map_err(|e| format!("写 TXT 失败: {}", e))?;
-            output_files.push(txt_path.to_string_lossy().to_string());
-        }
-        _ if options.om => {
-            let mut all_plots = Vec::new();
-            for shp_path in shp_paths {
-                all_plots.extend(single_shp_to_plots(shp_path, field_mapping, options)?);
-            }
-            let txt_content = txt::generate_txt(
-                &header_cfg.project_info,
-                &make_header_attrs(header_cfg),
-                &all_plots,
-                options.oj,
-            );
-            let txt_path = output_dir.join("merged_output.txt");
-            std::fs::write(&txt_path, &txt_content)
-                .map_err(|e| format!("写 TXT 失败: {}", e))?;
-            output_files.push(txt_path.to_string_lossy().to_string());
+            sources = gdb_to_sources(&info, field_mapping, options, selected_layers)?;
         }
         _ => {
             for shp_path in shp_paths {
-                let plots = single_shp_to_plots(shp_path, field_mapping, options)?;
-                let txt_content = txt::generate_txt(
-                    &header_cfg.project_info,
-                    &make_header_attrs(header_cfg),
-                    &plots,
-                    options.oj,
-                );
-                let stem = shp_path
-                    .file_stem()
-                    .map(|s| s.to_string_lossy().to_string())
-                    .unwrap_or_else(|| "output".to_string());
-                let txt_path = output_dir.join(format!("{}.txt", stem));
-                std::fs::write(&txt_path, &txt_content)
-                    .map_err(|e| format!("写 TXT 失败: {}", e))?;
-                output_files.push(txt_path.to_string_lossy().to_string());
+                sources.push(single_shp_to_source(shp_path, field_mapping, options)?);
             }
+        }
+    }
+    Ok(sources)
+}
+
+/// 模式 1：一对一。SHP→每个文件一个 TXT；GDB→每个要素类一个 TXT。
+/// 跨源同名冲突自动追加 _2/_3。
+fn convert_one_to_one(
+    sources: Vec<ImportSource>,
+    header_cfg: &HeaderConfig,
+    options: &ShpToTxtOptions,
+    output_dir: &Path,
+) -> Result<ConvertResult, String> {
+    let mut output_files = Vec::new();
+    let mut used_names: HashMap<String, usize> = HashMap::new();
+    let mut conflict_count = 0usize;
+
+    for src in &sources {
+        let plots: Vec<txt::PlotData> = src.plots.iter().map(|p| p.plot.clone()).collect();
+        let txt_content = txt::generate_txt(
+            &header_cfg.project_info,
+            &make_header_attrs(header_cfg),
+            &plots,
+            options.oj,
+        );
+        let (final_name, bumped) = allocate_unique_name(&src.stem, &mut used_names);
+        if bumped {
+            conflict_count += 1;
+        }
+        let txt_path = output_dir.join(format!("{}.txt", final_name));
+        std::fs::write(&txt_path, &txt_content)
+            .map_err(|e| format!("写 TXT 失败: {}", e))?;
+        output_files.push(txt_path.to_string_lossy().to_string());
+    }
+
+    let count = output_files.len();
+    let mut message = format!("成功转换 {} 个文件", count);
+    if conflict_count > 0 {
+        message.push_str(&format!("（{} 个文件名冲突已自动追加序号）", conflict_count));
+    }
+    Ok(ConvertResult {
+        success: true,
+        message,
+        output_files,
+        processed_count: count,
+    })
+}
+
+/// 模式 2：按地块拆分。每个源建子目录，内部按地块拆。
+fn convert_split_by_plot(
+    sources: Vec<ImportSource>,
+    header_cfg: &HeaderConfig,
+    options: &ShpToTxtOptions,
+    output_dir: &Path,
+) -> Result<ConvertResult, String> {
+    let mut output_files = Vec::new();
+    let mut subdir_count = 0usize;
+    let mut fallback_count = 0usize; // 源未找到所选字段、用序号命名的源数
+    let mut conflict_count = 0usize; // 文件名冲突次数
+
+    for src in &sources {
+        let subdir = output_dir.join(&src.stem);
+        std::fs::create_dir_all(&subdir)
+            .map_err(|e| format!("创建子目录失败: {}", e))?;
+        subdir_count += 1;
+
+        // 该源是否含所选字段
+        let field_exists = src
+            .plots
+            .iter()
+            .any(|p| !options.filename_field.is_empty() && p.attributes.contains_key(&options.filename_field));
+
+        let mut used_names: HashMap<String, usize> = HashMap::new();
+
+        for p in &src.plots {
+            // 一个 feature = 一个文件，多部件合在一起
+            let base_name = if !options.filename_field.is_empty() && field_exists {
+                // 取所选字段值
+                let raw = p
+                    .attributes
+                    .get(&options.filename_field)
+                    .cloned()
+                    .unwrap_or_default();
+                sanitize_filename(&raw)
+            } else {
+                // 字段不存在 / 选了"序号" / 值为空 → 序号兜底
+                String::new()
+            };
+            let base_name = if base_name.is_empty() {
+                format!("{}_{}", src.stem, p.index_in_source + 1)
+            } else {
+                base_name
+            };
+
+            if !options.filename_field.is_empty() && !field_exists {
+                fallback_count += 1; // 仅在有选字段但源里没该字段时累加（每个地块一次）
+            }
+
+            let (final_name, bumped) = allocate_unique_name(&base_name, &mut used_names);
+            if bumped {
+                conflict_count += 1;
+            }
+
+            let txt_content = txt::generate_txt(
+                &header_cfg.project_info,
+                &make_header_attrs(header_cfg),
+                &[p.plot.clone()],
+                options.oj,
+            );
+            let txt_path = subdir.join(format!("{}.txt", final_name));
+            std::fs::write(&txt_path, &txt_content)
+                .map_err(|e| format!("写 TXT 失败: {}", e))?;
+            output_files.push(txt_path.to_string_lossy().to_string());
         }
     }
 
     let count = output_files.len();
+    let mut message = format!("成功拆分为 {} 个文件（位于 {} 个子目录）", count, subdir_count);
+    if fallback_count > 0 {
+        message.push_str(&format!("（{} 个地块未找到所选字段，已用序号命名）", fallback_count));
+    }
+    if conflict_count > 0 {
+        message.push_str(&format!("（{} 个文件名冲突已自动追加序号）", conflict_count));
+    }
     Ok(ConvertResult {
         success: true,
-        message: format!("成功转换 {} 个文件", count),
+        message,
         output_files,
         processed_count: count,
     })
+}
+
+/// 模式 3：全合并为一个 TXT（文件名带时间戳）
+fn convert_merge_all(
+    sources: Vec<ImportSource>,
+    header_cfg: &HeaderConfig,
+    options: &ShpToTxtOptions,
+    output_dir: &Path,
+) -> Result<ConvertResult, String> {
+    let mut all_plots: Vec<txt::PlotData> = Vec::new();
+    for src in &sources {
+        for p in &src.plots {
+            all_plots.push(p.plot.clone());
+        }
+    }
+
+    let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S").to_string();
+    let filename = format!("merged_output_{}.txt", timestamp);
+    let txt_content = txt::generate_txt(
+        &header_cfg.project_info,
+        &make_header_attrs(header_cfg),
+        &all_plots,
+        options.oj,
+    );
+    let txt_path = output_dir.join(&filename);
+    std::fs::write(&txt_path, &txt_content).map_err(|e| format!("写 TXT 失败: {}", e))?;
+
+    let output_files = vec![txt_path.to_string_lossy().to_string()];
+    Ok(ConvertResult {
+        success: true,
+        message: format!("已合并输出：{}", filename),
+        output_files,
+        processed_count: 1,
+    })
+}
+
+/// 为文件名分配唯一名：遇到重名追加 _2、_3...
+/// 返回 (最终 stem, 是否发生过冲突)
+fn allocate_unique_name(base: &str, used: &mut HashMap<String, usize>) -> (String, bool) {
+    let base = if base.is_empty() { "output".to_string() } else { base.to_string() };
+    if !used.contains_key(&base) {
+        used.insert(base.clone(), 1);
+        return (base, false);
+    }
+    let count = used.get_mut(&base).unwrap();
+    *count += 1;
+    (format!("{}_{}", base, count), true)
+}
+
+/// 清理文件名中的非法字符（Windows: / \ : * ? " < > |），用 _ 替换
+fn sanitize_filename(name: &str) -> String {
+    let cleaned: String = name
+        .chars()
+        .map(|c| match c {
+            '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' => '_',
+            _ => c,
+        })
+        .collect::<String>()
+        .trim()
+        .to_string();
+    cleaned
 }
 
 pub fn convert_txt_to_shp(
@@ -311,24 +443,20 @@ pub fn convert_txt_to_shp(
         .map_err(|e| format!("创建输出目录失败: {}", e))?;
     let mut output_files = Vec::new();
 
-    for txt_path in txt_paths {
-        let text =
-            std::fs::read_to_string(txt_path).map_err(|e| format!("读取 TXT 失败: {}", e))?;
-        let parsed = txt::parse_txt(&text);
-        let stem = txt_path
-            .file_stem()
-            .map(|s| s.to_string_lossy().to_string())
-            .unwrap_or_else(|| "output".to_string());
-
+    if options.merge {
+        // 合并模式：所有 TXT 的所有地块合并到一个 SHP
+        let mut all_plots: Vec<txt::PlotData> = Vec::new();
+        for txt_path in txt_paths {
+            let text = std::fs::read_to_string(txt_path)
+                .map_err(|e| format!("读取 TXT 失败: {}", e))?;
+            let parsed = txt::parse_txt(&text);
+            all_plots.extend(parsed.plots);
+        }
         if options.output_shp {
-            let out_dir = output_dir.join(&stem);
-            std::fs::create_dir_all(&out_dir)
-                .map_err(|e| format!("创建目录失败: {}", e))?;
-
-            let (geometries, attributes) = plots_to_surfaces_and_attributes(&parsed.plots);
+            let (geometries, attributes) = plots_to_surfaces_and_attributes(&all_plots);
             let shp_files = shp::write_shapefile_structured(
-                &out_dir,
-                &stem,
+                output_dir,
+                "merged_output",
                 &geometries,
                 &attributes,
                 &header_cfg.crs,
@@ -337,48 +465,55 @@ pub fn convert_txt_to_shp(
             )?;
             output_files.extend(shp_files);
         }
+        Ok(ConvertResult {
+            success: true,
+            message: "已合并输出：merged_output.shp".to_string(),
+            output_files,
+            processed_count: 1,
+        })
+    } else {
+        // 一对一：平铺到 output_dir 根目录，文件名 = TXT stem
+        let mut used_names: HashMap<String, usize> = HashMap::new();
+        let mut conflict_count = 0usize;
+        for txt_path in txt_paths {
+            let text = std::fs::read_to_string(txt_path)
+                .map_err(|e| format!("读取 TXT 失败: {}", e))?;
+            let parsed = txt::parse_txt(&text);
+            let stem = txt_path
+                .file_stem()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_else(|| "output".to_string());
 
-        if options.output_gpkg {
-            let (geometries, attributes) = plots_to_surfaces_and_attributes(&parsed.plots);
-            let fields: Vec<(String, String, u8, u32)> = vec![
-                ("DKMC".into(), "地块名称".into(), 4u8, 50u32),
-                ("DKBH".into(), "地块编号".into(), 4u8, 30u32),
-                ("MJ".into(), "面积".into(), 3u8, 14u32),
-                ("DKYT".into(), "用途".into(), 4u8, 50u32),
-                ("TFH".into(), "图幅号".into(), 4u8, 20u32),
-                ("DLBM".into(), "地类编码".into(), 4u8, 10u32),
-            ];
-
-            let mut crs_info = HashMap::new();
-            let crs = parsed.attrs.get("坐标系").cloned()
-                .ok_or_else(|| "TXT 文件缺少「坐标系」属性".to_string())?;
-            let band = parsed.attrs.get("几度分带").cloned()
-                .ok_or_else(|| "TXT 文件缺少「几度分带」属性".to_string())?;
-            let zone = parsed.attrs.get("带号").cloned()
-                .ok_or_else(|| "TXT 文件缺少「带号」属性".to_string())?;
-            crs_info.insert("c".to_string(), crs);
-            crs_info.insert("b".to_string(), band);
-            crs_info.insert("z".to_string(), zone);
-
-            let gpkg_files = gpkg::write_gpkg_output_structured(
-                output_dir,
-                &stem,
-                &fields,
-                &attributes,
-                &geometries,
-                &crs_info,
-            )?;
-            output_files.extend(gpkg_files);
+            if options.output_shp {
+                let (final_name, bumped) = allocate_unique_name(&stem, &mut used_names);
+                if bumped {
+                    conflict_count += 1;
+                }
+                let (geometries, attributes) = plots_to_surfaces_and_attributes(&parsed.plots);
+                let shp_files = shp::write_shapefile_structured(
+                    output_dir,
+                    &final_name,
+                    &geometries,
+                    &attributes,
+                    &header_cfg.crs,
+                    &header_cfg.band,
+                    &header_cfg.zone,
+                )?;
+                output_files.extend(shp_files);
+            }
         }
+        let count = txt_paths.len();
+        let mut message = format!("成功转换 {} 个 TXT 文件", count);
+        if conflict_count > 0 {
+            message.push_str(&format!("（{} 个文件名冲突已自动追加序号）", conflict_count));
+        }
+        Ok(ConvertResult {
+            success: true,
+            message,
+            output_files,
+            processed_count: count,
+        })
     }
-
-    let count = txt_paths.len();
-    Ok(ConvertResult {
-        success: true,
-        message: format!("成功转换 {} 个 TXT 文件", count),
-        output_files,
-        processed_count: count,
-    })
 }
 
 fn shp_files_to_plots(
@@ -393,13 +528,18 @@ fn shp_files_to_plots(
     Ok(all_plots)
 }
 
-fn single_shp_to_plots(
+/// 把单个 SHP 文件解析为一个 ImportSource（保留每个地块的完整属性）
+fn single_shp_to_source(
     shp_path: &PathBuf,
     field_mapping: &FieldMapping,
     options: &ShpToTxtOptions,
-) -> Result<Vec<txt::PlotData>, String> {
+) -> Result<ImportSource, String> {
     let info = shp::read_shp_file_group(shp_path)?;
     let features = shp::read_shp(shp_path)?;
+    let stem = shp_path
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| "output".to_string());
 
     let mut plots = Vec::new();
     for (fi, feat) in features.iter().enumerate() {
@@ -410,18 +550,41 @@ fn single_shp_to_plots(
         let plot_tfh = get_field_value(&field_mapping.tfh, &info.field_names, &record);
         let plot_dlbm = get_field_value(&field_mapping.dlbm, &info.field_names, &record);
 
-        plots.push(build_plot_data(
-            &feat.surface,
-            plot_name,
-            plot_area,
-            plot_use,
-            plot_tfh,
-            plot_dlbm,
-            options,
-        ));
+        // 完整属性表（用于模式 2 按字段命名）
+        let mut attributes = HashMap::new();
+        for (idx, fname) in info.field_names.iter().enumerate() {
+            if let Some(val) = record.get(idx) {
+                attributes.insert(fname.clone(), val.clone());
+            }
+        }
+
+        plots.push(PlotWithSource {
+            plot: build_plot_data(
+                &feat.surface,
+                plot_name,
+                plot_area,
+                plot_use,
+                plot_tfh,
+                plot_dlbm,
+                options,
+            ),
+            source_stem: stem.clone(),
+            index_in_source: fi,
+            attributes,
+        });
     }
 
-    Ok(plots)
+    Ok(ImportSource { stem, plots })
+}
+
+/// 保留旧 API：仅返回 PlotData 列表（预览用）
+fn single_shp_to_plots(
+    shp_path: &PathBuf,
+    field_mapping: &FieldMapping,
+    options: &ShpToTxtOptions,
+) -> Result<Vec<txt::PlotData>, String> {
+    let src = single_shp_to_source(shp_path, field_mapping, options)?;
+    Ok(src.plots.into_iter().map(|p| p.plot).collect())
 }
 
 fn gdb_features_to_plots(
@@ -430,54 +593,67 @@ fn gdb_features_to_plots(
     options: &ShpToTxtOptions,
     selected_layers: Option<&[String]>,
 ) -> Result<Vec<txt::PlotData>, String> {
+    let sources = gdb_to_sources(info, field_mapping, options, selected_layers)?;
     let mut all_plots = Vec::new();
+    for src in sources {
+        for p in src.plots {
+            all_plots.push(p.plot);
+        }
+    }
+    Ok(all_plots)
+}
+
+/// 把 GDB 解析为多个 ImportSource（每个要素类一个源）
+fn gdb_to_sources(
+    info: &gdb::GdbFileInfo,
+    field_mapping: &FieldMapping,
+    options: &ShpToTxtOptions,
+    selected_layers: Option<&[String]>,
+) -> Result<Vec<ImportSource>, String> {
+    let gdb_stem = info.name.clone();
+    let mut sources = Vec::new();
 
     for (layer_idx, features) in info.all_features.iter().enumerate() {
-        let layer_name = info.layers.get(layer_idx).map(|l| l.name.as_str()).unwrap_or("");
+        let layer_name = info
+            .layers
+            .get(layer_idx)
+            .map(|l| l.name.as_str())
+            .unwrap_or("");
         if let Some(sel) = selected_layers {
-            if !sel.iter().any(|n| n == layer_name) {
+            if !sel.is_empty() && !sel.iter().any(|n| n == layer_name) {
                 continue;
             }
         }
 
-        for feat in features {
-            all_plots.push(build_plot_data(
-                &feat.surface,
-                get_field_value_map(&field_mapping.name, &feat.attributes).to_string(),
-                get_field_value_map(&field_mapping.area, &feat.attributes).to_string(),
-                get_field_value_map(&field_mapping.use_field, &feat.attributes).to_string(),
-                get_field_value_map(&field_mapping.tfh, &feat.attributes).to_string(),
-                get_field_value_map(&field_mapping.dlbm, &feat.attributes).to_string(),
-                options,
-            ));
+        let stem = format!("{}_{}", gdb_stem, layer_name);
+        let mut plots = Vec::new();
+        for (fi, feat) in features.iter().enumerate() {
+            let plot_name = get_field_value_map(&field_mapping.name, &feat.attributes).to_string();
+            let plot_area = get_field_value_map(&field_mapping.area, &feat.attributes).to_string();
+            let plot_use =
+                get_field_value_map(&field_mapping.use_field, &feat.attributes).to_string();
+            let plot_tfh = get_field_value_map(&field_mapping.tfh, &feat.attributes).to_string();
+            let plot_dlbm = get_field_value_map(&field_mapping.dlbm, &feat.attributes).to_string();
+
+            plots.push(PlotWithSource {
+                plot: build_plot_data(
+                    &feat.surface,
+                    plot_name,
+                    plot_area,
+                    plot_use,
+                    plot_tfh,
+                    plot_dlbm,
+                    options,
+                ),
+                source_stem: stem.clone(),
+                index_in_source: fi,
+                attributes: feat.attributes.clone(),
+            });
         }
+        sources.push(ImportSource { stem, plots });
     }
 
-    Ok(all_plots)
-}
-
-fn gpkg_features_to_plots(
-    info: &gpkg::GpkgFileInfo,
-    field_mapping: &FieldMapping,
-    options: &ShpToTxtOptions,
-) -> Vec<txt::PlotData> {
-    let mut all_plots = Vec::new();
-
-    for features in &info.all_features {
-        for feat in features {
-            all_plots.push(build_plot_data(
-                &feat.surface,
-                get_field_value_map(&field_mapping.name, &feat.attributes).to_string(),
-                get_field_value_map(&field_mapping.area, &feat.attributes).to_string(),
-                get_field_value_map(&field_mapping.use_field, &feat.attributes).to_string(),
-                get_field_value_map(&field_mapping.tfh, &feat.attributes).to_string(),
-                get_field_value_map(&field_mapping.dlbm, &feat.attributes).to_string(),
-                options,
-            ));
-        }
-    }
-
-    all_plots
+    Ok(sources)
 }
 
 fn build_plot_data(

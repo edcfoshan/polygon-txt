@@ -654,11 +654,6 @@ body::before{
           <div class="drop-tx">选择 .shp 文件（可多选）</div>
         </div>
         <div style="margin-top:4px;display:flex;gap:4px">
-          <div class="drop" id="dropGpkg" style="flex:1;padding:6px 8px">
-            <div style="display:flex;align-items:center;justify-content:center;gap:6px;font-size:11px;color:var(--tx3)">
-              <span style="font-size:13px;font-weight:300">◈</span> 导入 .gpkg 文件（可多选）
-            </div>
-          </div>
           <div class="drop" id="dropGdb" style="flex:1;padding:6px 8px">
             <div style="display:flex;align-items:center;justify-content:center;gap:6px;font-size:11px;color:var(--tx3)">
               <span style="font-size:13px;font-weight:300">📁</span> 导入 .gdb 文件夹
@@ -693,15 +688,10 @@ body::before{
         <div style="text-align:right;margin-top:2px"><button class="btn" id="btnClearT">清空全部</button></div>
         <div class="div"></div>
         <div class="slabel">输出设置</div>
-        <div class="os-h">
-          <span style="font-size:10.5px;color:var(--tx3);font-weight:500">格式</span>
-          <label class="ck"><input type="checkbox" id="of_shp" checked>SHP</label>
-          <label class="ck"><input type="checkbox" id="of_gpkg">GPKG</label>
-        </div>
         <div class="os-h" style="padding-top:0">
           <span style="font-size:10.5px;color:var(--tx3);font-weight:500">组织</span>
-          <label class="ck"><input type="radio" name="org_mode" id="org_sep" checked>每个TXT一个图层</label>
-          <label class="ck"><input type="radio" name="org_mode" id="org_merge">合并输出</label>
+          <label class="ck"><input type="radio" name="org_mode" id="org_sep" checked>每个 TXT 单独输出</label>
+          <label class="ck"><input type="radio" name="org_mode" id="org_merge">合并为一个 SHP</label>
         </div>
         <div class="fld">
           <label>输出目录</label>
@@ -719,6 +709,22 @@ body::before{
       <div class="mode-s">
       <div class="pnl-h"><span class="pnl-label">参数设置</span></div>
       <div class="pnl-bd">
+        <div class="slabel">输出模式</div>
+        <div class="mode-group" style="display:flex;flex-direction:column;gap:4px;margin-bottom:6px">
+          <label class="ck"><input type="radio" name="output_mode" value="one_to_one" checked>一对一（每个导入文件单独输出）</label>
+          <label class="ck"><input type="radio" name="output_mode" value="split_by_plot">按地块拆分（每个地块单独输出）</label>
+          <label class="ck"><input type="radio" name="output_mode" value="merge_all">全部合并为一个 TXT</label>
+        </div>
+        <div id="filenameFieldRow" style="display:none;margin-left:20px;margin-bottom:6px">
+          <label style="font-size:11px;color:var(--tx3)">地块拆分文件名</label>
+          <select id="filename_field" style="margin-left:6px">
+            <option value="DKMC">地块名称(DKMC)</option>
+            <option value="DKBH">地块编号(DKBH)</option>
+            <option value="">序号</option>
+            <option value="FID">自定义(FID)</option>
+          </select>
+        </div>
+
         <div class="slabel">转换选项</div>
         <div class="ck-grid">
         <label class="ck"><input type="checkbox" id="ox">XY 坐标标反</label>
@@ -726,7 +732,6 @@ body::before{
         <label class="ck"><input type="checkbox" id="op">部件号从 1 开始</label>
         <label class="ck"><input type="checkbox" id="on">起始点西北角</label>
         <label class="ck"><input type="checkbox" id="oo" checked>首末点重合</label>
-        <label class="ck"><input type="checkbox" id="om">合并到一个 TXT</label>
         </div>
         <div class="fld"><label>缓冲区（米）</label><input type="number" id="pb" value="0" min="0"></div>
 
@@ -766,7 +771,15 @@ body::before{
             <div class="slabel">GDB 图层（勾选要转换的）</div>
             <div id="gdbLayers" style="border:1px solid var(--brd);border-radius:6px;padding:4px;max-height:180px;overflow-y:auto"></div>
           </div>
-          <div class="pv" id="pv">等待导入 SHP、GPKG 或 GDB 文件…</div>
+          <div class="pv" id="pv">请先导入 SHP 或 GDB 文件
+
+输出示例格式：
+[属性描述]
+坐标系=2000国家大地坐标系,几度分带=3,投影类型=高斯克吕格,计量单位=米,带号=,精度=0.001,转换参数=,,,,,,
+[地块坐标]
+1,1234.56,宗地A,面,,,100,1,J1,1,Y500.000,X300.000
+J2,1,Y500.000,X301.000
+...</div>
         </div>
         <div class="ctr-ft">
           <button class="btn-run" id="btnRunStt">开始转换</button>

@@ -13,7 +13,7 @@
 **版本：** V1.0
 
 **开源地址：**
-[https://github.com/edcfoshan/txt-gdb-converter](https://github.com/edcfoshan/txt-gdb-converter)
+[https://github.com/edcfoshan/polygon-txt](https://github.com/edcfoshan/polygon-txt)
 
 ---
 

@@ -73,7 +73,7 @@ const FIELD_MATCH_RULES = {
 };
 
 const PP = [
-  { id: "usr", n: "自定义", h: { c: "2000国家大地坐标系", b: "3", j: "高斯克吕格", u: "米", z: "", a: "0.001", t: ",,,,,," }, p: { pp: 3, pz: "auto", ox: 0, oj: 0, on: 0, oo: 1, om: 0 }, f: { fn: "DKMC", fi: "DKBH", fa: "", fu: "", fm: "", fd: "" } },
+  { id: "usr", n: "自定义", h: { crs: "2000国家大地坐标系", band: "3", proj: "高斯克吕格", unit: "米", zone: "", precision: "0.001", transform: ",,,,,," }, p: { pp: 3, pz: "auto", ox: 0, oj: 0, on: 0, oo: 1, om: 0 }, f: { fn: "__placeholder__", fi: "__placeholder__", fa: "__placeholder__", fu: "__placeholder__", fm: "__placeholder__", fd: "__placeholder__" } },
 ];
 
 const $ = (id) => document.getElementById(id);
@@ -377,26 +377,24 @@ function autoSetOutputDirT(filePath) {
   if (inp && !inp.value) inp.value = dir;
 }
 
+const FIELD_PLACEHOLDER = { fn: "DKMC", fi: "DKBH", fa: "MJ", fu: "DKYT", fm: "TFH", fd: "DLBM" };
+
 function autoMatchFields(fieldNames) {
-  // 命中规则→自动选对应字段；未命中→按序选字段(fn→field[0], fi→field[1]…)，
-  // 让预览即时有值（避免下拉框停在「无」、用户以为映射没反应），用户可再手动调整。
-  let fallbackIdx = 0;
-  for (const [key, rules] of Object.entries(FIELD_MATCH_RULES)) {
+  // 统一三段式下拉：① 不填 ② 占位文字(默认选中) ③ 数据字段名
+  // SHP/GDB 来源不同但结构一致；面积(fa)额外支持自动计算。
+  for (const key of Object.keys(FIELD_PLACEHOLDER)) {
     const sel = $(key);
     if (!sel) continue;
-    let matched = "";
-    for (const r of rules) {
-      if (fieldNames.includes(r)) { matched = r; break; }
+    let html = '<option value="">不填</option>';
+    html += `<option value="__placeholder__" selected>${FIELD_PLACEHOLDER[key]} (占位)</option>`;
+    if (key === "fa") {
+      html += '<option value="__area_sqm__">平方米(自动)</option>';
+      html += '<option value="__area_ha__">公顷(自动)</option>';
     }
-    if (!matched && fieldNames.length > 0) {
-      matched = fieldNames[fallbackIdx % fieldNames.length];
-      fallbackIdx++;
-    }
-    sel.innerHTML = "";
-    if (!matched) sel.innerHTML = '<option value="">无</option>';
     fieldNames.forEach((fn) => {
-      sel.innerHTML += `<option value="${fn}"${fn === matched ? " selected" : ""}>${fn}</option>`;
+      html += `<option value="${fn}">${fn}</option>`;
     });
+    sel.innerHTML = html;
   }
 }
 
@@ -660,7 +658,7 @@ window.ld = function (id) {
   const c = cfgs[id] || PP.find((p) => p.id === id);
   if (!c) return;
   cur = id;
-  if (c.h) { $("hc").value = c.h.c; $("hb").value = c.h.b; $("hj").value = c.h.j; $("hu").value = c.h.u; $("hz").value = c.h.z; $("ha").value = c.h.a; $("ht").value = c.h.t; }
+if (c.h) { const hv = (k) => (c.h[k] == null ? undefined : c.h[k]); const setv = (el, v) => { if (v !== undefined && $(el)) $(el).value = v; }; setv("hc", hv("crs")); setv("hb", hv("band")); setv("hj", hv("proj")); setv("hu", hv("unit")); setv("hz", hv("zone")); setv("ha", hv("precision")); setv("ht", hv("transform")); }
   if (c.p) {
     if ($("ox")) $("ox").checked = !!c.p.ox;
     if ($("oj")) $("oj").checked = !!c.p.oj;

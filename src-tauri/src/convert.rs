@@ -803,13 +803,13 @@ fn single_shp_to_source(
     let mut plots = Vec::new();
     for (fi, feat) in features.iter().enumerate() {
         let record = info.field_records.get(fi).cloned().unwrap_or_default();
-        let plot_name = get_field_value(&field_mapping.name, &info.field_names, &record);
-        let plot_area = get_field_value(&field_mapping.area, &info.field_names, &record);
-        let plot_use = get_field_value(&field_mapping.use_field, &info.field_names, &record);
-        let plot_tfh = get_field_value(&field_mapping.tfh, &info.field_names, &record);
-        let plot_dlbm = get_field_value(&field_mapping.dlbm, &info.field_names, &record);
+        let plot_name = resolve_value(&field_mapping.name, "name", &info.field_names, &record);
+        let plot_area = resolve_area(&field_mapping.area, &feat.surface, &info.field_names, &record);
+        let plot_use = resolve_value(&field_mapping.use_field, "use_field", &info.field_names, &record);
+        let plot_tfh = resolve_value(&field_mapping.tfh, "tfh", &info.field_names, &record);
+        let plot_dlbm = resolve_value(&field_mapping.dlbm, "dlbm", &info.field_names, &record);
         let plot_id = {
-            let v = get_field_value(&field_mapping.id, &info.field_names, &record);
+            let v = resolve_value(&field_mapping.id, "id", &info.field_names, &record);
             if v.is_empty() { format!("FID_{}", fi) } else { v }
         };
 
@@ -896,14 +896,13 @@ fn gdb_to_sources(
         let stem = format!("{}_{}", gdb_stem, layer_name);
         let mut plots = Vec::new();
         for (fi, feat) in features.iter().enumerate() {
-            let plot_name = get_field_value_map(&field_mapping.name, &feat.attributes).to_string();
-            let plot_area = get_field_value_map(&field_mapping.area, &feat.attributes).to_string();
-            let plot_use =
-                get_field_value_map(&field_mapping.use_field, &feat.attributes).to_string();
-            let plot_tfh = get_field_value_map(&field_mapping.tfh, &feat.attributes).to_string();
-            let plot_dlbm = get_field_value_map(&field_mapping.dlbm, &feat.attributes).to_string();
+            let plot_name = resolve_value_map(&field_mapping.name, "name", &feat.attributes);
+            let plot_area = resolve_area_map(&field_mapping.area, &feat.surface, &feat.attributes);
+            let plot_use = resolve_value_map(&field_mapping.use_field, "use_field", &feat.attributes);
+            let plot_tfh = resolve_value_map(&field_mapping.tfh, "tfh", &feat.attributes);
+            let plot_dlbm = resolve_value_map(&field_mapping.dlbm, "dlbm", &feat.attributes);
             let plot_id = {
-                let v = get_field_value_map(&field_mapping.id, &feat.attributes).to_string();
+                let v = resolve_value_map(&field_mapping.id, "id", &feat.attributes);
                 if v.is_empty() { format!("FID_{}", fi) } else { v }
             };
 
@@ -1035,6 +1034,98 @@ fn get_field_value_map<'a>(field_name: &str, attrs: &'a HashMap<String, String>)
     attrs.get(field_name).map(|s| s.as_str()).unwrap_or("")
 }
 
+
+// ═══ 统一字段映射解析 ═══
+
+/// 各字段对应的占位文字
+fn field_placeholder(field_key: &str) -> &'static str {
+    match field_key {
+        "name" => "DKMC",
+        "id" => "DKBH",
+        "area" => "MJ",
+        "use_field" => "DKYT",
+        "tfh" => "TFH",
+        "dlbm" => "DLBM",
+        _ => "",
+    }
+}
+
+/// 解析字段值（SHP 版，index 查找）
+fn resolve_value(
+    mapping: &str,
+    field_key: &str,
+    field_names: &[String],
+    record: &[String],
+) -> String {
+    match mapping {
+        "" => String::new(),
+        "__placeholder__" => field_placeholder(field_key).to_string(),
+        other => {
+            if let Some(pos) = field_names.iter().position(|n| n == other) {
+                if pos < record.len() {
+                    return record[pos].clone();
+                }
+            }
+            String::new()
+        }
+    }
+}
+
+/// 解析字段值（GDB 版，HashMap 查找）
+fn resolve_value_map(
+    mapping: &str,
+    field_key: &str,
+    attrs: &HashMap<String, String>,
+) -> String {
+    match mapping {
+        "" => String::new(),
+        "__placeholder__" => field_placeholder(field_key).to_string(),
+        other => attrs.get(other).cloned().unwrap_or_default(),
+    }
+}
+
+/// 从 SurfaceGeometry 计算多边形面积（外环面积 - 孔面积），单位：平方米
+fn calculate_area_from_surface(surface: &SurfaceGeometry) -> f64 {
+    let mut total = 0.0f64;
+    for part in &surface.parts {
+        total += crate::geometry::signed_area(&part.exterior).abs();
+        for hole in &part.holes {
+            total -= crate::geometry::signed_area(hole).abs();
+        }
+    }
+    total.abs()
+}
+
+/// 解析面积值（SHP 版，含自动计算）
+fn resolve_area(
+    mapping: &str,
+    surface: &SurfaceGeometry,
+    field_names: &[String],
+    record: &[String],
+) -> String {
+    match mapping {
+        "" => String::new(),
+        "__placeholder__" => "MJ".to_string(),
+        "__area_sqm__" => format!("{:.2}", calculate_area_from_surface(surface)),
+        "__area_ha__" => format!("{:.4}", calculate_area_from_surface(surface) / 10000.0),
+        other => resolve_value(other, "area", field_names, record),
+    }
+}
+
+/// 解析面积值（GDB 版，含自动计算）
+fn resolve_area_map(
+    mapping: &str,
+    surface: &SurfaceGeometry,
+    attrs: &HashMap<String, String>,
+) -> String {
+    match mapping {
+        "" => String::new(),
+        "__placeholder__" => "MJ".to_string(),
+        "__area_sqm__" => format!("{:.2}", calculate_area_from_surface(surface)),
+        "__area_ha__" => format!("{:.4}", calculate_area_from_surface(surface) / 10000.0),
+        other => resolve_value_map(other, "area", attrs),
+    }
+}
 fn make_header_attrs(cfg: &HeaderConfig) -> HashMap<String, String> {
     let mut m = HashMap::new();
     m.insert("坐标系".to_string(), cfg.crs.clone());

@@ -757,12 +757,12 @@ body::before{
           <div class="card-label">字段映射</div>
           <div class="card-b">
             <div class="fgrid">
-              <div class="fcell"><label>地块名称</label><select id="fn"><option>DKMC</option><option>MC</option><option>NAME</option></select></div>
-              <div class="fcell"><label>地块编号</label><select id="fi"><option>DKBH</option><option>BH</option><option>ID</option></select></div>
-              <div class="fcell"><label>面积</label><select id="fa"><option value="">无</option><option>MJ</option></select></div>
-              <div class="fcell"><label>用途</label><select id="fu"><option value="">无</option><option>DKYT</option></select></div>
-              <div class="fcell"><label>图幅号</label><select id="fm"><option value="">无</option><option>TFH</option></select></div>
-              <div class="fcell"><label>地类</label><select id="fd"><option value="">无</option><option>DLBM</option></select></div>
+              <div class="fcell"><label>地块名称</label><select id="fn"><option value="">不填</option><option value="__placeholder__" selected>DKMC (占位)</option></select></div>
+              <div class="fcell"><label>地块编号</label><select id="fi"><option value="">不填</option><option value="__placeholder__" selected>DKBH (占位)</option></select></div>
+              <div class="fcell"><label>面积</label><select id="fa"><option value="">不填</option><option value="__placeholder__" selected>MJ (占位)</option><option value="__area_sqm__">平方米(自动)</option><option value="__area_ha__">公顷(自动)</option></select></div>
+              <div class="fcell"><label>用途</label><select id="fu"><option value="">不填</option><option value="__placeholder__" selected>DKYT (占位)</option></select></div>
+              <div class="fcell"><label>图幅号</label><select id="fm"><option value="">不填</option><option value="__placeholder__" selected>TFH (占位)</option></select></div>
+              <div class="fcell"><label>地类</label><select id="fd"><option value="">不填</option><option value="__placeholder__" selected>DLBM (占位)</option></select></div>
               <div class="fcell-full"><label>输出目录</label><div style="display:flex;gap:4px"><input type="text" id="out_dir_s" readonly placeholder="选择输出文件夹…" style="flex:1" class="fci"><button class="btn fci" id="btnBrowseS">浏览</button></div></div>
             </div>
           </div>

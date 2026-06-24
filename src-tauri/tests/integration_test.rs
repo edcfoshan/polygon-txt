@@ -1,4 +1,4 @@
-﻿// 界址点互转工具 — 集成测试
+// 界址点互转工具 — 集成测试
 // 测试数据路径: C:\Users\Administrator\Documents\txt与gdb互转\test_data
 // 输出目录: 自动创建临时目录
 
@@ -1242,4 +1242,71 @@ J1,2,2.000,2.000";
         "内环应以独立 part 输出，实际输出为:\n{}",
         roundtrip
     );
+}
+
+
+// ─── 测试: 统一字段映射 sentinel 值（不填/占位/自动面积） ───
+
+/// 从转换结果 TXT 的元数据行提取面积字段（meta 第 2 列）。
+fn extract_area_from_txt<P: AsRef<std::path::Path>>(path: P) -> String {
+    let txt = std::fs::read_to_string(path.as_ref()).expect("读取输出 TXT");
+    // 元数据行以 '@' 结尾，格式: 点数,面积,FID,名称,类型,图幅号,用途,地类,@
+    for line in txt.lines() {
+        if line.ends_with('@') {
+            let parts: Vec<&str> = line.trim_end_matches('@').split(',').collect();
+            if parts.len() >= 2 {
+                return parts[1].to_string();
+            }
+        }
+    }
+    panic!("未找到元数据行: {}", txt);
+}
+
+#[test]
+fn test_field_mapping_sentinels_area() {
+    let shp_path = test_shp_stem();
+    let header = convert::HeaderConfig {
+        crs: "2000国家大地坐标系".into(),
+        band: "3".into(),
+        proj: "高斯克吕格".into(),
+        unit: "米".into(),
+        zone: "38".into(),
+        precision: "0.001".into(),
+        transform: ",,,,,,".into(),
+        project_info: String::new(),
+    };
+    let options = convert::ShpToTxtOptions {
+        ox: false, oj: true, on: false, oo: false,
+        output_mode: "one_to_one".into(), filename_field: String::new(),
+    };
+
+    // 平方米（自动）：面积应为正数，2 位小数
+    let mk = |area: &str| convert::FieldMapping {
+        name: "__placeholder__".into(), id: "__placeholder__".into(), area: area.into(),
+        use_field: "__placeholder__".into(), tfh: "__placeholder__".into(), dlbm: "__placeholder__".into(),
+    };
+
+    let d = tempfile::tempdir().unwrap();
+    let r = convert::convert_shp_to_txt(&[shp_path.clone()], None, None, &header, &mk("__area_sqm__"), &options, d.path(), None).unwrap();
+    let area_sqm: f64 = extract_area_from_txt(&r.output_files[0]).parse().unwrap();
+    assert!(area_sqm > 0.0, "平方米面积应 > 0，实际 {}", area_sqm);
+
+    let d2 = tempfile::tempdir().unwrap();
+    let r2 = convert::convert_shp_to_txt(&[shp_path.clone()], None, None, &header, &mk("__area_ha__"), &options, d2.path(), None).unwrap();
+    let area_ha: f64 = extract_area_from_txt(&r2.output_files[0]).parse().unwrap();
+    assert!(area_ha > 0.0, "公顷面积应 > 0，实际 {}", area_ha);
+    // 公顷 = 平方米 / 10000
+    // ha 已舍入到 4 位小数，转回平方米比较，容差 0.01（4 位小数舍入误差上界）
+    // sqm 保留 2 位、ha 保留 4 位小数各自舍入，转回平方米比较容差 1.0
+    assert!((area_ha * 10000.0 - area_sqm).abs() < 1.0, "公顷换算不一致: sqm={} ha={}", area_sqm, area_ha);
+
+    // 占位文字：面积字段应为 "MJ"
+    let d3 = tempfile::tempdir().unwrap();
+    let r3 = convert::convert_shp_to_txt(&[shp_path.clone()], None, None, &header, &mk("__placeholder__"), &options, d3.path(), None).unwrap();
+    assert_eq!(extract_area_from_txt(&r3.output_files[0]), "MJ", "占位文字应输出 MJ");
+
+    // 不填：面积字段应为空
+    let d4 = tempfile::tempdir().unwrap();
+    let r4 = convert::convert_shp_to_txt(&[shp_path.clone()], None, None, &header, &mk(""), &options, d4.path(), None).unwrap();
+    assert_eq!(extract_area_from_txt(&r4.output_files[0]), "", "不填应输出空面积");
 }

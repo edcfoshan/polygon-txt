@@ -712,7 +712,7 @@ window.delCfg = function () {
 // ═══ Open GitHub ═══
 window.openGitHub = async function () {
   try {
-    await shellOpen("https://github.com/edcfoshan/txt-gdb-converter");
+    await shellOpen("https://github.com/edcfoshan/polygon-txt");
   } catch (e) { console.error("openGitHub:", e); }
 };
 

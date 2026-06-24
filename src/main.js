@@ -658,7 +658,7 @@ window.ld = function (id) {
   const c = cfgs[id] || PP.find((p) => p.id === id);
   if (!c) return;
   cur = id;
-if (c.h) { const hv = (k) => (c.h[k] == null ? undefined : c.h[k]); const setv = (el, v) => { if (v !== undefined && $(el)) $(el).value = v; }; setv("hc", hv("crs")); setv("hb", hv("band")); setv("hj", hv("proj")); setv("hu", hv("unit")); setv("hz", hv("zone")); setv("ha", hv("precision")); setv("ht", hv("transform")); }
+if (c.h) { const hv = (k) => (c.h[k] == null ? undefined : c.h[k]); const setv = (el, v) => { if (v !== undefined && $(el)) $(el).value = v; }; setv("hc", hv("crs")); setv("hb", hv("band")); setv("hj", hv("proj")); setv("hu", hv("unit")); setv("hz", hv("zone")); setv("ha", hv("precision")); setv("ht", hv("transform")); setv("hpi", hv("project_info")); }
   if (c.p) {
     if ($("ox")) $("ox").checked = !!c.p.ox;
     if ($("oj")) $("oj").checked = !!c.p.oj;

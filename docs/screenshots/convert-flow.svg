@@ -1,0 +1,136 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 640" font-family="'Noto Sans SC','PingFang SC','JetBrains Mono',sans-serif">
+  <defs>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/>
+    </pattern>
+    <marker id="arrow-emerald" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#34d399"/>
+    </marker>
+    <marker id="arrow-violet" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#a78bfa"/>
+    </marker>
+    <marker id="arrow-cyan" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#22d3ee"/>
+    </marker>
+    <marker id="arrow-amber-up" markerWidth="11" markerHeight="9" refX="5.5" refY="8" orient="auto">
+      <polygon points="0 9, 5.5 0, 11 9" fill="#fbbf24"/>
+    </marker>
+    <marker id="arrow-amber-dn" markerWidth="11" markerHeight="9" refX="5.5" refY="1" orient="auto">
+      <polygon points="0 0, 5.5 9, 11 0" fill="#fbbf24"/>
+    </marker>
+  </defs>
+
+  <rect width="100%" height="100%" fill="#0f172a"/>
+  <rect width="100%" height="100%" fill="url(#grid)"/>
+
+  <!-- Title -->
+  <text x="40" y="36" fill="#f1f5f9" font-size="18" font-weight="700">面要素 ↔ 界址点 TXT 双向转换流程</text>
+  <text x="40" y="55" fill="#64748b" font-size="10">Pure Rust · 无需 ArcPy · 极思G界址点互转工具</text>
+
+  <!-- ===== Left Column: 面 → TXT ===== -->
+  <text x="210" y="82" fill="#22d3ee" font-size="11" font-weight="600" text-anchor="middle">面 → TXT</text>
+
+  <!-- L1 input -->
+  <rect x="40" y="92" width="340" height="54" rx="6" fill="#0f172a"/>
+  <rect x="40" y="92" width="340" height="54" rx="6" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+  <text x="210" y="116" fill="white" font-size="12" font-weight="600" text-anchor="middle">SHP / GDB 面要素</text>
+  <text x="210" y="133" fill="#94a3b8" font-size="9" text-anchor="middle">输入：矢量面 + 属性表 + PRJ</text>
+  <!-- arrow L1->L2 -->
+  <line x1="210" y1="146" x2="210" y2="162" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrow-emerald)"/>
+
+  <!-- L2 -->
+  <rect x="40" y="164" width="340" height="50" rx="6" fill="#0f172a"/>
+  <rect x="40" y="164" width="340" height="50" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
+  <text x="210" y="186" fill="white" font-size="11" font-weight="600" text-anchor="middle">环向归一化</text>
+  <text x="210" y="202" fill="#94a3b8" font-size="9" text-anchor="middle">外环逆时针 / 洞顺时针</text>
+  <line x1="210" y1="214" x2="210" y2="228" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrow-emerald)"/>
+
+  <!-- L3 -->
+  <rect x="40" y="230" width="340" height="50" rx="6" fill="#0f172a"/>
+  <rect x="40" y="230" width="340" height="50" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
+  <text x="210" y="252" fill="white" font-size="11" font-weight="600" text-anchor="middle">洞识别 · 多部件拆分</text>
+  <text x="210" y="268" fill="#94a3b8" font-size="9" text-anchor="middle">区分主体地块与包含洞</text>
+  <line x1="210" y1="280" x2="210" y2="294" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrow-emerald)"/>
+
+  <!-- L4 -->
+  <rect x="40" y="296" width="340" height="50" rx="6" fill="#0f172a"/>
+  <rect x="40" y="296" width="340" height="50" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
+  <text x="210" y="318" fill="white" font-size="11" font-weight="600" text-anchor="middle">坐标交换 (X,Y) → (Y,X)</text>
+  <text x="210" y="334" fill="#94a3b8" font-size="9" text-anchor="middle">东/北 → 北/东（TXT 约定）</text>
+  <line x1="210" y1="346" x2="210" y2="360" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrow-emerald)"/>
+
+  <!-- L5 -->
+  <rect x="40" y="362" width="340" height="50" rx="6" fill="#0f172a"/>
+  <rect x="40" y="362" width="340" height="50" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
+  <text x="210" y="384" fill="white" font-size="11" font-weight="600" text-anchor="middle">坐标系识别（PRJ）· 带号提取</text>
+  <text x="210" y="400" fill="#94a3b8" font-size="9" text-anchor="middle">高斯克吕格 3°/6° 分带</text>
+  <line x1="210" y1="412" x2="210" y2="426" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrow-emerald)"/>
+
+  <!-- L6 -->
+  <rect x="40" y="428" width="340" height="50" rx="6" fill="#0f172a"/>
+  <rect x="40" y="428" width="340" height="50" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
+  <text x="210" y="450" fill="white" font-size="11" font-weight="600" text-anchor="middle">面积计算 · 字段映射</text>
+  <text x="210" y="466" fill="#94a3b8" font-size="9" text-anchor="middle">DKMC / DKBH 自动匹配</text>
+  <line x1="210" y1="478" x2="210" y2="492" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arrow-violet)"/>
+
+  <!-- L7 output -->
+  <rect x="40" y="494" width="340" height="54" rx="6" fill="#0f172a"/>
+  <rect x="40" y="494" width="340" height="54" rx="6" fill="rgba(76,29,149,0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+  <text x="210" y="518" fill="white" font-size="12" font-weight="600" text-anchor="middle">标准界址点 TXT</text>
+  <text x="210" y="535" fill="#94a3b8" font-size="9" text-anchor="middle">J序号,1,北坐标,东坐标</text>
+
+  <!-- ===== Right Column: TXT → 面 ===== -->
+  <text x="790" y="82" fill="#a78bfa" font-size="11" font-weight="600" text-anchor="middle">TXT → 面</text>
+
+  <!-- R1 input -->
+  <rect x="620" y="92" width="340" height="54" rx="6" fill="#0f172a"/>
+  <rect x="620" y="92" width="340" height="54" rx="6" fill="rgba(76,29,149,0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+  <text x="790" y="116" fill="white" font-size="12" font-weight="600" text-anchor="middle">界址点 TXT</text>
+  <text x="790" y="133" fill="#94a3b8" font-size="9" text-anchor="middle">输入：三段式标准格式</text>
+  <line x1="790" y1="146" x2="790" y2="162" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrow-emerald)"/>
+
+  <!-- R2 -->
+  <rect x="620" y="164" width="340" height="50" rx="6" fill="#0f172a"/>
+  <rect x="620" y="164" width="340" height="50" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
+  <text x="790" y="186" fill="white" font-size="11" font-weight="600" text-anchor="middle">三段式解析</text>
+  <text x="790" y="202" fill="#94a3b8" font-size="9" text-anchor="middle">元数据 / 坐标系 / 坐标点</text>
+  <line x1="790" y1="214" x2="790" y2="228" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrow-emerald)"/>
+
+  <!-- R3 -->
+  <rect x="620" y="230" width="340" height="50" rx="6" fill="#0f172a"/>
+  <rect x="620" y="230" width="340" height="50" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
+  <text x="790" y="252" fill="white" font-size="11" font-weight="600" text-anchor="middle">坐标交换 (Y,X) → (X,Y)</text>
+  <text x="790" y="268" fill="#94a3b8" font-size="9" text-anchor="middle">北/东 → 东/北（SHP 存储）</text>
+  <line x1="790" y1="280" x2="790" y2="294" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrow-emerald)"/>
+
+  <!-- R4 -->
+  <rect x="620" y="296" width="340" height="50" rx="6" fill="#0f172a"/>
+  <rect x="620" y="296" width="340" height="50" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
+  <text x="790" y="318" fill="white" font-size="11" font-weight="600" text-anchor="middle">字段自动匹配</text>
+  <text x="790" y="334" fill="#94a3b8" font-size="9" text-anchor="middle">DKMC / DKBH / 坐标系回填</text>
+  <line x1="790" y1="346" x2="790" y2="360" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrow-emerald)"/>
+
+  <!-- R5 -->
+  <rect x="620" y="362" width="340" height="50" rx="6" fill="#0f172a"/>
+  <rect x="620" y="362" width="340" height="50" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
+  <text x="790" y="384" fill="white" font-size="11" font-weight="600" text-anchor="middle">要素重建 · 环重构</text>
+  <text x="790" y="400" fill="#94a3b8" font-size="9" text-anchor="middle">闭合多边形 + 闭合校验</text>
+  <line x1="790" y1="412" x2="790" y2="426" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arrow-cyan)"/>
+
+  <!-- R6 output -->
+  <rect x="620" y="428" width="340" height="54" rx="6" fill="#0f172a"/>
+  <rect x="620" y="428" width="340" height="54" rx="6" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+  <text x="790" y="452" fill="white" font-size="12" font-weight="600" text-anchor="middle">SHP 矢量面</text>
+  <text x="790" y="469" fill="#94a3b8" font-size="9" text-anchor="middle">输出：.shp + .dbf + .prj</text>
+
+  <!-- ===== Center: bidirectional arrow ===== -->
+  <line x1="500" y1="510" x2="500" y2="130" stroke="#fbbf24" stroke-width="2.5" marker-end="url(#arrow-amber-up)" marker-start="url(#arrow-amber-dn)"/>
+  <rect x="455" y="300" width="90" height="40" rx="8" fill="#0f172a" stroke="#fbbf24" stroke-width="1" stroke-dasharray="4,3"/>
+  <text x="500" y="318" fill="#fbbf24" font-size="11" font-weight="700" text-anchor="middle">双向互转</text>
+  <text x="500" y="332" fill="#fbbf24" font-size="8" text-anchor="middle">lossless round-trip</text>
+
+  <!-- ===== Bottom: coordinate systems bar ===== -->
+  <rect x="40" y="580" width="920" height="44" rx="8" fill="rgba(120,53,15,0.25)" stroke="#fbbf24" stroke-width="1" stroke-dasharray="8,4"/>
+  <text x="60" y="608" fill="#fbbf24" font-size="10" font-weight="600">坐标系支持</text>
+  <text x="500" y="608" fill="#e2e8f0" font-size="11" text-anchor="middle">2000 国家大地坐标系  ·  1980 西安坐标系  ·  1954 北京坐标系  ·  WGS84 坐标系</text>
+</svg>

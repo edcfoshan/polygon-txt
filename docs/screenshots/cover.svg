@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 383" font-family="'Noto Sans SC','PingFang SC','JetBrains Mono',sans-serif">
+  <defs>
+    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M 32 0 L 0 0 0 32" fill="none" stroke="#1e293b" stroke-width="0.5"/>
+    </pattern>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#020617"/>
+    </linearGradient>
+    <radialGradient id="glowCyan" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0%" stop-color="#22d3ee" stop-opacity="0.25"/>
+      <stop offset="100%" stop-color="#22d3ee" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowViolet" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0%" stop-color="#a78bfa" stop-opacity="0.25"/>
+      <stop offset="100%" stop-color="#a78bfa" stop-opacity="0"/>
+    </radialGradient>
+    <marker id="arrR" markerWidth="12" markerHeight="9" refX="11" refY="4.5" orient="auto">
+      <polygon points="0 0, 12 4.5, 0 9" fill="#fbbf24"/>
+    </marker>
+    <marker id="arrL" markerWidth="12" markerHeight="9" refX="1" refY="4.5" orient="auto">
+      <polygon points="12 0, 0 4.5, 12 9" fill="#fbbf24"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="900" height="383" fill="url(#bgGrad)"/>
+  <rect width="900" height="383" fill="url(#grid)"/>
+  <!-- corner glows -->
+  <ellipse cx="180" cy="200" rx="220" ry="160" fill="url(#glowCyan)"/>
+  <ellipse cx="720" cy="200" rx="220" ry="160" fill="url(#glowViolet)"/>
+
+  <!-- Left icon: polygon (面要素) -->
+  <g transform="translate(150,205)">
+    <polygon points="0,-58 56,-30 48,40 -10,52 -58,12 -42,-38"
+             fill="rgba(8,51,68,0.55)" stroke="#22d3ee" stroke-width="2"/>
+    <circle cx="0" cy="-58" r="4" fill="#22d3ee"/>
+    <circle cx="56" cy="-30" r="4" fill="#22d3ee"/>
+    <circle cx="48" cy="40" r="4" fill="#22d3ee"/>
+    <circle cx="-10" cy="52" r="4" fill="#22d3ee"/>
+    <circle cx="-58" cy="12" r="4" fill="#22d3ee"/>
+    <circle cx="-42" cy="-38" r="4" fill="#22d3ee"/>
+    <text y="95" fill="#22d3ee" font-size="13" font-weight="600" text-anchor="middle">SHP / GDB 面要素</text>
+  </g>
+
+  <!-- Right icon: TXT document -->
+  <g transform="translate(720,205)">
+    <rect x="-50" y="-70" width="100" height="130" rx="6" fill="rgba(76,29,149,0.55)" stroke="#a78bfa" stroke-width="2"/>
+    <line x1="-32" y1="-42" x2="32" y2="-42" stroke="#a78bfa" stroke-width="2"/>
+    <line x1="-32" y1="-22" x2="32" y2="-22" stroke="#a78bfa" stroke-width="2" opacity="0.85"/>
+    <line x1="-32" y1="-2" x2="32" y2="-2" stroke="#a78bfa" stroke-width="2" opacity="0.7"/>
+    <line x1="-32" y1="18" x2="20" y2="18" stroke="#a78bfa" stroke-width="2" opacity="0.55"/>
+    <line x1="-32" y1="38" x2="28" y2="38" stroke="#a78bfa" stroke-width="2" opacity="0.4"/>
+    <text y="95" fill="#a78bfa" font-size="13" font-weight="600" text-anchor="middle">界址点 TXT</text>
+  </g>
+
+  <!-- Center: bidirectional arrow -->
+  <line x1="430" y1="215" x2="470" y2="215" stroke="#fbbf24" stroke-width="3" marker-end="url(#arrR)" marker-start="url(#arrL)"/>
+  <text x="450" y="170" fill="#fbbf24" font-size="13" font-weight="700" text-anchor="middle">双向互转</text>
+  <text x="450" y="265" fill="#fbbf24" font-size="9" text-anchor="middle" opacity="0.8">lossless · 无损往返</text>
+
+  <!-- Title block (top-left) -->
+  <text x="48" y="62" fill="#f1f5f9" font-size="34" font-weight="700">面要素 ↔ 界址点 TXT</text>
+  <text x="48" y="92" fill="#22d3ee" font-size="17" font-weight="600">测绘人的双向转换工具</text>
+
+  <!-- Bottom badge -->
+  <rect x="48" y="335" width="280" height="30" rx="15" fill="rgba(120,53,15,0.3)" stroke="#fbbf24" stroke-width="1"/>
+  <text x="60" y="355" fill="#fbbf24" font-size="11" font-weight="600">无需 ArcPy · 纯 Rust · 开源免费</text>
+
+  <!-- Brand (bottom-right) -->
+  <text x="852" y="356" fill="#64748b" font-size="12" font-weight="600" text-anchor="end">极思 G · jisig</text>
+</svg>

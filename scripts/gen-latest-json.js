@@ -56,10 +56,10 @@ const publishedExeName = `polygon-txt_${shortVer}_x64-setup.exe`;
 const signature = readFileSync(join(nsisDir, sigName), 'utf8').trim();
 const notes = args.notes || readNotesFromChangelog(version) || `版本 ${version} 更新`;
 
-// ghproxy 镜像前缀：国内访问 GitHub Releases 加速。ghproxy 服务偶有抖动，
-// 端点配置的 jsDelivr + GitHub 多重 endpoint 仅用于 latest.json 本身的拉取加速，
-// 这里包体的加速由 url 前缀承担；下载失败时前端兜底引导用户浏览器手动下载。
-const mirror = args.mirror === false ? '' : 'https://mirror.ghproxy.com/';
+// 默认用 GitHub releases 直连（国内约 15s 下完 5MB，可接受）。公益镜像（ghproxy 等）
+// 长期不稳定——1.3.0 发版时 mirror.ghproxy.com 已失效，多镜像测试均无加速效果。
+// 如需镜像用 --mirror 显式开启。下载失败时前端兜底引导用户跳转百度云手动下载。
+const mirror = args.mirror === true ? 'https://mirror.ghproxy.com/' : '';
 const downloadUrl = `${mirror}https://github.com/${repo}/releases/download/${encodeURIComponent(tag)}/${encodeURIComponent(publishedExeName)}`;
 
 const latest = {
@@ -87,13 +87,13 @@ console.log(`  2. 把 latest.json 上传到同一 Release`);
 console.log(`  3. git add latest.json && git commit && git push（jsDelivr 源从仓库 master 取此文件）`);
 
 function parseArgs(argv) {
-  const out = { mirror: true };
+  const out = { mirror: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--version') out.version = argv[++i];
     else if (a === '--tag') out.tag = argv[++i];
     else if (a === '--notes') out.notes = argv[++i];
-    else if (a === '--no-mirror') out.mirror = false;
+    else if (a === '--mirror') out.mirror = true;
   }
   return out;
 }

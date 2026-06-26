@@ -2,7 +2,7 @@
 
 本文档补充 `release` skill：每次发版除原有步骤外，**必须签名 NSIS 安装包并上传 `latest.json`**，否则老版本客户端无法收到更新提醒。
 
-> 自动更新方案采用 Tauri Updater + 国内多源加速（jsDelivr + GitHub + ghproxy 镜像）。
+> 自动更新方案采用 Tauri Updater + 国内多源检查加速（jsDelivr + GitHub）+ 百度云下载兜底。
 
 ---
 
@@ -55,7 +55,7 @@ node scripts/gen-latest-json.js --notes "本次更新内容……"
 脚本会自动：
 - 从 `package.json` 读版本号
 - 扫描 NSIS 目录的 `.sig` 文件读签名
-- 组装 URL（默认走 `mirror.ghproxy.com` 镜像加速，文件名含中文会自动 `encodeURI`）
+- 组装 URL（默认 GitHub releases 直连；`--mirror` 可加 ghproxy 前缀，文件名含中文自动 `encodeURI`）
 - 写出仓库根目录 `latest.json`（jsDelivr 端点从这里取）
 
 如不需要镜像：`--no-mirror`。
@@ -114,10 +114,12 @@ git push
 | 环节 | 机制 |
 |------|------|
 | 检查更新（拉 latest.json，KB 级） | endpoints 数组：jsDelivr（仓库根 latest.json，秒级）→ GitHub Release |
-| 下载安装包（10–20MB） | latest.json 内 `url` 走 `mirror.ghproxy.com` 镜像 |
-| 全部失败的兜底 | 前端 confirm 跳浏览器到 Releases 页 |
+| 下载安装包（5MB） | latest.json 内 `url` 走 GitHub releases **直连**（国内约 15s 下完） |
+| 下载失败兜底 | 前端 confirm → 跳百度云手动下载；弹窗常驻百度云链接 |
 
-**风险：** ghproxy 公益镜像偶有抖动/停服。若用户量大需 100% 稳定，可改用付费对象存储（腾讯 COS/阿里 OSS + CDN）承载 `url` 指向的安装包，endpoint 不变。
+**为什么不用 ghproxy 镜像：** 1.3.0 发版实测 `mirror.ghproxy.com` 已失效，多个替代镜像（ghproxy.net / gh-proxy.com / ghps.cc）测试均无加速效果（与直连同耗时 ~15s）且不稳定。直连 GitHub releases 最稳，5MB 文件 15s 可接受。
+
+**若用户量大需更快下载：** 改用付费对象存储（腾讯 COS/阿里 OSS + CDN）承载安装包，把 `latest.json` 的 `url` 指向 CDN 地址即可，endpoint 不变。`gen-latest-json.js` 加 `--mirror` 可切回 ghproxy 前缀（仅当镜像恢复时）。
 
 ---
 

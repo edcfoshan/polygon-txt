@@ -57,6 +57,9 @@ struct GdbLayerItem {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct TxtImportResult {
     files: Vec<TxtFileItem>,
+    /// 解析失败的文件名（前端用于 toast 提示）
+    #[serde(default)]
+    failed: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -273,20 +276,26 @@ fn pick_txt_files(app: tauri::AppHandle) -> Result<TxtImportResult, String> {
 
     let picked = match files {
         Some(f) => f,
-        None => return Ok(TxtImportResult { files: vec![] }),
+        None => return Ok(TxtImportResult { files: vec![], failed: vec![] }),
     };
 
     let mut items = Vec::new();
+    let mut failed: Vec<String> = Vec::new();
     for file in &picked {
         let path = match file.as_path() {
             Some(p) => p.to_path_buf(),
             None => continue,
         };
 
-        let text = match std::fs::read_to_string(&path) {
+        let text = match txt::read_text_file(&path) {
             Ok(t) => t,
             Err(e) => {
                 eprintln!("读 TXT 失败: {}", e);
+                failed.push(
+                    path.file_name()
+                        .map(|s| s.to_string_lossy().to_string())
+                        .unwrap_or_default(),
+                );
                 continue;
             }
         };
@@ -317,7 +326,7 @@ fn pick_txt_files(app: tauri::AppHandle) -> Result<TxtImportResult, String> {
         });
     }
 
-    Ok(TxtImportResult { files: items })
+    Ok(TxtImportResult { files: items, failed })
 }
 
 #[tauri::command]
@@ -449,11 +458,16 @@ fn pick_shp_files_from_paths(paths: Vec<String>) -> Result<ShpImportResult, Stri
 #[tauri::command]
 fn pick_txt_files_from_paths(paths: Vec<String>) -> Result<TxtImportResult, String> {
     let mut items = Vec::new();
+    let mut failed: Vec<String> = Vec::new();
     for p in &paths {
         let path = PathBuf::from(p);
-        let text = match std::fs::read_to_string(&path) {
+        let text = match txt::read_text_file(&path) {
             Ok(t) => t,
-            Err(e) => { eprintln!("拖放读 TXT 失败: {}", e); continue; }
+            Err(e) => {
+                eprintln!("拖放读 TXT 失败: {}", e);
+                failed.push(path.file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_default());
+                continue;
+            }
         };
         let parsed = txt::parse_txt(&text);
         let total_points: usize = parsed.plots.iter().map(|p| p.coords.len()).sum();
@@ -472,12 +486,12 @@ fn pick_txt_files_from_paths(paths: Vec<String>) -> Result<TxtImportResult, Stri
             crs_info: crs,
         });
     }
-    Ok(TxtImportResult { files: items })
+    Ok(TxtImportResult { files: items, failed })
 }
 
 #[tauri::command]
 fn read_txt_preview(path: String) -> Result<String, String> {
-    let text = std::fs::read_to_string(&path).map_err(|e| format!("读 TXT 失败: {}", e))?;
+    let text = txt::read_text_file(std::path::Path::new(&path))?;
     let parsed = txt::parse_txt(&text);
     let total_points: usize = parsed.plots.iter().map(|p| p.coords.len()).sum();
     Ok(generate_parse_log(Path::new(&path), &parsed, total_points))
@@ -564,6 +578,8 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             pick_shp_files,
             import_gdb,

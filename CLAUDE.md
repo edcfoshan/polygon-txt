@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **极思G界址点互转工具** — 测绘与国土行业 GIS 桌面工具，实现面要素（SHP/GDB）与标准界址点 TXT 文件的双向转换。Tauri v2 桌面应用（Rust 后端 + Vite/HTML 前端）。
 
-- 仓库：https://github.com/edcfoshan/boundary-point-converter
+- 仓库：https://github.com/edcfoshan/polygon-txt
 - 窗口：880×600px，无边框（`decorations: false`），自定义标题栏，支持浅色/暗色主题
 
 ## 构建与测试命令
@@ -128,7 +128,14 @@ SHP 存储 (X, Y) = (东坐标, 北坐标)。TXT 存储 (Y, X) = (北坐标, 东
 `@tauri-apps/api` 在 Vite 生产构建中不会被包含在输出 JS 内。ES module `import` 由 Vite 在构建时解析，运行时通过 `window.__TAURI__` 调用。
 
 ### 权限（capabilities/default.json）
-需要：`core:default`、`dialog:default/open/save`、`fs:default/read/write/exists/mkdir/remove/rename/stat`、`shell:allow-open`
+需要：`core:default`、`dialog:default/open/save`、`fs:default/read/write/exists/mkdir/remove/rename/stat`、`shell:allow-open`、`updater:default`、`process:allow-restart/exit`
+
+### 自动更新（v1.3+）
+应用启动时通过 Tauri Updater 静默检查更新，检测到新版本在标题栏显示绿色脉冲箭头，点击后应用内下载安装。
+- 配置：`src-tauri/tauri.conf.json` 的 `plugins.updater`（双端点 jsDelivr + GitHub，国内加速）
+- 公钥：`pubkey` 字段（公开信息），私钥 `C:\Users\Administrator\.tauri\bpoint-converter.key`（本机保管，严禁入库）
+- 前端逻辑：`src/main.js` 的 `checkAppUpdate` / `doUpdate`
+- **发版必须**：设签名环境变量 + 跑 `node scripts/gen-latest-json.js` 生成 `latest.json` + 提交进仓库根目录并上传 Release。完整流程见 [docs/RELEASE.md](docs/RELEASE.md) 和 `release` skill。
 
 ## 已知问题
 

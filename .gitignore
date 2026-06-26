@@ -1,6 +1,9 @@
 # 依赖
 node_modules/
 
+# 测试数据
+00测试数据/
+
 # 构建输出
 dist/
 src-tauri/target/
@@ -26,3 +29,6 @@ vite_*
 
 # 构建产物二进制（不入库）
 *.exe
+
+# release 暂存目录（产物集中地，不入库）
+dist-release/

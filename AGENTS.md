@@ -6,7 +6,7 @@ This file provides guidance to Qoder (qoder.com) when working with code in this 
 
 **极思G界址点互转工具** — GIS utility for bidirectional conversion between polygon features (SHP/GDB) and standard boundary-point TXT files. Tauri v2 desktop app (Rust backend + Vite/HTML frontend).
 
-**GitHub:** https://github.com/edcfoshan/boundary-point-converter
+**GitHub:** https://github.com/edcfoshan/polygon-txt
 
 ## Core Rules
 

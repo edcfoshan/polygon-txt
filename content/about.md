@@ -10,7 +10,8 @@
 - 支持大地2000高斯克吕格投影，3度/6度分带
 - 字段自动匹配，智能识别坐标系
 
-**版本：** V1.0
+**版本：** V1.3
+百度云链接: https://pan.baidu.com/s/1xyW3-hyZrFDDG9ijYOf46g 提取码: e8vy
 
 **开源地址：**
 [https://github.com/edcfoshan/polygon-txt](https://github.com/edcfoshan/polygon-txt)

@@ -126,54 +126,250 @@ fn polygon_rings_to_feature<P>(
 }
 
 /// 解析 .dbf 文件，返回字段名列表和所有记录
+///
+/// dbase 0.3.0 crate 硬编码用 ASCII 解码字段名，遇到非 ASCII 字段名（如 ArcGIS 导出的
+/// 中文 UTF-8 字段名）会在 `dbase::read()` 内部 `.unwrap()` 处 panic，进而终止进程。
+/// 此处用 `catch_unwind` 包裹（依赖 unwind；当前 release profile 未设 panic=abort），
+/// panic 或 Err 时回退到自写的手动 DBF 解析器（`read_dbf_manual`）。
 pub fn read_dbf(path: &Path) -> Result<(Vec<String>, Vec<Vec<String>>), String> {
+    // 非 UTF-8（如 GBK 无 .cpg）直接手动解析，避免 dbase 用 UTF-8 误解码 GBK 字段值
+    if detect_dbf_encoding(path) != encoding_rs::UTF_8 {
+        return read_dbf_manual(path);
+    }
+
     use dbase::FieldValue;
 
-    let records =
-        dbase::read(path).map_err(|e| format!("打开 DBF 失败: {}", e))?;
+    let dbase_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        dbase::read(path).map_err(|e| format!("打开 DBF 失败: {}", e))
+    }));
 
-    if records.is_empty() {
-        return Ok((Vec::new(), Vec::new()));
-    }
+    match dbase_result {
+        Ok(Ok(records)) => {
+            if records.is_empty() {
+                return Ok((Vec::new(), Vec::new()));
+            }
 
-    // Collect field names from the first record via iteration
-    let mut field_names: Vec<String> = Vec::new();
-    // Record implements IntoIterator, producing (FieldName, FieldValue) pairs
-    let field_iter: Vec<(String, dbase::FieldValue)> = records[0].clone().into_iter().collect();
-    for (name, _val) in &field_iter {
-        if name != "DeletionFlag"
-            && !name.starts_with("FID")
-            && !name.eq_ignore_ascii_case("SHAPE")
-            && !name.starts_with("SHAPE_LENG")
-            && !name.starts_with("SHAPE_AREA")
-            && !name.starts_with("OBJECTID")
-        {
-            field_names.push(name.clone());
+            // Collect field names from the first record via iteration
+            let mut field_names: Vec<String> = Vec::new();
+            // Record implements IntoIterator, producing (FieldName, FieldValue) pairs
+            let field_iter: Vec<(String, dbase::FieldValue)> =
+                records[0].clone().into_iter().collect();
+            for (name, _val) in &field_iter {
+                if name != "DeletionFlag"
+                    && !name.starts_with("FID")
+                    && !name.eq_ignore_ascii_case("SHAPE")
+                    && !name.starts_with("SHAPE_LENG")
+                    && !name.starts_with("SHAPE_AREA")
+                    && !name.starts_with("OBJECTID")
+                {
+                    field_names.push(name.clone());
+                }
+            }
+
+            let mut string_records = Vec::new();
+            for record in &records {
+                let mut row = Vec::new();
+                for name in &field_names {
+                    let val = record.get(name.as_str());
+                    match val {
+                        Some(FieldValue::Character(Some(s))) => row.push(s.clone()),
+                        Some(FieldValue::Numeric(Some(n))) => row.push(n.to_string()),
+                        Some(FieldValue::Float(Some(f))) => row.push(f.to_string()),
+                        Some(FieldValue::Integer(i)) => row.push(i.to_string()),
+                        Some(FieldValue::Double(d)) => row.push(d.to_string()),
+                        Some(FieldValue::Logical(Some(b))) => {
+                            row.push(if *b { "是".to_string() } else { "否".to_string() })
+                        }
+                        Some(FieldValue::Date(Some(d))) => row.push(d.to_string()),
+                        _ => row.push(String::new()),
+                    }
+                }
+                string_records.push(row);
+            }
+
+            Ok((field_names, string_records))
+        }
+        Ok(Err(e)) => {
+            eprintln!("dbase::read 返回错误，回退手动解析: {}", e);
+            read_dbf_manual(path)
+        }
+        Err(_) => {
+            eprintln!("dbase::read panic，回退手动解析");
+            read_dbf_manual(path)
         }
     }
+}
 
-    let mut string_records = Vec::new();
-    for record in &records {
-        let mut row = Vec::new();
-        for name in &field_names {
-            let val = record.get(name.as_str());
-            match val {
-                Some(FieldValue::Character(Some(s))) => row.push(s.clone()),
-                Some(FieldValue::Numeric(Some(n))) => row.push(n.to_string()),
-                Some(FieldValue::Float(Some(f))) => row.push(f.to_string()),
-                Some(FieldValue::Integer(i)) => row.push(i.to_string()),
-                Some(FieldValue::Double(d)) => row.push(d.to_string()),
-                Some(FieldValue::Logical(Some(b))) => {
-                    row.push(if *b { "是".to_string() } else { "否".to_string() })
+/// 探测 DBF 字段名/值的编码：优先读同名 .cpg 文件；无 .cpg 时采样 Character 字段值
+/// 字节探测（合法 UTF-8 → UTF-8，否则 → GBK）。中国大陆非 UTF-8 的 DBF 几乎都是 GBK。
+fn detect_dbf_encoding(dbf_path: &Path) -> &'static encoding_rs::Encoding {
+    let cpg = dbf_path.with_extension("cpg");
+    if let Ok(text) = std::fs::read_to_string(&cpg) {
+        let t = text.trim().to_ascii_uppercase();
+        if t.contains("UTF-8") || t.contains("UTF8") || t == "65001" {
+            return encoding_rs::UTF_8;
+        }
+        if t.contains("GBK") || t.contains("936") || t.contains("GB2312") {
+            return encoding_rs::GBK;
+        }
+    }
+    // 无 .cpg：采样 Character 字段值字节做严格 UTF-8 判定
+    if let Ok(data) = std::fs::read(dbf_path) {
+        let sample = collect_dbf_char_bytes(&data);
+        if !sample.is_empty() {
+            return if std::str::from_utf8(&sample).is_ok() {
+                encoding_rs::UTF_8
+            } else {
+                encoding_rs::GBK
+            };
+        }
+    }
+    encoding_rs::UTF_8
+}
+
+/// 收集 DBF 所有 Character('C') 字段值字节（用于无 .cpg 时的编码探测）。
+/// 解析逻辑与 read_dbf_manual 一致（dBase III+ 标准头）。
+fn collect_dbf_char_bytes(data: &[u8]) -> Vec<u8> {
+    if data.len() < 32 {
+        return Vec::new();
+    }
+    let num_records = u32::from_le_bytes([data[4], data[5], data[6], data[7]]) as usize;
+    let header_len = u16::from_le_bytes([data[8], data[9]]) as usize;
+    let record_len = u16::from_le_bytes([data[10], data[11]]) as usize;
+
+    // 收集 Character 字段在记录中的偏移与长度
+    let mut char_fields: Vec<(usize, usize)> = Vec::new(); // (offset_in_record, len)
+    let mut off = 32usize;
+    let mut field_off: usize = 1; // 跳过 deletion flag
+    while off + 32 <= header_len && off < data.len() && data[off] != 0x0D {
+        let ftype = data[off + 11];
+        let flen = data[off + 16] as usize;
+        if ftype == b'C' {
+            char_fields.push((field_off, flen));
+        }
+        field_off = field_off.saturating_add(flen);
+        off += 32;
+    }
+
+    let mut sample = Vec::new();
+    let mut rec_off = header_len;
+    for _ in 0..num_records {
+        if rec_off + record_len > data.len() {
+            break;
+        }
+        if data[rec_off] != b'*' {
+            for &(foff, flen) in &char_fields {
+                let start = rec_off + foff;
+                let end = (start + flen).min(data.len());
+                if start < end {
+                    sample.extend_from_slice(&data[start..end]);
                 }
-                Some(FieldValue::Date(Some(d))) => row.push(d.to_string()),
-                _ => row.push(String::new()),
             }
         }
-        string_records.push(row);
+        rec_off += record_len;
+    }
+    sample
+}
+
+/// 手动解析 dBase III+ DBF（作为 dbase::read panic/Err 时的回退）。
+/// 仅覆盖 C/N/F/I/L/D 字段类型，字段名按 detect_dbf_encoding 解码。
+fn read_dbf_manual(dbf_path: &Path) -> Result<(Vec<String>, Vec<Vec<String>>), String> {
+    let data = std::fs::read(dbf_path).map_err(|e| format!("读 DBF 失败: {}", e))?;
+    if data.len() < 32 {
+        return Err("DBF 文件过小".into());
+    }
+    let num_records = u32::from_le_bytes([data[4], data[5], data[6], data[7]]) as usize;
+    let header_len = u16::from_le_bytes([data[8], data[9]]) as usize;
+    let record_len = u16::from_le_bytes([data[10], data[11]]) as usize;
+    let encoding = detect_dbf_encoding(dbf_path);
+
+    // 字段描述符：offset 32 起，每项 32 字节；name(11) / type(+11) / len(+16)；遇 0x0D 终止
+    let mut fields: Vec<(String, u8, usize)> = Vec::new();
+    let mut off = 32usize;
+    while off + 32 <= header_len && off < data.len() && data[off] != 0x0D {
+        let name_bytes = &data[off..off + 11];
+        let name_trim = name_bytes.split(|&b| b == 0).next().unwrap_or(&[]);
+        let name = encoding.decode(name_trim).0.into_owned();
+        let ftype = data[off + 11];
+        let flen = data[off + 16] as usize;
+        fields.push((name, ftype, flen));
+        off += 32;
+    }
+
+    // 字段名过滤条件与 read_dbf 的 dbase 分支完全一致
+    let filtered: Vec<usize> = fields
+        .iter()
+        .enumerate()
+        .filter(|(_, (name, _, _))| {
+            name != "DeletionFlag"
+                && !name.starts_with("FID")
+                && !name.eq_ignore_ascii_case("SHAPE")
+                && !name.starts_with("SHAPE_LENG")
+                && !name.starts_with("SHAPE_AREA")
+                && !name.starts_with("OBJECTID")
+        })
+        .map(|(i, _)| i)
+        .collect();
+    let field_names: Vec<String> = filtered.iter().map(|&i| fields[i].0.clone()).collect();
+
+    let mut string_records = Vec::new();
+    let mut rec_off = header_len;
+    for _ in 0..num_records {
+        if rec_off + record_len > data.len() {
+            break;
+        }
+        let deletion = data[rec_off];
+        if deletion != b'*' {
+            let mut row = Vec::new();
+            let mut field_off = rec_off + 1; // 跳过 deletion flag
+            for (i, (_, ftype, flen)) in fields.iter().enumerate() {
+                if field_off + flen > data.len() {
+                    break;
+                }
+                let raw = &data[field_off..field_off + *flen];
+                if filtered.contains(&i) {
+                    row.push(decode_field_value(raw, *ftype, encoding));
+                }
+                field_off += flen;
+            }
+            string_records.push(row);
+        }
+        rec_off += record_len;
     }
 
     Ok((field_names, string_records))
+}
+
+/// 手动解析时解码单个 DBF 字段值（与 dbase crate 的 to_string 行为对齐）。
+fn decode_field_value(
+    raw: &[u8],
+    ftype: u8,
+    encoding: &'static encoding_rs::Encoding,
+) -> String {
+    match ftype {
+        b'C' => {
+            let (cow, _, _) = encoding.decode(raw);
+            cow.into_owned().trim_end().trim_end_matches('\u{0}').to_string()
+        }
+        b'N' | b'F' => std::str::from_utf8(raw).unwrap_or("").trim().to_string(),
+        b'I' => {
+            if raw.len() >= 4 {
+                i32::from_le_bytes([raw[0], raw[1], raw[2], raw[3]]).to_string()
+            } else {
+                String::new()
+            }
+        }
+        b'L' => match raw.first().copied().unwrap_or(b' ') {
+            b'T' | b'Y' | b't' | b'y' => "是".to_string(),
+            b'F' | b'N' | b'f' | b'n' => "否".to_string(),
+            _ => String::new(),
+        },
+        b'D' => std::str::from_utf8(raw).unwrap_or("").trim().to_string(),
+        _ => {
+            let (cow, _, _) = encoding.decode(raw);
+            cow.into_owned().trim_end().to_string()
+        }
+    }
 }
 
 /// 大小写不敏感的字符串包含
@@ -461,15 +657,15 @@ pub fn write_shapefile_structured(
     write_prj(&prj_path, crs, band, zone)?;
     shp_paths.push(prj_path.to_string_lossy().to_string());
 
-    // 4. Write .cpg (code page for ArcGIS Pro encoding detection)
+    // 4. Write .cpg (UTF-8，与 ArcPy 官方输出一致，ArcMap 10.x 兼容)
     let cpg_path = output_dir.join(format!("{}.cpg", stem));
-    std::fs::write(&cpg_path, "OEM 936").ok(); // GBK Chinese Simplified
+    std::fs::write(&cpg_path, "UTF-8").ok();
     shp_paths.push(cpg_path.to_string_lossy().to_string());
 
     Ok(shp_paths)
 }
 
-/// 手动写 DBF 文件（支持 GBK 中文编码）
+/// 手动写 DBF 文件（UTF-8 编码，与 ArcPy 官方输出一致）
 fn write_dbf_manual(
     path: &Path,
     attributes: &[std::collections::HashMap<String, String>],
@@ -505,7 +701,7 @@ fn write_dbf_manual(
     buf.extend_from_slice(&records_len.to_le_bytes());
     // Bytes 12-28: reserved (17 bytes)
     buf.extend_from_slice(&[0u8; 17]);
-    buf.push(0x7C);         // byte 29: language driver ID (GBK/Chinese Simplified)
+    buf.push(0x00);         // byte 29: LDID=0 让 .cpg 主导，避免非标准值误导 ArcMap
     buf.extend_from_slice(&[0u8; 2]);  // bytes 30-31: reserved
 
     let mut offset: u16 = 1;
@@ -526,16 +722,10 @@ fn write_dbf_manual(
 
     for attr in attributes {
         buf.push(0x20);
-        // 按 field_defs 顺序取值（缺失 key 视为空串）
+        // 按 field_defs 顺序取值（缺失 key 视为空串）；字段值直接写 UTF-8 字节
         for (field_name, _, len, _) in &field_defs {
             let val = attr.get(*field_name).map(|s| s.as_str()).unwrap_or("");
-            // Encode string to GBK; fallback to UTF-8 if encoding fails
-            let (encoded, _, had_errors) = encoding_rs::GBK.encode(val);
-            let vb = if had_errors {
-                val.as_bytes().to_vec()
-            } else {
-                encoded.into_owned()
-            };
+            let vb = val.as_bytes();
             for j in 0..*len as usize {
                 buf.push(if j < vb.len() { vb[j] } else { b' ' });
             }

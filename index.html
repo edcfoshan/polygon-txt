@@ -139,6 +139,28 @@ body::before{
 .tbar-btn svg{width:15px;height:15px}
 .tbar-btn.sponsor{color:var(--ac)}
 .tbar-btn.sponsor:hover{color:var(--ach);background:var(--acg);border-color:rgba(154,111,31,.25)}
+/* 更新按钮四态：idle 默认刷新 / available 有新版绿箭头 / skipped 已跳过灰箭头 / loading 检查中 */
+.tbar-btn.update-badge{position:relative;color:var(--tx3)}
+.tbar-btn.update-badge .ic-arrow{display:none}
+.tbar-btn.update-badge.idle .ic-refresh{display:block}
+.tbar-btn.update-badge.idle:hover{color:var(--tx2);background:var(--srf2)}
+.tbar-btn.update-badge.available{color:var(--ok)}
+.tbar-btn.update-badge.available .ic-refresh{display:none}
+.tbar-btn.update-badge.available .ic-arrow{display:block}
+.tbar-btn.update-badge.available:hover{color:var(--ok);background:rgba(122,174,138,.12)}
+.tbar-btn.update-badge.available::after{
+  content:"";position:absolute;top:-1px;right:-1px;width:7px;height:7px;border-radius:50%;
+  background:#22c55e;box-shadow:0 0 0 2px var(--srf3);
+  animation:updatePulse 1.6s ease-in-out infinite
+}
+.tbar-btn.update-badge.skipped{color:var(--tx3);opacity:.6}
+.tbar-btn.update-badge.skipped .ic-refresh{display:none}
+.tbar-btn.update-badge.skipped .ic-arrow{display:block}
+.tbar-btn.update-badge.skipped:hover{color:var(--tx2);opacity:1}
+.tbar-btn.update-badge.loading .ic-refresh{display:block;animation:updateSpin .8s linear infinite}
+.tbar-btn.update-badge.loading .ic-arrow{display:none}
+@keyframes updatePulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(1.4)}}
+@keyframes updateSpin{to{transform:rotate(360deg)}}
 .tbar-btn:focus-visible{outline:2px solid var(--ac);outline-offset:2px;border-radius:6px}
 
 .cfg-area{display:flex;align-items:center;gap:5px}
@@ -294,6 +316,31 @@ body::before{
 }
 .modal-card[data-modal="gdbSelect"] .gdb-sel-confirm:disabled{
   opacity:.45;cursor:not-allowed;background:var(--ac);border-color:var(--ac);color:#fff;
+}
+/* ─── 更新提醒 Modal ─── */
+.modal-card[data-modal="update"]{max-width:480px;width:480px;padding:24px 28px 20px;text-align:left}
+.modal-card[data-modal="update"] h3{font-size:14px;margin:0}
+.modal-card[data-modal="update"] .update-ver{color:var(--ok);font-weight:700}
+.update-progress-row{display:flex;align-items:center;gap:8px;margin:12px 0 4px}
+.update-progress{flex:1;height:6px;-webkit-appearance:none;appearance:none;border:none;border-radius:3px;overflow:hidden}
+.update-progress::-webkit-progress-bar{background:var(--srf2);border-radius:3px}
+.update-progress::-webkit-progress-value{background:var(--ok);border-radius:3px;transition:width .2s ease}
+.update-progress::-moz-progress-bar{background:var(--ok);border-radius:3px}
+.update-pct{font-size:11px;color:var(--tx3);min-width:32px;text-align:right;font-variant-numeric:tabular-nums}
+.update-foot{display:flex;justify-content:flex-end;align-items:center;gap:8px;margin-top:16px}
+.update-skip-link{background:none;border:none;color:var(--tx3);font-size:11px;cursor:pointer;text-decoration:underline;padding:4px 8px;margin-right:auto}
+.update-skip-link:hover{color:var(--tx2)}
+.update-skip-link[hidden]{display:none}
+.update-bdpan{display:block;margin-top:10px;font-size:11px;color:var(--tx3);text-decoration:underline;cursor:pointer}
+.update-bdpan:hover{color:var(--ac)}
+.modal-card[data-modal="update"] .update-confirm{
+  background:var(--ok);color:#fff;border-color:var(--ok);font-weight:600;
+}
+.modal-card[data-modal="update"] .update-confirm:hover:not(:disabled){
+  filter:brightness(1.08);color:#fff;
+}
+.modal-card[data-modal="update"] .update-confirm:disabled{
+  opacity:.55;cursor:not-allowed;
 }
 /* 弹窗内要素类列表 */
 .gdb-sel-tbl{border:1px solid var(--brd);border-radius:6px;overflow:hidden}
@@ -681,8 +728,19 @@ body::before{
         </svg>
       </div>
       <span class="brand-text">极思<span class="acc">G</span>界址点互转工具</span>
-      <span class="brand-sub">V1.0</span>
+      <span class="brand-sub">V1.3</span>
     </div>
+    <!-- 更新提醒：常驻三态按钮（默认刷新图标 / 有新版绿色箭头 / 已跳过灰色箭头） -->
+    <button class="tbar-btn update-badge idle" id="btnUpdate" title="检查更新" aria-label="检查更新">
+      <!-- 默认态：刷新图标 -->
+      <svg class="ic-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 12a9 9 0 1 1-2.64-6.36M21 3v6h-6"/>
+      </svg>
+      <!-- 有新版/已跳过态：向上箭头 -->
+      <svg class="ic-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 19V5M5 12l7-7 7 7"/>
+      </svg>
+    </button>
     <!-- GitHub button -->
     <button class="tbar-btn" id="btnGitHub" title="GitHub 仓库" aria-label="GitHub">
       <svg viewBox="0 0 24 24" fill="currentColor">
@@ -934,6 +992,26 @@ J2,1,Y500.000,X301.000
         <button class="btn gdb-sel-confirm" id="btnConfirmGdbSelect" disabled>确认</button>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- 更新提醒 Modal -->
+<div class="modal-overlay" id="updateModal">
+  <div class="modal-card" data-modal="update">
+    <button class="modal-close" id="btnCloseUpdate" aria-label="关闭">×</button>
+    <h3>🎉 发现新版本 <span class="update-ver" id="updateVersion"></span></h3>
+    <div class="modal-sub">下载完成后将自动安装并重启应用</div>
+    <div class="modal-body" id="updateNotes"></div>
+    <div class="update-progress-row" style="display:none">
+      <progress class="update-progress" id="updateProgress" value="0" max="1"></progress>
+      <span class="update-pct" id="updatePct">0%</span>
+    </div>
+    <div class="update-foot">
+      <button class="update-skip-link" id="btnSkipUpdate">跳过此版本</button>
+      <button class="btn" id="btnCancelUpdate">稍后</button>
+      <button class="btn update-confirm" id="btnDoUpdate">立即更新</button>
+    </div>
+    <a class="update-bdpan" id="bdpanLink" href="#">自动更新失败？去百度云手动下载</a>
   </div>
 </div>
 

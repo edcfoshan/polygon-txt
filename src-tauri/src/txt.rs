@@ -2,6 +2,40 @@
 use crate::geometry::IndexedRing;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::path::Path;
+
+/// 读取文本文件，按 BOM → UTF-8 → GBK 顺序探测编码解码。
+///
+/// 替代 `std::fs::read_to_string`（仅支持 UTF-8），兼容中国大陆常见的 GBK 编码 TXT。
+/// GBK 解码器（encoding_rs）永不失败，最差情况返回含替换字符的字符串。
+pub fn read_text_file<P: AsRef<Path>>(path: P) -> Result<String, String> {
+    let path = path.as_ref();
+    let bytes = std::fs::read(path).map_err(|e| format!("读取文件失败: {}", e))?;
+
+    // 1. BOM 探测
+    if bytes.starts_with(&[0xEF, 0xBB, 0xBF]) {
+        return String::from_utf8(bytes[3..].to_vec())
+            .map_err(|e| format!("UTF-8 BOM 解码失败: {}", e));
+    }
+    if bytes.starts_with(&[0xFF, 0xFE]) {
+        return Ok(encoding_rs::UTF_16LE.decode(&bytes[2..]).0.into_owned());
+    }
+    if bytes.starts_with(&[0xFE, 0xFF]) {
+        return Ok(encoding_rs::UTF_16BE.decode(&bytes[2..]).0.into_owned());
+    }
+
+    // 2. 严格 UTF-8
+    if let Ok(s) = std::str::from_utf8(&bytes) {
+        return Ok(s.to_string());
+    }
+
+    // 3. 回退 GBK
+    let (cow, _, had_errors) = encoding_rs::GBK.decode(&bytes);
+    if had_errors {
+        eprintln!("警告：文件既非 UTF-8 也非完整 GBK: {}", path.display());
+    }
+    Ok(cow.into_owned())
+}
 
 /// 一个地块
 #[derive(Debug, Clone, Serialize, Deserialize)]

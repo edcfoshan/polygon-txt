@@ -1,5 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { open as shellOpen } from '@tauri-apps/plugin-shell';
+import { check as checkForUpdater } from '@tauri-apps/plugin-updater';
+import { relaunch } from '@tauri-apps/plugin-process';
 import aboutContent from '../content/about.md?raw';
 import sponsorContent from '../content/sponsor.md?raw';
 import aboutQrImage from '../content/讨论群.jpg?inline';
@@ -424,6 +426,9 @@ function autoFillHeaderFromTxt(info) {
 window.importTxt = async function () {
   try {
     const result = await tauriInvoke("pick_txt_files");
+    if (result.failed && result.failed.length) {
+      toast("以下文件解析失败：" + result.failed.join("、"));
+    }
     if (!result.files || result.files.length === 0) return;
     txtFiles = result.files;
     renderTxtFileList();
@@ -716,13 +721,201 @@ window.openGitHub = async function () {
   } catch (e) { console.error("openGitHub:", e); }
 };
 
+// ═══ 自动更新（Tauri Updater） ═══
+// 标题栏常驻三态按钮：idle(刷新图标) / available(绿箭头脉冲) / skipped(灰箭头) / loading(旋转)
+// 流程：启动检查(24h节流) → 检测到新版亮箭头+自动弹窗 → 立即更新/稍后/跳过 → 失败兜底百度云
+const BAIDU_PAN_URL = "https://pan.baidu.com/s/1xyW3-hyZrFDDG9ijYOf46g?pwd=e8vy";
+const LS_LAST_CHECK = "tg_update_lastCheck";
+const LS_SKIPPED = "tg_update_skipped";
+const LS_KNOWN = "tg_update_known";
+const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24h 节流
+
+let pendingUpdate = null;
+let isUpdating = false;
+
+// 当前应用版本（从标题栏 brand-sub 读取，格式 "V1.2.0"），用于和远端比对
+function currentAppVersion() {
+  const el = document.querySelector(".brand-sub");
+  if (!el) return "0.0.0";
+  return el.textContent.trim().replace(/^V/i, "");
+}
+
+// 语义化版本比较：a > b 返回 1，相等 0，小于 -1
+function compareVersion(a, b) {
+  const pa = String(a).split(".").map((n) => parseInt(n, 10) || 0);
+  const pb = String(b).split(".").map((n) => parseInt(n, 10) || 0);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    if ((pa[i] || 0) > (pb[i] || 0)) return 1;
+    if ((pa[i] || 0) < (pb[i] || 0)) return -1;
+  }
+  return 0;
+}
+
+// 设置标题栏按钮状态
+function setUpdateBtnState(state) {
+  const btn = $("btnUpdate");
+  if (!btn) return;
+  btn.classList.remove("idle", "available", "skipped", "loading");
+  btn.classList.add(state);
+  const titles = {
+    idle: "检查更新",
+    available: "发现新版本，点击查看",
+    skipped: "已跳过此版本（点击重新查看）",
+    loading: "正在检查更新…",
+  };
+  btn.title = titles[state] || "检查更新";
+}
+
+// 读取/写入 localStorage 辅助
+function readKnown() {
+  try { return JSON.parse(localStorage.getItem(LS_KNOWN) || "null"); } catch { return null; }
+}
+function writeKnown(version, body) {
+  localStorage.setItem(LS_KNOWN, JSON.stringify({ version, body }));
+}
+function readSkipped() { return localStorage.getItem(LS_SKIPPED) || ""; }
+function writeSkipped(v) { localStorage.setItem(LS_SKIPPED, v); }
+
+// 根据"已知最新版本"恢复按钮态（不触发网络）
+function applyKnownState() {
+  const known = readKnown();
+  if (!known || !known.version) { setUpdateBtnState("idle"); return; }
+  const cur = currentAppVersion();
+  if (compareVersion(known.version, cur) !== 1) {
+    setUpdateBtnState("idle");
+    return;
+  }
+  const skipped = readSkipped();
+  setUpdateBtnState(compareVersion(known.version, skipped) === 0 ? "skipped" : "available");
+  return known;
+}
+
+// 检查更新。manual=true 表示用户手动触发（忽略节流、查完给反馈、有新版自动弹窗）
+async function checkAppUpdate(manual = false) {
+  // 启动模式 + 24h 内已查过：直接恢复态，不查网络、不弹窗
+  if (!manual) {
+    const last = parseInt(localStorage.getItem(LS_LAST_CHECK) || "0", 10);
+    if (last && Date.now() - last < CHECK_INTERVAL_MS) {
+      applyKnownState();
+      return;
+    }
+  }
+  setUpdateBtnState("loading");
+  try {
+    const upd = await checkForUpdater();
+    localStorage.setItem(LS_LAST_CHECK, String(Date.now()));
+    if (upd && upd.available) {
+      pendingUpdate = upd;
+      writeKnown(upd.version, upd.body || "");
+      const isSkipped = compareVersion(upd.version, readSkipped()) === 0;
+      setUpdateBtnState(isSkipped ? "skipped" : "available");
+      // 启动时未跳过 → 自动弹窗；手动检查时无论是否跳过都弹（用户主动想知道）
+      if (manual || !isSkipped) openUpdateModal();
+    } else {
+      pendingUpdate = null;
+      setUpdateBtnState("idle");
+      if (manual) toast("已是最新版本");
+    }
+  } catch (e) {
+    console.warn("checkAppUpdate:", e);
+    // 检查失败：恢复到已知态（若有），避免一直 loading
+    applyKnownState();
+    if (manual) toast("检查更新失败，请稍后重试");
+  }
+}
+
+// 打开更新模态框：填充版本号 / 更新说明 / 重置进度条 / 跳过按钮显隐
+window.openUpdateModal = function () {
+  // 没有 pendingUpdate 时，从 localStorage 恢复一份给弹窗展示（用于"已跳过态"重新打开）
+  if (!pendingUpdate) {
+    const known = readKnown();
+    if (known) pendingUpdate = { version: known.version, body: known.body, __restored: true };
+  }
+  if (!pendingUpdate) { checkAppUpdate(true); return; }
+  const m = $("updateModal");
+  if (!m) return;
+  const vEl = $("updateVersion");
+  if (vEl) vEl.textContent = pendingUpdate.version || "";
+  const nEl = $("updateNotes");
+  if (nEl) nEl.innerHTML = renderMarkdown(pendingUpdate.body || "*（暂无更新说明）*");
+  const prog = $("updateProgress");
+  if (prog) { prog.value = 0; prog.parentElement.style.display = "none"; }
+  const doBtn = $("btnDoUpdate");
+  if (doBtn) { doBtn.disabled = false; doBtn.textContent = "立即更新"; }
+  // 已跳过态打开时（restored），隐藏"跳过此版本"按钮，置灰态不重复跳过
+  const skipBtn = $("btnSkipUpdate");
+  if (skipBtn) skipBtn.hidden = !!pendingUpdate.__restored;
+  m.classList.add("on");
+};
+
+window.closeUpdateModal = function (e) {
+  if (e && e.target !== $("updateModal")) return;
+  if (isUpdating) return; // 下载安装中禁止关闭
+  const m = $("updateModal");
+  if (m) m.classList.remove("on");
+};
+
+// 跳过当前版本：写入 localStorage，按钮转灰态，关弹窗
+window.skipCurrentVersion = function () {
+  if (!pendingUpdate?.version) return;
+  writeSkipped(pendingUpdate.version);
+  setUpdateBtnState("skipped");
+  closeUpdateModal();
+  toast("已跳过 " + pendingUpdate.version + "，下次有更新还会提醒");
+};
+
+// 下载并安装：监听进度 → 更新进度条 → relaunch。失败兜底百度云。
+window.doUpdate = async function () {
+  // restored 态（从 localStorage 恢复的）没有真实 update 对象，需重新检查拿真实句柄
+  if (pendingUpdate?.__restored) {
+    setUpdateBtnState("loading");
+    try {
+      pendingUpdate = await checkForUpdater();
+    } catch (e) {
+      toast("检查失败，请稍后重试");
+      setUpdateBtnState("available");
+      return;
+    }
+  }
+  if (!pendingUpdate || isUpdating) return;
+  isUpdating = true;
+  const doBtn = $("btnDoUpdate");
+  const prog = $("updateProgress");
+  const pct = $("updatePct");
+  try {
+    if (doBtn) { doBtn.disabled = true; doBtn.textContent = "下载中…"; }
+    if (prog) { prog.parentElement.style.display = "block"; prog.value = 0; }
+    let downloaded = 0, total = 0;
+    await pendingUpdate.downloadAndInstall((event) => {
+      if (event.event === "Started" && event.data.contentLength) {
+        total = event.data.contentLength;
+      } else if (event.event === "Progress") {
+        downloaded += event.data.chunkLength;
+        if (prog && total > 0) prog.value = downloaded / total;
+        if (pct && total > 0) pct.textContent = Math.round((downloaded / total) * 100) + "%";
+      }
+    });
+    if (doBtn) doBtn.textContent = "安装完成，即将重启…";
+    await relaunch();
+  } catch (e) {
+    console.error("doUpdate:", e);
+    isUpdating = false;
+    if (doBtn) { doBtn.disabled = false; doBtn.textContent = "立即更新"; }
+    if (prog) prog.parentElement.style.display = "none";
+    // 兜底：引导跳转百度云手动下载（国内访问稳定）
+    if (confirm("自动下载/安装失败，是否打开百度网盘手动下载？")) {
+      shellOpen(BAIDU_PAN_URL);
+    }
+  }
+};
+
 // ═══ Modals ═══
 window.openSponsor = function () { const m = $("sponsorModal"); if (m) m.classList.add("on"); };
 window.closeSponsor = function (e) { if (e && e.target !== $("sponsorModal")) return; const m = $("sponsorModal"); if (m) m.classList.remove("on"); };
 window.openAbout = function () { const m = $("aboutModal"); if (m) m.classList.add("on"); };
 window.closeAbout = function (e) { if (e && e.target !== $("aboutModal")) return; const m = $("aboutModal"); if (m) m.classList.remove("on"); };
 document.addEventListener("keydown", function (e) {
-  if (e.key === "Escape") { const sm = $("sponsorModal"); const am = $("aboutModal"); const gm = $("gdbSelectModal"); if (sm) sm.classList.remove("on"); if (am) am.classList.remove("on"); if (gm) gm.classList.remove("on"); }
+  if (e.key === "Escape") { const sm = $("sponsorModal"); const am = $("aboutModal"); const gm = $("gdbSelectModal"); const um = $("updateModal"); if (sm) sm.classList.remove("on"); if (am) am.classList.remove("on"); if (gm) gm.classList.remove("on"); if (um && !isUpdating) um.classList.remove("on"); }
 });
 
 // ═══ Init ═══
@@ -815,7 +1008,21 @@ function init() {
   bind("btnRunTts", () => runTxtToShp());
   bind("btnCloseAbout", () => closeAbout());
   bind("btnCloseSponsor", () => closeSponsor());
-  bind("btnCloseGdbSelect", () => closeGdbSelectModal());
+  bind("btnUpdate", () => {
+    // available/skipped 态：打开弹窗；idle/loading 态：手动触发检查
+    const btn = $("btnUpdate");
+    if (btn && (btn.classList.contains("available") || btn.classList.contains("skipped"))) {
+      openUpdateModal();
+    } else if (btn && !btn.classList.contains("loading")) {
+      checkAppUpdate(true);
+    }
+  });
+  bind("btnDoUpdate", () => doUpdate());
+  bind("btnSkipUpdate", () => skipCurrentVersion());
+  bind("btnCloseUpdate", () => closeUpdateModal());
+  bind("btnCancelUpdate", () => closeUpdateModal());
+  const bdpan = $("bdpanLink");
+  if (bdpan) bdpan.addEventListener("click", (e) => { e.preventDefault(); shellOpen(BAIDU_PAN_URL); });
   bind("btnCancelGdbSelect", () => closeGdbSelectModal());
   bind("btnConfirmGdbSelect", () => confirmGdbSelect());
 
@@ -831,6 +1038,11 @@ function init() {
   if (sponsorModal) sponsorModal.addEventListener("click", (e) => { if (e.target === sponsorModal) closeSponsor(); });
   const gdbSelectModal = $("gdbSelectModal");
   if (gdbSelectModal) gdbSelectModal.addEventListener("click", (e) => { if (e.target === gdbSelectModal) closeGdbSelectModal(); });
+  const updateModal = $("updateModal");
+  if (updateModal) updateModal.addEventListener("click", (e) => { if (e.target === updateModal) closeUpdateModal(); });
+
+  // ─── 启动时静默检查更新（失败不报错，仅在有新版本时显示绿色箭头）───
+  checkAppUpdate(false);
   // Prevent modal card click from closing
   document.querySelectorAll(".modal-card").forEach((card) => {
     card.addEventListener("click", (e) => e.stopPropagation());
@@ -905,6 +1117,9 @@ function init() {
       try {
         const paths = files.map((f) => f.path || f.name);
         const result = await tauriInvoke("pick_txt_files_from_paths", { paths });
+        if (result.failed && result.failed.length) {
+          toast("以下文件解析失败：" + result.failed.join("、"));
+        }
         if (result.files && result.files.length > 0) {
           txtFiles = result.files; renderTxtFileList(); renderTxtParseLog();
           if (result.files[0]?.crs_info) autoFillHeaderFromTxt(result.files[0].crs_info);

@@ -1310,3 +1310,140 @@ fn test_field_mapping_sentinels_area() {
     let r4 = convert::convert_shp_to_txt(&[shp_path.clone()], None, None, &header, &mk(""), &options, d4.path(), None).unwrap();
     assert_eq!(extract_area_from_txt(&r4.output_files[0]), "", "不填应输出空面积");
 }
+
+
+// ═══ 编码处理回归测试 ═══
+
+fn exp_data_dir() -> PathBuf {
+    repo_root().join("00测试数据")
+}
+
+/// 回归：DBF 含 UTF-8 中文非 ASCII 字段名（村民姓/行政村/备注）时不应 panic，
+/// 且字段名/记录能正常读取。dbase 0.3.0 内部会 panic，read_dbf 用 catch_unwind 回退手动解析。
+#[test]
+fn test_read_dbf_utf8_field_names() {
+    let dbf = exp_data_dir().join("试验数据0626.dbf");
+    if !dbf.exists() {
+        eprintln!("跳过：测试数据不存在 {}", dbf.display());
+        return;
+    }
+    let (names, records) = shp::read_dbf(&dbf).expect("读 DBF 不应失败");
+    assert!(names.iter().any(|n| n.contains("村民姓") || n.contains("行政村") || n.contains("备注")),
+        "应能读到中文字段名，实际 {:?}", names);
+    // OBJECTID/FID 应被过滤（SHAPE_Leng/SHAPE_Area 因大小写敏感是预存行为，不在本次范围）
+    assert!(names.iter().all(|n| !n.eq_ignore_ascii_case("OBJECTID") && !n.starts_with("FID")),
+        "OBJECTID/FID 应被过滤，实际 {:?}", names);
+    assert!(!records.is_empty(), "应能读到记录");
+    assert!(records.iter().all(|r| r.len() == names.len()), "每行字段数应与字段名数一致");
+}
+
+/// 回归：GBK 编码的 TXT（新建txt.txt）能用 read_text_file 正常解码为中文。
+#[test]
+fn test_read_text_file_gbk() {
+    let txt_path = exp_data_dir().join("新建txt.txt");
+    if !txt_path.exists() {
+        eprintln!("跳过：测试数据不存在 {}", txt_path.display());
+        return;
+    }
+    let text = txt::read_text_file(&txt_path).expect("GBK TXT 应能解码");
+    assert!(text.contains("项目信息"), "应含\"项目信息\"");
+}
+
+/// 回归：UTF-8 编码的 TXT 仍能正常读取（编码探测不应破坏 UTF-8 路径）。
+#[test]
+fn test_read_text_file_utf8() {
+    let txt_path = repo_root().join("test_data").join("44120000072.txt");
+    if !txt_path.exists() {
+        eprintln!("跳过：测试数据不存在 {}", txt_path.display());
+        return;
+    }
+    let text = txt::read_text_file(&txt_path).expect("UTF-8 TXT 应能解码");
+    assert!(text.contains("属性描述") || text.contains("坐标系") || text.contains('['),
+        "UTF-8 TXT 内容异常");
+}
+
+/// 回归：GBK(ANSI) TXT → SHP 转换后，输出 DBF 必须是 UTF-8 + LDID=0 + CPG=UTF-8，
+/// 字段值中文不乱码（ArcMap 10.x 兼容）。根因：旧版用 GBK 数据 + 非标准 LDID 0x7C，
+/// ArcMap 误判编码。现统一为 ArcPy 官方标准（UTF-8）。
+#[test]
+fn test_txt_to_shp_utf8_dbf() {
+    let txt_path = exp_data_dir().join("新建txt.txt");
+    if !txt_path.exists() {
+        eprintln!("跳过：测试数据不存在 {}", txt_path.display());
+        return;
+    }
+    let out_dir = tempfile::tempdir().expect("temp dir");
+
+    let options = convert::TxtToShpOptions {
+        output_shp: true,
+        output_mode: String::from("one_to_one"),
+        filename_field: String::new(),
+        output_dir: out_dir.path().to_string_lossy().to_string(),
+        keep_lujin: false,
+        keep_mingc: false,
+    };
+    let header = convert::HeaderConfig {
+        crs: "2000国家大地坐标系".into(), band: "3".into(),
+        proj: "高斯克吕格".into(), unit: "米".into(), zone: "38".into(),
+        precision: "0.001".into(), transform: ",,,,,,".into(),
+        project_info: String::new(),
+    };
+
+    let result = convert::convert_txt_to_shp(&[txt_path], &options, &header)
+        .expect("TXT→SHP 转换失败");
+    assert!(result.success, "{}", result.message);
+
+    // 输出 DBF 路径（one_to_one 模式：stem 与源 TXT 同名）
+    let dbf_path = out_dir.path().join("新建txt.dbf");
+    assert!(dbf_path.exists(), "DBF 应存在: {}", dbf_path.display());
+
+    // 1. .cpg 内容必须为 UTF-8
+    let cpg = std::fs::read_to_string(out_dir.path().join("新建txt.cpg"))
+        .expect("读 CPG");
+    assert_eq!(cpg, "UTF-8", "CPG 应声明 UTF-8");
+
+    // 2. DBF header byte 29 (LDID) 必须为 0x00
+    let dbf_bytes = std::fs::read(&dbf_path).expect("读 DBF 字节");
+    assert_eq!(dbf_bytes[29], 0x00, "LDID(byte 29) 应为 0x00，实际 0x{:02x}", dbf_bytes[29]);
+
+    // 3. 用本工具 read_dbf 读回（dbase 读 UTF-8 字段值若失败会走手动回退，按 .cpg UTF-8 解码）
+    let (names, records) = shp::read_dbf(&dbf_path).expect("读回 DBF");
+    let dkmc_idx = names.iter().position(|n| n == "DKMC").expect("应有 DKMC 字段");
+    let dkyt_idx = names.iter().position(|n| n == "DKYT").expect("应有 DKYT 字段");
+    assert!(records.iter().any(|r| r[dkmc_idx].contains("地块")),
+        "DKMC 应含\"地块\"（中文不乱码），实际: {:?}", records.iter().map(|r| &r[dkmc_idx]).take(3).collect::<Vec<_>>());
+    assert!(records.iter().any(|r| r[dkyt_idx].contains("农村宅基地")),
+        "DKYT 应含\"农村宅基地\"，实际: {:?}", records.iter().map(|r| &r[dkyt_idx]).take(3).collect::<Vec<_>>());
+
+    // 4. 字节级确认：DKMC 字段值应是 UTF-8（"地块" = e5 9c b0 e5 9d 97），而非 GBK（b5 d8 bf e9）
+    assert!(dbf_bytes.windows(6).any(|w| w == [0xe5, 0x9c, 0xb0, 0xe5, 0x9d, 0x97]),
+        "DBF 内应含 UTF-8 编码的\"地块\"字节 e59cb0e59d97");
+}
+
+/// 回归：GBK 编码、无 .cpg、ASCII 字段名的 DBF（如 ArcMap 导出的测试A1.dbf）
+/// 应能正确识别为 GBK 并解码字段值，不依赖 dbase crate（避免 UTF-8 误解码）。
+#[test]
+fn test_read_dbf_gbk_no_cpg() {
+    let dbf = exp_data_dir().join("测试A1").join("测试A1.dbf");
+    if !dbf.exists() {
+        eprintln!("跳过：测试数据不存在 {}", dbf.display());
+        return;
+    }
+    let (names, records) = shp::read_dbf(&dbf).expect("读 DBF 不应失败");
+    let dkmc_idx = names.iter().position(|n| n == "DKMC").expect("应有 DKMC 字段");
+    let dkyt_idx = names.iter().position(|n| n == "DKYT").expect("应有 DKYT 字段");
+
+    // DKMC 字段值应为正常中文（GBK 解码），不是乱码/替换符
+    let dkmc_values: Vec<&String> = records.iter().map(|r| &r[dkmc_idx]).collect();
+    assert!(dkmc_values.iter().any(|v| v.contains("地块")),
+        "DKMC 应含\"地块\"（GBK 正确解码），实际: {:?}", dkmc_values);
+
+    // DKYT 应含"城镇住宅用地"或类似中文（不乱码）
+    let dkyt_values: Vec<&String> = records.iter().map(|r| &r[dkyt_idx]).collect();
+    assert!(dkyt_values.iter().any(|v| v.contains("城镇") || v.contains("用地")),
+        "DKYT 应含中文（GBK 正确解码），实际: {:?}", dkyt_values);
+
+    // 不应含 UTF-8 替换符（lossy 解码的标志）
+    assert!(dkmc_values.iter().all(|v| !v.contains('\u{FFFD}')),
+        "DKMC 不应含替换符 U+FFFD（说明编码识别错误），实际: {:?}", dkmc_values);
+}

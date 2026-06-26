@@ -481,8 +481,7 @@ fn txt_to_shp_one_to_one(
     let mut skipped_count = 0usize;
     let mut warnings: Vec<String> = Vec::new();
     for txt_path in txt_paths {
-        let text = std::fs::read_to_string(txt_path)
-            .map_err(|e| format!("读取 TXT 失败: {}", e))?;
+        let text = txt::read_text_file(txt_path)?;
         let parsed = txt::parse_txt(&text);
         let stem = txt_path
             .file_stem()
@@ -567,8 +566,7 @@ fn txt_to_shp_split_by_plot(
     let mut warnings: Vec<String> = Vec::new();
 
     for txt_path in txt_paths {
-        let text = std::fs::read_to_string(txt_path)
-            .map_err(|e| format!("读取 TXT 失败: {}", e))?;
+        let text = txt::read_text_file(txt_path)?;
         let parsed = txt::parse_txt(&text);
         let txt_stem = txt_path
             .file_stem()
@@ -681,8 +679,7 @@ fn txt_to_shp_merge_all(
     // 逐文件提取带号，检测冲突：merge_all 要求所有 TXT 带号一致，冲突直接拒绝
     let mut zones: Vec<Option<i32>> = Vec::new();
     for txt_path in txt_paths {
-        let text = std::fs::read_to_string(txt_path)
-            .map_err(|e| format!("读取 TXT 失败: {}", e))?;
+        let text = txt::read_text_file(txt_path)?;
         let parsed = txt::parse_txt(&text);
         let z = extract_zone_from_coords(&parsed.plots);
         if let Some(zv) = z {
@@ -717,8 +714,7 @@ fn txt_to_shp_merge_all(
     let mut all_attributes: Vec<HashMap<String, String>> = Vec::new();
     let mut warnings: Vec<String> = Vec::new();
     for txt_path in txt_paths {
-        let text = std::fs::read_to_string(txt_path)
-            .map_err(|e| format!("读取 TXT 失败: {}", e))?;
+        let text = txt::read_text_file(txt_path)?;
         let parsed = txt::parse_txt(&text);
         // 矛盾检测（merge 模式下带号已统一，仅记录矛盾提示）
         if let Some(z) = extract_zone_from_coords(&parsed.plots) {

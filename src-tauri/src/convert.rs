@@ -23,15 +23,29 @@ pub struct FieldMapping {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AttrRow {
+    pub k: String,
+    pub v: String,
+}
+
+/// 表头配置。[属性描述] 段由 `attrs` 有序列表驱动（原 7 个固定项作为默认种子，
+/// 用户可增删改键名、调顺序）。`project_info` 对应独立的 [项目信息] 段。
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HeaderConfig {
-    pub crs: String,
-    pub band: String,
-    pub proj: String,
-    pub unit: String,
-    pub zone: String,
-    pub precision: String,
-    pub transform: String,
+    pub attrs: Vec<AttrRow>,
     pub project_info: String,
+}
+
+impl HeaderConfig {
+    /// 按键名查找属性行的值（trim 比对键名，找不到返回空串）。
+    /// 供 TXT→SHP 流程读取"坐标系/几度分带/带号"等使用。
+    pub fn attr(&self, key: &str) -> String {
+        self.attrs
+            .iter()
+            .find(|r| r.k.trim() == key)
+            .map(|r| r.v.clone())
+            .unwrap_or_default()
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -183,7 +197,7 @@ pub fn shp_to_txt_preview(
                 gdb_features_to_plots(&info, field_mapping, options, selected_layers)?;
             txt::generate_txt(
                 &header_cfg.project_info,
-                &make_header_attrs(header_cfg),
+                &header_cfg.attrs,
                 &plots,
                 options.oj,
             )
@@ -203,7 +217,7 @@ fn shp_files_to_txt_preview(
     let plots = shp_files_to_plots(shp_paths, field_mapping, options)?;
     Ok(txt::generate_txt(
         &header_cfg.project_info,
-        &make_header_attrs(header_cfg),
+        &header_cfg.attrs,
         &plots,
         options.oj,
     ))
@@ -280,7 +294,7 @@ fn convert_one_to_one(
         let plots: Vec<txt::PlotData> = src.plots.iter().map(|p| p.plot.clone()).collect();
         let txt_content = txt::generate_txt(
             &header_cfg.project_info,
-            &make_header_attrs(header_cfg),
+            &header_cfg.attrs,
             &plots,
             options.oj,
         );
@@ -364,7 +378,7 @@ fn convert_split_by_plot(
 
             let txt_content = txt::generate_txt(
                 &header_cfg.project_info,
-                &make_header_attrs(header_cfg),
+                &header_cfg.attrs,
                 &[p.plot.clone()],
                 options.oj,
             );
@@ -409,7 +423,7 @@ fn convert_merge_all(
     let filename = format!("merged_output_{}.txt", timestamp);
     let txt_content = txt::generate_txt(
         &header_cfg.project_info,
-        &make_header_attrs(header_cfg),
+        &header_cfg.attrs,
         &all_plots,
         options.oj,
     );
@@ -491,7 +505,7 @@ fn txt_to_shp_one_to_one(
         // 带号优先级：坐标提取值 > 表单值 > 无（跳过）
         let extracted = extract_zone_from_coords(&parsed.plots);
         let declared = parsed.attrs.get("带号").map(|s| s.as_str());
-        let final_zone = match (extracted, header_cfg.zone.as_str()) {
+        let final_zone = match (extracted, header_cfg.attr("带号").as_str()) {
             (Some(z), _) => {
                 // 检测与 TXT 声明带号的矛盾
                 if let Some(d) = declared {
@@ -525,8 +539,8 @@ fn txt_to_shp_one_to_one(
                 &final_name,
                 &geometries,
                 &attributes,
-                &header_cfg.crs,
-                &header_cfg.band,
+                &header_cfg.attr("坐标系"),
+                &header_cfg.attr("几度分带"),
                 &final_zone,
             )?;
             output_files.extend(shp_files);
@@ -576,7 +590,7 @@ fn txt_to_shp_split_by_plot(
         // 带号优先级：坐标提取值 > 表单值 > 无（跳过）
         let extracted = extract_zone_from_coords(&parsed.plots);
         let declared = parsed.attrs.get("带号").map(|s| s.as_str());
-        let final_zone = match (extracted, header_cfg.zone.as_str()) {
+        let final_zone = match (extracted, header_cfg.attr("带号").as_str()) {
             (Some(z), _) => {
                 if let Some(d) = declared {
                     if let Ok(dz) = d.trim().parse::<i32>() {
@@ -636,8 +650,8 @@ fn txt_to_shp_split_by_plot(
                 &final_name,
                 &geometries,
                 &attributes,
-                &header_cfg.crs,
-                &header_cfg.band,
+                &header_cfg.attr("坐标系"),
+                &header_cfg.attr("几度分带"),
                 &final_zone,
             )?;
             output_files.extend(shp_files);
@@ -684,7 +698,7 @@ fn txt_to_shp_merge_all(
         let z = extract_zone_from_coords(&parsed.plots);
         if let Some(zv) = z {
             zones.push(Some(zv));
-        } else if !header_cfg.zone.is_empty() {
+        } else if !header_cfg.attr("带号").is_empty() {
             // 提取失败时回退表单值（后续统一用表单值，此处只用于冲突检测）
             zones.push(None);
         } else {
@@ -740,14 +754,14 @@ fn txt_to_shp_merge_all(
         let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S").to_string();
         let filename = format!("merged_output_{}", timestamp);
         // 确定最终带号：提取值优先，否则回退表单值（前面已保证不会两者皆空）
-        let final_zone = distinct.first().map(|z| z.to_string()).unwrap_or_else(|| header_cfg.zone.clone());
+        let final_zone = distinct.first().map(|z| z.to_string()).unwrap_or_else(|| header_cfg.attr("带号"));
         let shp_files = shp::write_shapefile_structured(
             output_dir,
             &filename,
             &all_geometries,
             &all_attributes,
-            &header_cfg.crs,
-            &header_cfg.band,
+            &header_cfg.attr("坐标系"),
+            &header_cfg.attr("几度分带"),
             &final_zone,
         )?;
         output_files.extend(shp_files);
@@ -1122,18 +1136,6 @@ fn resolve_area_map(
         other => resolve_value_map(other, "area", attrs),
     }
 }
-fn make_header_attrs(cfg: &HeaderConfig) -> HashMap<String, String> {
-    let mut m = HashMap::new();
-    m.insert("坐标系".to_string(), cfg.crs.clone());
-    m.insert("几度分带".to_string(), cfg.band.clone());
-    m.insert("投影类型".to_string(), cfg.proj.clone());
-    m.insert("计量单位".to_string(), cfg.unit.clone());
-    m.insert("带号".to_string(), cfg.zone.clone());
-    m.insert("精度".to_string(), cfg.precision.clone());
-    m.insert("转换参数".to_string(), cfg.transform.clone());
-    m
-}
-
 /// 从坐标点列表中提取高斯-克吕格带号。
 /// 扫描所有地块的所有点，找第一个整数部分为 8 位的 X 值（东坐标），
 /// 取其前两位作为带号，若前两位落在 13-45 区间则返回，否则继续扫描。

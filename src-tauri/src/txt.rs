@@ -1,4 +1,5 @@
 // TXT 格式解析与生成模块
+use crate::convert::AttrRow;
 use crate::geometry::IndexedRing;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -219,14 +220,18 @@ fn format_coord(val: f64, decimals: u32) -> String {
 /// 生成 TXT 内容
 pub fn generate_txt(
     project_info: &str,
-    attrs: &HashMap<String, String>,
+    attrs: &[AttrRow],
     features: &[PlotData],
     oj: bool,
 ) -> String {
     let mut out = String::new();
 
-    // 从属性中读取精度配置
-    let precision_str = attrs.get("精度").map(|s| s.as_str()).unwrap_or("0.001");
+    // 从属性中读取精度配置（"精度"行被删/改名时兜底 0.001）
+    let precision_str = attrs
+        .iter()
+        .find(|r| r.k.trim() == "精度")
+        .map(|r| r.v.as_str())
+        .unwrap_or("0.001");
     let decimals = precision_to_decimals(precision_str);
 
     if !project_info.is_empty() {
@@ -235,20 +240,15 @@ pub fn generate_txt(
         out.push('\n');
     }
 
+    // [属性描述] 段：按 attrs 列表顺序输出，键值都空的行跳过（非强制）
     out.push_str("[属性描述]\n");
-    let default_attrs = [
-        ("坐标系", "2000国家大地坐标系"),
-        ("几度分带", "3"),
-        ("投影类型", "高斯克吕格"),
-        ("计量单位", "米"),
-        ("带号", "38"),
-        ("精度", "0.001"),
-        ("转换参数", ",,,,,,"),
-    ];
-    for (k, v) in &default_attrs {
-        out.push_str(k);
+    for row in attrs {
+        if row.k.trim().is_empty() && row.v.trim().is_empty() {
+            continue;
+        }
+        out.push_str(&row.k);
         out.push('=');
-        out.push_str(attrs.get(*k).map(|s| s.as_str()).unwrap_or(v));
+        out.push_str(&row.v);
         out.push('\n');
     }
 
@@ -313,7 +313,7 @@ pub fn generate_txt(
 
 #[cfg(test)]
 mod tests {
-    use super::{generate_txt, parse_txt};
+    use super::{generate_txt, parse_txt, AttrRow, PlotData};
 
     #[test]
     fn multi_part_indices_survive_txt_roundtrip() {
@@ -337,12 +337,62 @@ J3,2,40.000,40.000
 J1,2,30.000,30.000";
 
         let parsed = parse_txt(text);
-        let generated = generate_txt(&parsed.project_info, &parsed.attrs, &parsed.plots, true);
+        let attrs_vec: Vec<AttrRow> = parsed
+            .attrs
+            .iter()
+            .map(|(k, v)| AttrRow {
+                k: k.clone(),
+                v: v.clone(),
+            })
+            .collect();
+        let generated = generate_txt(&parsed.project_info, &attrs_vec, &parsed.plots, true);
 
         assert!(
             generated.contains("J1,2,30.000,30.000"),
             "第二个部件的 part index 应被保留，实际输出为:\n{}",
             generated
         );
+    }
+
+    #[test]
+    fn custom_attr_rows_preserve_order_skip_empty_and_precision_fallback() {
+        // 用户在固定项之前插入 3 行自定义，末尾留一个空行（应被跳过）
+        let attrs = vec![
+            AttrRow { k: "格式版本号".into(),   v: "1.01版本".into() },
+            AttrRow { k: "数据产生单位".into(), v: "有限公司".into() },
+            AttrRow { k: "坐标系".into(),       v: "2000国家大地坐标系".into() },
+            AttrRow { k: "几度分带".into(),     v: "3".into() },
+            AttrRow { k: "精度".into(),         v: "0.0001".into() },
+            AttrRow { k: "".into(),             v: "".into() }, // 空行 → 跳过
+        ];
+        let plots = vec![PlotData {
+            point_count: 1,
+            area: "0".into(),
+            fid: "FID_0".into(),
+            name: "测试".into(),
+            geom_type: "面".into(),
+            tfh: "".into(),
+            use_field: "".into(),
+            dlbm: "".into(),
+            coords: vec![(10.0, 20.0)],
+            rings: vec![],
+        }];
+        let out = generate_txt("", &attrs, &plots, true);
+
+        // 自定义行出现在固定项之前
+        let pos_custom = out.find("格式版本号=1.01版本").unwrap();
+        let pos_std = out.find("坐标系=2000国家大地坐标系").unwrap();
+        assert!(pos_custom < pos_std, "自定义行应在固定项之前:\n{}", out);
+        // 精度=4 → 坐标 4 位小数
+        assert!(out.contains("J1,1,10.0000,20.0000"), "精度应作用于坐标:\n{}", out);
+        // 空行不输出（不出现行首裸 "="）
+        assert!(!out.contains("\n=\n"), "空行不应输出:\n{}", out);
+
+        // 精度行被删 → 兜底 0.001（3 位小数）
+        let attrs_no_prec = vec![
+            AttrRow { k: "坐标系".into(), v: "2000国家大地坐标系".into() },
+        ];
+        let out2 = generate_txt("", &attrs_no_prec, &plots, true);
+        assert!(out2.contains("J1,1,10.000,20.000"), "精度行缺失应兜底 0.001:\n{}", out2);
     }
 }

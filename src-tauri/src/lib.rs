@@ -365,7 +365,7 @@ fn run_shp_to_txt(
     output_dir: String,
     selected_layers: Option<Vec<String>>,
 ) -> Result<ConvertResultPayload, String> {
-    if header_cfg.zone.trim().is_empty() {
+    if header_cfg.attr("带号").trim().is_empty() {
         return Err("带号不能为空，请填写带号后再输出".to_string());
     }
     let out_dir = PathBuf::from(&output_dir);

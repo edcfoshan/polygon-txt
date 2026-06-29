@@ -74,8 +74,43 @@ const FIELD_MATCH_RULES = {
   fd: ["DLBM", "DL"],
 };
 
+// [属性描述] 默认种子行（与后端 txt.rs 旧 default_attrs 一致）
+const DEFAULT_ATTRS = [
+  { k: "坐标系",   v: "2000国家大地坐标系" },
+  { k: "几度分带", v: "3" },
+  { k: "投影类型", v: "高斯克吕格" },
+  { k: "计量单位", v: "米" },
+  { k: "带号",     v: "" },
+  { k: "精度",     v: "0.001" },
+  { k: "转换参数", v: ",,,,,," },
+];
+
+// 把任意 h 对象规范化为 { attrs, project_info }。兼容旧结构（crs/band/... 字段）。
+function normalizeH(h) {
+  if (!h) return { attrs: DEFAULT_ATTRS.map((r) => ({ ...r })), project_info: "" };
+  if (Array.isArray(h.attrs)) {
+    return {
+      attrs: h.attrs.map((r) => ({ k: (r && r.k) || "", v: (r && r.v) || "" })),
+      project_info: h.project_info || "",
+    };
+  }
+  // 旧结构 → 7 行种子
+  return {
+    attrs: [
+      { k: "坐标系",   v: h.crs || "" },
+      { k: "几度分带", v: h.band || "" },
+      { k: "投影类型", v: h.proj || "" },
+      { k: "计量单位", v: h.unit || "" },
+      { k: "带号",     v: h.zone || "" },
+      { k: "精度",     v: h.precision || "" },
+      { k: "转换参数", v: h.transform || "" },
+    ],
+    project_info: h.project_info || "",
+  };
+}
+
 const PP = [
-  { id: "usr", n: "自定义", h: { crs: "2000国家大地坐标系", band: "3", proj: "高斯克吕格", unit: "米", zone: "", precision: "0.001", transform: ",,,,,," }, p: { pp: 3, pz: "auto", ox: 0, oj: 0, on: 0, oo: 1, om: 0 }, f: { fn: "__placeholder__", fi: "__placeholder__", fa: "__placeholder__", fu: "__placeholder__", fm: "__placeholder__", fd: "__placeholder__" } },
+  { id: "usr", n: "自定义", h: { attrs: DEFAULT_ATTRS.map((r) => ({ ...r })), project_info: "" }, p: { pp: 3, pz: "auto", ox: 0, oj: 0, on: 0, oo: 1, om: 0 }, f: { fn: "__placeholder__", fi: "__placeholder__", fa: "__placeholder__", fu: "__placeholder__", fm: "__placeholder__", fd: "__placeholder__" } },
 ];
 
 const $ = (id) => document.getElementById(id);
@@ -400,26 +435,25 @@ function autoMatchFields(fieldNames) {
   }
 }
 
+// 简写 → 中文键名（autoFillHeader 的 info 可能用简写或中文键）
+const ATTR_AUTO_KEY = { c: "坐标系", b: "几度分带", j: "投影类型", u: "计量单位", z: "带号" };
+
 function autoFillHeader(info) {
-  const map = { c: "hc", b: "hb", j: "hj", u: "hu", z: "hz" };
-  for (const [k, id] of Object.entries(map)) {
-    if (!headerManual[id] && info[k]) {
-      const el = $(id);
-      if (el) { el.value = info[k]; el.style.borderColor = "var(--ac)";
-        setTimeout(() => { el.style.borderColor = ""; }, 2000); }
+  if (!info) return;
+  const rows = collectAttrRows();
+  let changed = false;
+  for (const [short, cnKey] of Object.entries(ATTR_AUTO_KEY)) {
+    const val = info[short] || info[cnKey];
+    if (val && !headerManual[cnKey]) {
+      const row = rows.find((r) => r.k.trim() === cnKey);
+      if (row && row.v !== String(val)) { row.v = String(val); changed = true; }
     }
   }
+  if (changed) { renderAttrRows(rows); updatePreview(); }
 }
 
 function autoFillHeaderFromTxt(info) {
-  const map = { "坐标系": "hc", "几度分带": "hb", "投影类型": "hj", "计量单位": "hu", "带号": "hz", "精度": "ha" };
-  for (const [k, id] of Object.entries(map)) {
-    if (!headerManual[id] && info[k]) {
-      const el = $(id);
-      if (el) { el.value = info[k]; el.style.borderColor = "var(--ac)";
-        setTimeout(() => { el.style.borderColor = ""; }, 2000); }
-    }
-  }
+  autoFillHeader(info);
 }
 
 // ═══ TXT 导入 ═══
@@ -478,11 +512,13 @@ function updatePreview() {
 }
 
 window.up = async function () {
-  const ha = $("ha")?.value || "0.001";
   const hpi = $("hpi")?.value || "";
+  const attrLines = collectAttrRows()
+    .filter((r) => r.k.trim() !== "" || r.v.trim() !== "")
+    .map((r) => `${r.k}=${r.v}`);
   let out = "";
   if (hpi.trim()) out += `[项目信息]\n${hpi.trim()}\n`;
-  out += `[属性描述]\n坐标系=${$("hc")?.value || ""}\n几度分带=${$("hb")?.value || ""}\n投影类型=${$("hj")?.value || ""}\n计量单位=${$("hu")?.value || ""}\n带号=${$("hz")?.value || ""}\n精度=${ha}\n转换参数=${$("ht")?.value || ""}\n[地块坐标]`;
+  out += `[属性描述]\n${attrLines.join("\n")}\n[地块坐标]`;
 
   const cfg = getConfig();
   const opt = getOptions();
@@ -508,7 +544,7 @@ window.runShpToTxt = async function () {
       toast("请先在左栏点击 GDB 行，勾选要转换的要素类"); return;
     }
 
-    const zoneVal = ($("hz")?.value || "").trim();
+    const zoneVal = collectAttrRows().find((r) => r.k.trim() === "带号")?.v.trim() || "";
     if (!zoneVal || !/^\d+$/.test(zoneVal)) {
       toast("请填写带号后再输出"); return;
     }
@@ -556,7 +592,7 @@ window.runTxtToShp = async function () {
 // ═══ Config ═══
 function getConfig() {
   return {
-    h: { crs: $("hc")?.value || "", band: $("hb")?.value || "", proj: $("hj")?.value || "", unit: $("hu")?.value || "", zone: $("hz")?.value || "", precision: $("ha")?.value || "", transform: $("ht")?.value || "", project_info: $("hpi")?.value || "" },
+    h: { attrs: collectAttrRows(), project_info: $("hpi")?.value || "" },
     f: { name: $("fn")?.value || "", id: $("fi")?.value || "", area: $("fa")?.value || "", use_field: $("fu")?.value || "", tfh: $("fm")?.value || "", dlbm: $("fd")?.value || "" },
   };
 }
@@ -596,6 +632,122 @@ window.switchHdrTab = function (t) {
   $("hdrProj")?.classList.toggle("on", t === "proj");
 };
 
+// ═══ 属性描述动态行（紧凑行式 + 拖拽排序 + 键名驱动下拉） ═══
+function escAttr(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+// 键名 → 固定候选值。这些键的值框渲染为 <select>（限选），其余键为自由 <input>
+const ATTR_SELECT_OPTIONS = {
+  "精度": ["1", "0.1", "0.01", "0.001", "0.0001"],
+  "几度分带": ["3", "6"],
+};
+
+function renderAttrRows(attrs) {
+  const box = $("attrRows");
+  if (!box) return;
+  box.innerHTML = "";
+  attrs.forEach((row, i) => {
+    const div = document.createElement("div");
+    div.className = "attr-row";
+    div.dataset.i = String(i);
+    // 值控件：键名命中候选表 → select；否则 input
+    const opts = ATTR_SELECT_OPTIONS[row.k];
+    let valueCtrl;
+    if (opts) {
+      const inOpts = opts.includes(row.v);
+      const std = opts.map((o) => `<option value="${o}"${o === row.v ? " selected" : ""}>${o}</option>`).join("");
+      const extra = inOpts ? "" : `<option value="${escAttr(row.v)}" selected>${escAttr(row.v)}</option>`;
+      valueCtrl = `<select class="av" data-i="${i}" data-f="v">${std}${extra}</select>`;
+    } else {
+      valueCtrl = `<input class="av" data-i="${i}" data-f="v" value="${escAttr(row.v)}" placeholder="值">`;
+    }
+    div.innerHTML =
+      `<span class="grip" title="拖动排序">⠿</span>` +
+      `<input class="ak" data-i="${i}" data-f="k" value="${escAttr(row.k)}" placeholder="键名">` +
+      `<span class="aeq">=</span>` +
+      valueCtrl +
+      `<button class="abtn del" data-act="del" data-i="${i}" title="删除">✕</button>`;
+    box.appendChild(div);
+  });
+}
+
+function collectAttrRows() {
+  const box = $("attrRows");
+  if (!box) return DEFAULT_ATTRS.map((r) => ({ ...r }));
+  const rows = [];
+  box.querySelectorAll(".attr-row").forEach((div) => {
+    rows.push({ k: div.querySelector(".ak")?.value ?? "", v: div.querySelector(".av")?.value ?? "" });
+  });
+  return rows;
+}
+
+function bindAttrRowEvents() {
+  const box = $("attrRows");
+  if (!box) return;
+  // 删除
+  box.addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-act='del']");
+    if (!btn) return;
+    const i = parseInt(btn.dataset.i, 10);
+    const rows = collectAttrRows();
+    rows.splice(i, 1);
+    renderAttrRows(rows);
+    updatePreview();
+  });
+  // 输入实时更新预览 + headerManual 标记（input 和 select 都走 input 事件）
+  box.addEventListener("input", (e) => {
+    const ctrl = e.target.closest(".ak, .av");
+    if (ctrl) {
+      const row = ctrl.closest(".attr-row");
+      const k = row?.querySelector(".ak")?.value?.trim();
+      if (k) headerManual[k] = true;
+    }
+    updatePreview();
+  });
+  // 键名失焦：若值控件类型需要切换（input↔select）才重渲染，避免无谓重建
+  box.addEventListener("change", (e) => {
+    const ak = e.target.closest("input.ak");
+    if (!ak) return;
+    const row = ak.closest(".attr-row");
+    if (!row) return;
+    const i = parseInt(row.dataset.i || "0", 10);
+    const rows = collectAttrRows();
+    const needSelect = !!ATTR_SELECT_OPTIONS[(rows[i]?.k || "").trim()];
+    const isSelectNow = !!row.querySelector("select.av");
+    if (needSelect !== isSelectNow) {
+      renderAttrRows(rows);
+      updatePreview();
+    }
+  });
+  // 拖拽排序（手动 mouse 实现，避免 WebView2 HTML5 DnD 兼容问题；实时排序视觉）
+  box.addEventListener("mousedown", (e) => {
+    const grip = e.target.closest(".grip");
+    if (!grip || e.button !== 0) return;
+    const row = grip.closest(".attr-row");
+    if (!row) return;
+    e.preventDefault();
+    row.classList.add("dragging");
+    const onMove = (ev) => {
+      const el = document.elementFromPoint(ev.clientX, ev.clientY);
+      const targetRow = el && el.closest(".attr-row");
+      if (!targetRow || targetRow === row) return;
+      const rect = targetRow.getBoundingClientRect();
+      if (ev.clientY - rect.top > rect.height / 2) targetRow.after(row);
+      else targetRow.before(row);
+    };
+    const onUp = () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      row.classList.remove("dragging");
+      renderAttrRows(collectAttrRows());
+      updatePreview();
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  });
+}
+
 window.prefillProject = function () {
   const hpi = $("hpi");
   if (!hpi) return;
@@ -625,13 +777,7 @@ window.prefillProject = function () {
 };
 
 window.resetDefaults = function () {
-  if ($("hc")) $("hc").value = "2000国家大地坐标系";
-  if ($("hb")) $("hb").value = "3";
-  if ($("hj")) $("hj").value = "高斯克吕格";
-  if ($("hu")) $("hu").value = "米";
-  if ($("hz")) $("hz").value = "";
-  if ($("ha")) $("ha").value = "0.001";
-  if ($("ht")) $("ht").value = ",,,,,,";
+  renderAttrRows(DEFAULT_ATTRS.map((r) => ({ ...r })));
   updatePreview();
   toast("已恢复默认");
 };
@@ -663,7 +809,11 @@ window.ld = function (id) {
   const c = cfgs[id] || PP.find((p) => p.id === id);
   if (!c) return;
   cur = id;
-if (c.h) { const hv = (k) => (c.h[k] == null ? undefined : c.h[k]); const setv = (el, v) => { if (v !== undefined && $(el)) $(el).value = v; }; setv("hc", hv("crs")); setv("hb", hv("band")); setv("hj", hv("proj")); setv("hu", hv("unit")); setv("hz", hv("zone")); setv("ha", hv("precision")); setv("ht", hv("transform")); setv("hpi", hv("project_info")); }
+  if (c.h) {
+    const hn = normalizeH(c.h);
+    renderAttrRows(hn.attrs);
+    if ($("hpi")) $("hpi").value = hn.project_info;
+  }
   if (c.p) {
     if ($("ox")) $("ox").checked = !!c.p.ox;
     if ($("oj")) $("oj").checked = !!c.p.oj;
@@ -1004,6 +1154,15 @@ function init() {
   bind("hdrTabProj", () => switchHdrTab("proj"));
   bind("btnPrefill", () => prefillProject());
   bind("btnResetDefaults", () => resetDefaults());
+  bind("btnAddAttr", () => {
+    const rows = collectAttrRows();
+    rows.push({ k: "", v: "" });
+    renderAttrRows(rows);
+    const box = $("attrRows");
+    if (box) box.scrollTop = box.scrollHeight;
+    updatePreview();
+  });
+  bindAttrRowEvents();
   bind("btnRunStt", () => runShpToTxt());
   bind("btnRunTts", () => runTxtToShp());
   bind("btnCloseAbout", () => closeAbout());
@@ -1049,12 +1208,7 @@ function init() {
   });
 
   // ─── Bind input/change events (replaces inline oninput/onchange) ───
-  ["hc", "hj", "hu", "hz", "ht"].forEach((id) => {
-    const el = $(id); if (el) el.addEventListener("input", () => { headerManual[id] = true; updatePreview(); });
-  });
-  ["hb", "ha"].forEach((id) => {
-    const el = $(id); if (el) el.addEventListener("change", () => { headerManual[id] = true; updatePreview(); });
-  });
+  // hc/hb/hj/hu/hz/ha/ht 已改为动态属性行，事件由 bindAttrRowEvents() 在 #attrRows 上委托
   const hpi = $("hpi");
   if (hpi) hpi.addEventListener("input", updatePreview);
 

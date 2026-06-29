@@ -132,16 +132,7 @@ fn test_shp_to_txt_one_to_one() {
     let shp_path = test_shp_stem();
     let out_dir = tempfile::tempdir().expect("temp dir");
 
-    let header = convert::HeaderConfig {
-        crs: "2000国家大地坐标系".into(),
-        band: "3".into(),
-        proj: "高斯克吕格".into(),
-        unit: "米".into(),
-        zone: "38".into(),
-        precision: "0.001".into(),
-        transform: ",,,,,,".into(),
-        project_info: String::new(),
-    };
+    let header = make_header();
     let field_mapping = convert::FieldMapping {
         name: "DKMC".into(), id: "DKBH".into(), area: "MJ".into(),
         use_field: "DKYT".into(), tfh: "TFH".into(), dlbm: "DLBM".into(),
@@ -170,12 +161,7 @@ fn test_shp_to_txt_one_to_one() {
 fn test_shp_to_txt_xy_swap() {
     let shp_path = test_shp_stem();
 
-    let header = convert::HeaderConfig {
-        crs: "2000国家大地坐标系".into(), band: "3".into(),
-        proj: "高斯克吕格".into(), unit: "米".into(), zone: "38".into(),
-        precision: "0.001".into(), transform: ",,,,,,".into(),
-        project_info: String::new(),
-    };
+    let header = make_header();
     let field_mapping = convert::FieldMapping {
         name: "DKMC".into(), id: "DKBH".into(), area: "MJ".into(),
         use_field: "DKYT".into(), tfh: "TFH".into(), dlbm: "DLBM".into(),
@@ -241,12 +227,7 @@ fn test_shp_to_txt_merge_all() {
     let shp_path = test_shp_stem();
     let out_dir = tempfile::tempdir().expect("temp dir");
 
-    let header = convert::HeaderConfig {
-        crs: "2000国家大地坐标系".into(), band: "3".into(),
-        proj: "高斯克吕格".into(), unit: "米".into(), zone: "38".into(),
-        precision: "0.001".into(), transform: ",,,,,,".into(),
-        project_info: String::new(),
-    };
+    let header = make_header();
     let field_mapping = convert::FieldMapping {
         name: "DKMC".into(), id: "DKBH".into(), area: "MJ".into(),
         use_field: "DKYT".into(), tfh: "TFH".into(), dlbm: "DLBM".into(),
@@ -277,12 +258,7 @@ fn test_shp_to_txt_split_by_plot() {
     let shp_path = test_shp_stem();
     let out_dir = tempfile::tempdir().expect("temp dir");
 
-    let header = convert::HeaderConfig {
-        crs: "2000国家大地坐标系".into(), band: "3".into(),
-        proj: "高斯克吕格".into(), unit: "米".into(), zone: "38".into(),
-        precision: "0.001".into(), transform: ",,,,,,".into(),
-        project_info: String::new(),
-    };
+    let header = make_header();
     let field_mapping = convert::FieldMapping {
         name: "DKMC".into(), id: "DKBH".into(), area: "MJ".into(),
         use_field: "DKYT".into(), tfh: "TFH".into(), dlbm: "DLBM".into(),
@@ -328,12 +304,7 @@ fn test_txt_to_shp_merge() {
         keep_lujin: false,
         keep_mingc: false,
     };
-    let header = convert::HeaderConfig {
-        crs: "2000国家大地坐标系".into(), band: "3".into(),
-        proj: "高斯克吕格".into(), unit: "米".into(), zone: "38".into(),
-        precision: "0.001".into(), transform: ",,,,,,".into(),
-        project_info: String::new(),
-    };
+    let header = make_header();
 
     let result = convert::convert_txt_to_shp(&[txt_path], &options, &header)
         .expect("TXT→面合并失败");
@@ -355,12 +326,7 @@ fn test_txt_to_shp_merge() {
 fn test_txt_to_shp_keep_lujin_mingc() {
     let txt_path = test_txt_path();
     let out_dir = tempfile::tempdir().expect("temp dir");
-    let header = convert::HeaderConfig {
-        crs: "2000国家大地坐标系".into(), band: "3".into(),
-        proj: "高斯克吕格".into(), unit: "米".into(), zone: "38".into(),
-        precision: "0.001".into(), transform: ",,,,,,".into(),
-        project_info: String::new(),
-    };
+    let header = make_header();
 
     // 勾选两个附加属性
     let options = convert::TxtToShpOptions {
@@ -411,12 +377,7 @@ fn test_txt_to_shp_keep_lujin_mingc() {
 fn test_txt_to_shp_no_extra_fields_by_default() {
     let txt_path = test_txt_path();
     let out_dir = tempfile::tempdir().expect("temp dir");
-    let header = convert::HeaderConfig {
-        crs: "2000国家大地坐标系".into(), band: "3".into(),
-        proj: "高斯克吕格".into(), unit: "米".into(), zone: "38".into(),
-        precision: "0.001".into(), transform: ",,,,,,".into(),
-        project_info: String::new(),
-    };
+    let header = make_header();
     // 不勾选附加属性 → DBF 不应含 LUJIN/MINGC
     let options = convert::TxtToShpOptions {
         output_shp: true,
@@ -475,13 +436,15 @@ J4,1,2582990.000,38383270.000
 
 fn make_header() -> convert::HeaderConfig {
     convert::HeaderConfig {
-        crs: "2000国家大地坐标系".into(),
-        band: "3".into(),
-        proj: "高斯克吕格".into(),
-        unit: "米".into(),
-        zone: "38".into(),
-        precision: "0.001".into(),
-        transform: ",,,,,,".into(),
+        attrs: vec![
+            convert::AttrRow { k: "坐标系".into(),   v: "2000国家大地坐标系".into() },
+            convert::AttrRow { k: "几度分带".into(), v: "3".into() },
+            convert::AttrRow { k: "投影类型".into(), v: "高斯克吕格".into() },
+            convert::AttrRow { k: "计量单位".into(), v: "米".into() },
+            convert::AttrRow { k: "带号".into(),     v: "38".into() },
+            convert::AttrRow { k: "精度".into(),     v: "0.001".into() },
+            convert::AttrRow { k: "转换参数".into(), v: ",,,,,,".into() },
+        ],
         project_info: String::new(),
     }
 }
@@ -680,9 +643,14 @@ fn test_generate_txt() {
     let text = std::fs::read_to_string(test_txt_path()).expect("读取 TXT 失败");
     let parsed = txt::parse_txt(&text);
 
+    let attrs_vec: Vec<convert::AttrRow> = parsed
+        .attrs
+        .iter()
+        .map(|(k, v)| convert::AttrRow { k: k.clone(), v: v.clone() })
+        .collect();
     let generated = txt::generate_txt(
         &parsed.project_info,
-        &parsed.attrs,
+        &attrs_vec,
         &parsed.plots,
         true,
     );
@@ -723,16 +691,7 @@ fn test_txt_to_shp_full() {
         keep_mingc: false,
     };
 
-    let header = convert::HeaderConfig {
-        crs: "2000国家大地坐标系".into(),
-        band: "3".into(),
-        proj: "高斯克吕格".into(),
-        unit: "米".into(),
-        zone: "38".into(),
-        precision: "0.001".into(),
-        transform: ",,,,,,".into(),
-        project_info: String::new(),
-    };
+    let header = make_header();
 
     let result = convert::convert_txt_to_shp(
         &[txt_path.clone()],
@@ -780,16 +739,7 @@ fn test_shp_to_txt_full() {
         dlbm: "DLBM".into(),
     };
 
-    let header = convert::HeaderConfig {
-        crs: "2000国家大地坐标系".into(),
-        band: "3".into(),
-        proj: "高斯克吕格".into(),
-        unit: "米".into(),
-        zone: "38".into(),
-        precision: "0.001".into(),
-        transform: ",,,,,,".into(),
-        project_info: String::new(),
-    };
+    let header = make_header();
 
     let options = convert::ShpToTxtOptions {
         ox: false,
@@ -850,16 +800,7 @@ fn test_shp_txt_roundtrip() {
         keep_mingc: false,
     };
 
-    let header = convert::HeaderConfig {
-        crs: "2000国家大地坐标系".into(),
-        band: "3".into(),
-        proj: "高斯克吕格".into(),
-        unit: "米".into(),
-        zone: "38".into(),
-        precision: "0.001".into(),
-        transform: ",,,,,,".into(),
-        project_info: String::new(),
-    };
+    let header = make_header();
 
     let r1 = convert::convert_txt_to_shp(
         &[txt_path.clone()],
@@ -946,15 +887,10 @@ fn test_preview() {
         dlbm: "DLBM".into(),
     };
 
+    let header = make_header();
     let header = convert::HeaderConfig {
-        crs: "2000国家大地坐标系".into(),
-        band: "3".into(),
-        proj: "高斯克吕格".into(),
-        unit: "米".into(),
-        zone: "38".into(),
-        precision: "0.001".into(),
-        transform: ",,,,,,".into(),
         project_info: "项目名称=测试".into(),
+        ..header
     };
 
     let options = convert::ShpToTxtOptions {
@@ -1081,16 +1017,7 @@ J1,2,30.000,30.000";
     let shp_dir = tempfile::tempdir().expect("tempdir");
     let back_dir = tempfile::tempdir().expect("tempdir");
 
-    let header = convert::HeaderConfig {
-        crs: "2000国家大地坐标系".into(),
-        band: "3".into(),
-        proj: "高斯克吕格".into(),
-        unit: "米".into(),
-        zone: "38".into(),
-        precision: "0.001".into(),
-        transform: ",,,,,,".into(),
-        project_info: String::new(),
-    };
+    let header = make_header();
 
     let txt_to_shp = convert::TxtToShpOptions {
         output_shp: true,
@@ -1178,16 +1105,7 @@ J1,2,2.000,2.000";
     let shp_dir = tempfile::tempdir().expect("tempdir");
     let back_dir = tempfile::tempdir().expect("tempdir");
 
-    let header = convert::HeaderConfig {
-        crs: "2000国家大地坐标系".into(),
-        band: "3".into(),
-        proj: "高斯克吕格".into(),
-        unit: "米".into(),
-        zone: "38".into(),
-        precision: "0.001".into(),
-        transform: ",,,,,,".into(),
-        project_info: String::new(),
-    };
+    let header = make_header();
 
     let txt_to_shp = convert::TxtToShpOptions {
         output_shp: true,
@@ -1265,16 +1183,7 @@ fn extract_area_from_txt<P: AsRef<std::path::Path>>(path: P) -> String {
 #[test]
 fn test_field_mapping_sentinels_area() {
     let shp_path = test_shp_stem();
-    let header = convert::HeaderConfig {
-        crs: "2000国家大地坐标系".into(),
-        band: "3".into(),
-        proj: "高斯克吕格".into(),
-        unit: "米".into(),
-        zone: "38".into(),
-        precision: "0.001".into(),
-        transform: ",,,,,,".into(),
-        project_info: String::new(),
-    };
+    let header = make_header();
     let options = convert::ShpToTxtOptions {
         ox: false, oj: true, on: false, oo: false,
         output_mode: "one_to_one".into(), filename_field: String::new(),
@@ -1382,12 +1291,7 @@ fn test_txt_to_shp_utf8_dbf() {
         keep_lujin: false,
         keep_mingc: false,
     };
-    let header = convert::HeaderConfig {
-        crs: "2000国家大地坐标系".into(), band: "3".into(),
-        proj: "高斯克吕格".into(), unit: "米".into(), zone: "38".into(),
-        precision: "0.001".into(), transform: ",,,,,,".into(),
-        project_info: String::new(),
-    };
+    let header = make_header();
 
     let result = convert::convert_txt_to_shp(&[txt_path], &options, &header)
         .expect("TXT→SHP 转换失败");

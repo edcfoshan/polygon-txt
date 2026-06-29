@@ -55,7 +55,7 @@ index.html (CSS 内联, Google Fonts CDN)
 |------|------|
 | `lib.rs` | Tauri IPC 命令 + IPC 类型定义 |
 | `geometry.rs` | 多边形几何共享类型（SurfaceGeometry/PolygonPart/IndexedRing）+ 环向归一化、洞识别、坐标系交换 |
-| `shp.rs` | SHP 读写（shapefile crate）、DBF 解析、PRJ 坐标系识别 |
+| `shp.rs` | SHP 读写（shapefile crate）、DBF 解析（dbase crate 失败时 catch_unwind + 手动二进制回退，编码探测 .cpg/GBK）、PRJ 坐标系识别 |
 | `txt.rs` | TXT 三段式格式解析与生成 |
 | `gdb.rs` + `gdb/gdb_templates.rs` | GDB 读取（geonative-filegdb）+ 模板化最小 OpenFileGDB 写入 |
 | `convert.rs` | 转换编排：SHP/GDB→TXT（三模式：一对一/按地块拆分/全合并）、TXT→SHP（一对一/合并） |
@@ -93,7 +93,10 @@ index.html (CSS 内联, Google Fonts CDN)
 │   ├─ templates/          ←   GDB 写入模板二进制
 │   └─ capabilities/       ←   Tauri 权限声明
 │
-├─ scripts/                ← Python 验证/测试脚本（check_ogr / compare_gdb / test_arcpy 等）
+├─ scripts/                ← 发版 + 验证脚本（build-signed.ps1 / gen-latest-json.js / check_ogr / compare_gdb / test_arcpy 等）
+├─ latest.json             ← 自动更新清单（jsDelivr 端点从仓库根取此文件，发版时生成更新）
+├─ .cargo/config.toml      ← 国内 crates 镜像（rsproxy）
+├─ .claude/skills/         ← Claude skills（release：发版流程）
 ├─ docs/                   ← 设计文档 + screenshots/
 ├─ versions/               ← 历史 UI 原型 (v7/v8/v9) + mockups
 ├─ _archive/               ← 逆向工程资料（tbx 解码、分析脚本）
@@ -131,11 +134,13 @@ SHP 存储 (X, Y) = (东坐标, 北坐标)。TXT 存储 (Y, X) = (北坐标, 东
 需要：`core:default`、`dialog:default/open/save`、`fs:default/read/write/exists/mkdir/remove/rename/stat`、`shell:allow-open`、`updater:default`、`process:allow-restart/exit`
 
 ### 自动更新（v1.3+）
-应用启动时通过 Tauri Updater 静默检查更新，检测到新版本在标题栏显示绿色脉冲箭头，点击后应用内下载安装。
-- 配置：`src-tauri/tauri.conf.json` 的 `plugins.updater`（双端点 jsDelivr + GitHub，国内加速）
+应用启动时通过 Tauri Updater 静默检查更新，标题栏常驻三态按钮（idle 刷新图标 / available 绿箭头脉冲 / skipped 灰箭头），检测到新版本自动弹窗，支持「跳过此版本」、24h 节流、下载失败兜底百度云。
+- 配置：`src-tauri/tauri.conf.json` 的 `plugins.updater`（双端点 jsDelivr + GitHub）+ `bundle.createUpdaterArtifacts: true`（**必开，否则不生成 .sig**）
 - 公钥：`pubkey` 字段（公开信息），私钥 `C:\Users\Administrator\.tauri\bpoint-converter.key`（本机保管，严禁入库）
-- 前端逻辑：`src/main.js` 的 `checkAppUpdate` / `doUpdate`
-- **发版必须**：设签名环境变量 + 跑 `node scripts/gen-latest-json.js` 生成 `latest.json` + 提交进仓库根目录并上传 Release。完整流程见 [docs/RELEASE.md](docs/RELEASE.md) 和 `release` skill。
+- 前端逻辑：`src/main.js` 的 `checkAppUpdate` / `setUpdateBtnState` / `skipCurrentVersion` / `doUpdate`
+- 百度云兜底链接硬编码在 `main.js` 的 `BAIDU_PAN_URL`（about.md 同步）
+- **下载 url 走 GitHub releases 直连**（不用 ghproxy 镜像——1.3.0 实测已失效且无加速）
+- **发版必须**：`scripts/build-signed.ps1`（交互输密码签名构建）+ `node scripts/gen-latest-json.js`（生成 latest.json）+ 提交进仓库根目录并上传 Release。完整流程见 [docs/RELEASE.md](docs/RELEASE.md) 和 `release` skill。
 
 ## 已知问题
 
@@ -147,9 +152,9 @@ SHP 存储 (X, Y) = (东坐标, 北坐标)。TXT 存储 (Y, X) = (北坐标, 东
 ## 依赖
 
 ### 前端（package.json）
-`@tauri-apps/api ^2`、`@tauri-apps/plugin-dialog ^2`、`@tauri-apps/plugin-shell ^2`、`vite ^6`、`vite-plugin-singlefile ^2`、`@tauri-apps/cli ^2`
+`@tauri-apps/api ^2`、`@tauri-apps/plugin-dialog ^2`、`@tauri-apps/plugin-shell ^2`、`@tauri-apps/plugin-updater ^2`、`@tauri-apps/plugin-process ^2`、`vite ^6`、`vite-plugin-singlefile ^2`、`@tauri-apps/cli ^2`
 
 ### Rust（Cargo.toml）
-`tauri 2`、`tauri-plugin-dialog/fs/shell 2`、`shapefile 0.8`、`dbase 0.3`、`geonative-core/filegdb/shapefile 0.2`、`chrono 0.4`、`encoding_rs 0.8`、`geo-types 0.7`、`serde 1`、`serde_json 1`、`tempfile 3`
+`tauri 2`、`tauri-plugin-dialog/fs/shell/updater/process 2`、`shapefile 0.8`、`dbase 0.3`、`geonative-core/filegdb/shapefile 0.2`、`chrono 0.4`、`encoding_rs 0.8`、`geo-types 0.7`、`serde 1`、`serde_json 1`、`tempfile 3`
 
 **GPKG 已移除**（v1.1+）：读取仅 SHP/GDB，输出仅 SHP。`gpkg.rs`/`smoke.rs`/`rusqlite` 依赖已删除。

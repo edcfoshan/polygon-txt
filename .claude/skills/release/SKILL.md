@@ -79,6 +79,22 @@ git push && git push origin vX.Y
 ```
 > **`latest.json` 必须提交进仓库根目录**——jsDelivr 端点（`cdn.jsdelivr.net/gh/.../latest.json`）从这里取，国内用户靠它快速检查更新。
 
+### 7.5 purge jsDelivr 缓存（git push 后必做）
+
+jsDelivr 对 `@master` 引用有 CDN 缓存（最长 ~12h），latest.json push 后老用户**不会立即**检测到新版本——1.4 发版时实测：push 后 jsDelivr 仍返回旧 1.3.0，导致老用户点更新显示"已是最新"。git push 之后必须立即 purge：
+
+```
+curl https://purge.jsdelivr.net/gh/edcfoshan/polygon-txt@master/latest.json
+```
+
+返回 `"status": "finished"` 即成功。purge 后立即验证：
+```
+curl -s https://cdn.jsdelivr.net/gh/edcfoshan/polygon-txt@master/latest.json | grep version
+```
+应返回新版本号 `X.Y.Z`。若仍是旧版本，再 purge 一次。
+
+> **为什么必做**：Tauri updater 的 endpoint 逻辑是「第一个端点成功返回 JSON 就采用，不会 fallback 到 GitHub 端点」。jsDelivr 缓存不刷新 = 老用户拿不到新版本，且 GitHub 兜底端点也不会被用到。v1.4 发版踩过此坑。
+
 ### 8. 创建 GitHub Release（用户确认后）
 ```
 gh release create vX.Y 其他相关tbx放进去release/*.exe 其他相关tbx放进去release/*.zip latest.json \
@@ -93,5 +109,5 @@ gh release create vX.Y 其他相关tbx放进去release/*.exe 其他相关tbx放�
 - 发布文件名用简短版本 `X.Y`（如 `1.2`），但配置文件 `tauri.conf.json` 的 `version` 仍用完整 `X.Y.Z`（如 `1.2.0`）以保证 exe 内嵌 ProductVersion 精确——构建后手动重命名产物
 - 不做构建时版本号注入，5 处手动同步即可（项目体量小）
 - 导出文件命名规则（convert.rs）与本流程无关，不要借发版改动
-- **自动更新（v1.3+）**：每次发版必须 ① 构建前设 `TAURI_SIGNING_PRIVATE_KEY` + `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` 环境变量（用 `scripts/build-signed.ps1` 交互输密码最稳）② 确认 `tauri.conf.json` 的 `bundle.createUpdaterArtifacts: true`（否则不生成 .sig！）③ 运行 `node scripts/gen-latest-json.js` 生成 `latest.json` ④ 把 `latest.json` 同时 git 提交进仓库根目录 + 作为 Release 资产上传。遗漏任一步 → 老用户收不到更新提醒（不影响应用本身）。完整说明见 [docs/RELEASE.md](docs/RELEASE.md)。
+- **自动更新（v1.3+）**：每次发版必须 ① 构建前设 `TAURI_SIGNING_PRIVATE_KEY` + `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` 环境变量（用 `scripts/build-signed.ps1` 交互输密码最稳）② 确认 `tauri.conf.json` 的 `bundle.createUpdaterArtifacts: true`（否则不生成 .sig！）③ 运行 `node scripts/gen-latest-json.js` 生成 `latest.json` ④ 把 `latest.json` 同时 git 提交进仓库根目录 + 作为 Release 资产上传 ⑤ **git push 后 purge jsDelivr 缓存**（见步骤 7.5，否则老用户最多滞后 12h 才检测到新版本）。遗漏任一步 → 老用户收不到更新提醒（不影响应用本身）。完整说明见 [docs/RELEASE.md](docs/RELEASE.md)。
 - **私钥安全**：`C:\Users\Administrator\.tauri\bpoint-converter.key` 是签名私钥，**严禁**提交进 git / 发给任何人 / 截图。只在本机使用，建议网盘 + U盘双重备份。公钥 `.key.pub` 已写入 `tauri.conf.json` 的 `plugins.updater.pubkey`（公开信息，可入库）。

@@ -458,6 +458,10 @@ body::before{
 .pnl-m .ck{padding:1px 0;font-size:11px;gap:5px}
 .pnl-m .ck input{width:13px;height:13px}
 .pnl-m .ck-grid{display:grid;grid-template-columns:1fr 1fr;gap:1px 4px}
+.pnl-m .oc-row{display:flex;align-items:center;gap:6px;padding:2px 0 0;font-size:11px;color:var(--tx)}
+.pnl-m .oc-row .oc-label{color:var(--tx3);font-size:10.5px}
+.pnl-m .oc-row select{font-size:11px;padding:1px 4px;background:var(--srf2);color:var(--tx);border:1px solid var(--brd);border-radius:4px}
+.pnl-m .oc-row select:disabled{opacity:.45;cursor:not-allowed}
 .pnl-m .hcfg{padding:5px}
 .pnl-m .hrow{display:flex;align-items:center;margin-bottom:1px;gap:4px}
 .pnl-m .hrow label{font-size:10px;width:34px;flex-shrink:0}
@@ -748,7 +752,7 @@ body::before{
         </svg>
       </div>
       <span class="brand-text">极思<span class="acc">G</span>界址点互转工具</span>
-      <span class="brand-sub">V1.4</span>
+      <span class="brand-sub">V1.5</span>
     </div>
     <!-- 更新提醒：常驻三态按钮（默认刷新图标 / 有新版绿色箭头 / 已跳过灰色箭头） -->
     <button class="tbar-btn update-badge idle" id="btnUpdate" title="检查更新" aria-label="检查更新">
@@ -912,6 +916,13 @@ body::before{
         <label class="ck"><input type="checkbox" id="oj">点号前加"J"</label>
         <label class="ck"><input type="checkbox" id="on">起始点西北角</label>
         <label class="ck"><input type="checkbox" id="oo" checked>首末点重合</label>
+        </div>
+        <div class="oc-row">
+          <span class="oc-label">闭合点编号</span>
+          <select id="oc">
+            <option value="0">回到环首点</option>
+            <option value="1">续编</option>
+          </select>
         </div>
 
         <div class="div"></div>

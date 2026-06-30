@@ -110,7 +110,7 @@ function normalizeH(h) {
 }
 
 const PP = [
-  { id: "usr", n: "自定义", h: { attrs: DEFAULT_ATTRS.map((r) => ({ ...r })), project_info: "" }, p: { pp: 3, pz: "auto", ox: 0, oj: 0, on: 0, oo: 1, om: 0 }, f: { fn: "__placeholder__", fi: "__placeholder__", fa: "__placeholder__", fu: "__placeholder__", fm: "__placeholder__", fd: "__placeholder__" } },
+  { id: "usr", n: "自定义", h: { attrs: DEFAULT_ATTRS.map((r) => ({ ...r })), project_info: "" }, p: { pp: 3, pz: "auto", ox: 0, oj: 0, on: 0, oo: 1, oc: 0, om: 0 }, f: { fn: "__placeholder__", fi: "__placeholder__", fa: "__placeholder__", fu: "__placeholder__", fm: "__placeholder__", fd: "__placeholder__" } },
 ];
 
 const $ = (id) => document.getElementById(id);
@@ -605,6 +605,7 @@ function getOptions() {
     oj: $("oj")?.checked || false,
     on: $("on")?.checked || false,
     oo: $("oo")?.checked || false,
+    oc: $("oc")?.value === "1",
     output_mode: outputMode,
     filename_field: filenameField,
   };
@@ -819,6 +820,10 @@ window.ld = function (id) {
     if ($("oj")) $("oj").checked = !!c.p.oj;
     if ($("on")) $("on").checked = !!c.p.on;
     if ($("oo")) $("oo").checked = !!c.p.oo;
+    if ($("oc")) {
+      $("oc").value = c.p.oc ? "1" : "0";
+      $("oc").disabled = !$("oo").checked;
+    }
     if ($("om")) $("om").checked = !!c.p.om;
   }
   if (c.f) Object.keys(c.f).forEach((k) => { const e = $(k); if (e) e.value = c.f[k]; });
@@ -1120,6 +1125,16 @@ function init() {
   });
   const ff = $("filename_field");
   if (ff) ff.addEventListener("change", () => { lastPreviewKey = ""; updatePreview(); });
+
+  // 闭合点编号下拉：未勾「首末点重合」时置灰
+  const oo = $("oo");
+  const oc = $("oc");
+  if (oo && oc) {
+    const syncOcDisabled = () => { oc.disabled = !oo.checked; };
+    syncOcDisabled();
+    oo.addEventListener("change", syncOcDisabled);
+    oc.addEventListener("change", () => { lastPreviewKey = ""; updatePreview(); });
+  }
 
   // 字段映射下拉框改选后刷新预览（fn/fi/fa/fu/fm/fd = 地块名/编号/面积/用途/图幅号/地类编码）
   ["fn", "fi", "fa", "fu", "fm", "fd"].forEach((id) => {

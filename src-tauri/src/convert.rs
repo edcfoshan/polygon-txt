@@ -58,6 +58,9 @@ pub struct ShpToTxtOptions {
     pub on: bool,
     /// 首末点重合
     pub oo: bool,
+    /// 闭合点编号模式：false=回到环首点（默认），true=续编下一号
+    #[serde(default)]
+    pub oc: bool,
     /// 输出模式："one_to_one"（一对一）/ "split_by_plot"（按地块拆分）/ "merge_all"（全合并）
     #[serde(default)]
     pub output_mode: String,
@@ -200,6 +203,7 @@ pub fn shp_to_txt_preview(
                 &header_cfg.attrs,
                 &plots,
                 options.oj,
+                options.oc,
             )
         }
         _ => shp_files_to_txt_preview(shp_paths, header_cfg, field_mapping, options)?,
@@ -220,6 +224,7 @@ fn shp_files_to_txt_preview(
         &header_cfg.attrs,
         &plots,
         options.oj,
+        options.oc,
     ))
 }
 
@@ -297,6 +302,7 @@ fn convert_one_to_one(
             &header_cfg.attrs,
             &plots,
             options.oj,
+            options.oc,
         );
         let (final_name, bumped) = allocate_unique_name(&src.stem, &mut used_names);
         if bumped {
@@ -381,6 +387,7 @@ fn convert_split_by_plot(
                 &header_cfg.attrs,
                 &[p.plot.clone()],
                 options.oj,
+                options.oc,
             );
             let txt_path = subdir.join(format!("{}.txt", final_name));
             std::fs::write(&txt_path, &txt_content)
@@ -426,6 +433,7 @@ fn convert_merge_all(
         &header_cfg.attrs,
         &all_plots,
         options.oj,
+        options.oc,
     );
     let txt_path = output_dir.join(&filename);
     std::fs::write(&txt_path, &txt_content).map_err(|e| format!("写 TXT 失败: {}", e))?;

@@ -138,7 +138,7 @@ fn test_shp_to_txt_one_to_one() {
         use_field: "DKYT".into(), tfh: "TFH".into(), dlbm: "DLBM".into(),
     };
     let options = convert::ShpToTxtOptions {
-        ox: false, oj: true, on: false, oo: true,
+        ox: false, oj: true, on: false, oo: true, oc: false,
         output_mode: "one_to_one".into(), filename_field: String::new(),
     };
 
@@ -169,7 +169,7 @@ fn test_shp_to_txt_xy_swap() {
 
     // ox=false（默认，输出标准 Y,X 顺序：北坐标在前）
     let opts_off = convert::ShpToTxtOptions {
-        ox: false, oj: true, on: false, oo: true,
+        ox: false, oj: true, on: false, oo: true, oc: false,
         output_mode: "one_to_one".into(), filename_field: String::new(),
     };
     let dir_off = tempfile::tempdir().expect("temp dir");
@@ -181,7 +181,7 @@ fn test_shp_to_txt_xy_swap() {
 
     // ox=true（勾选标反，输出 X,Y 顺序：东坐标在前）
     let opts_on = convert::ShpToTxtOptions {
-        ox: true, oj: true, on: false, oo: true,
+        ox: true, oj: true, on: false, oo: true, oc: false,
         output_mode: "one_to_one".into(), filename_field: String::new(),
     };
     let dir_on = tempfile::tempdir().expect("temp dir");
@@ -233,7 +233,7 @@ fn test_shp_to_txt_merge_all() {
         use_field: "DKYT".into(), tfh: "TFH".into(), dlbm: "DLBM".into(),
     };
     let options = convert::ShpToTxtOptions {
-        ox: false, oj: true, on: false, oo: true,
+        ox: false, oj: true, on: false, oo: true, oc: false,
         output_mode: "merge_all".into(), filename_field: String::new(),
     };
 
@@ -265,7 +265,7 @@ fn test_shp_to_txt_split_by_plot() {
     };
     // 用序号命名（filename_field 为空）
     let options = convert::ShpToTxtOptions {
-        ox: false, oj: true, on: false, oo: true,
+        ox: false, oj: true, on: false, oo: true, oc: false,
         output_mode: "split_by_plot".into(), filename_field: String::new(),
     };
 
@@ -653,6 +653,7 @@ fn test_generate_txt() {
         &attrs_vec,
         &parsed.plots,
         true,
+        false,
     );
 
     // 验证输出包含关键部分
@@ -746,6 +747,7 @@ fn test_shp_to_txt_full() {
         oj: true,
         on: false,
         oo: false,
+        oc: false,
         output_mode: "one_to_one".into(),
         filename_field: String::new(),
     };
@@ -833,6 +835,7 @@ fn test_shp_txt_roundtrip() {
         oj: true,
         on: false,
         oo: false,
+        oc: false,
         output_mode: "one_to_one".into(),
         filename_field: String::new(),
     };
@@ -898,6 +901,7 @@ fn test_preview() {
         oj: true,
         on: false,
         oo: false,
+        oc: false,
         output_mode: "one_to_one".into(),
         filename_field: String::new(),
     };
@@ -1051,6 +1055,7 @@ J1,2,30.000,30.000";
         oj: true,
         on: false,
         oo: true,
+        oc: false,
         output_mode: "one_to_one".into(),
         filename_field: String::new(),
     };
@@ -1069,8 +1074,8 @@ J1,2,30.000,30.000";
 
     let roundtrip = std::fs::read_to_string(&txt_result.output_files[0]).expect("read roundtrip");
     assert!(
-        roundtrip.contains("J1,2,30.000,30.000"),
-        "往返后第二个部件的 part index 不应丢失，实际输出为:\n{}",
+        roundtrip.contains("J4,2,30.000,30.000"),
+        "往返后第二个部件的 part index 不应丢失且 J 序号跨环连续（首点 J4），实际输出为:\n{}",
         roundtrip
     );
 }
@@ -1138,6 +1143,7 @@ J1,2,2.000,2.000";
         oj: true,
         on: true,
         oo: true,
+        oc: false,
         output_mode: "one_to_one".into(),
         filename_field: String::new(),
     };
@@ -1156,8 +1162,8 @@ J1,2,2.000,2.000";
 
     let roundtrip = std::fs::read_to_string(&txt_result.output_files[0]).expect("read roundtrip");
     assert!(
-        roundtrip.contains("J1,2,8.000,2.000") || roundtrip.contains("J1,2,2.000,2.000"),
-        "内环应以独立 part 输出，实际输出为:\n{}",
+        roundtrip.contains(",2,8.000,8.000"),
+        "内环应以独立 part（界址线号=2）输出，实际输出为:\n{}",
         roundtrip
     );
 }
@@ -1185,7 +1191,7 @@ fn test_field_mapping_sentinels_area() {
     let shp_path = test_shp_stem();
     let header = make_header();
     let options = convert::ShpToTxtOptions {
-        ox: false, oj: true, on: false, oo: false,
+        ox: false, oj: true, on: false, oo: false, oc: false,
         output_mode: "one_to_one".into(), filename_field: String::new(),
     };
 

@@ -1,11 +1,11 @@
 {
-  "version": "1.4.0",
-  "notes": "### 新增\n\n- 「属性描述」段高度自定义：原 7 个固定项（坐标系/几度分带/投影类型/计量单位/带号/精度/转换参数）改为可增删改键名、拖拽调顺序的属性行列表，可在任意位置插入自定义行（如「格式版本号」「数据产生单位」「数据产生日期」）\n- 属性行拖拽排序：按住行首 ⠿ 手柄上下拖动即可调整顺序\n- 「精度」「几度分带」字段恢复下拉选择（固定候选值）\n- 属性行过多时列表区限高滚动，按钮与标签页固定不被挤掉\n- 预设方案保存/加载完整保留自定义属性行与顺序；旧版本预设加载时自动迁移\n\n### 改进\n\n- 空「键=值」行不输出（非强制）；「精度」行被删或改名时坐标小数位自动兜底 0.001",
-  "pub_date": "2026-06-29T14:23:43.019Z",
+  "version": "1.5.0",
+  "notes": "界址点 J 编号改为单个地块内跨环连续递增；新增闭合点编号下拉（回到环首点/续编）",
+  "pub_date": "2026-06-30T02:10:22.877Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUd3RYL0ovejhtb0hSRzBoZTVXZ21hVFM2TWJWRmExeW5sZjB3ZVowZ3NhTEFFUy80TFdkbkkxMHpqVkZUcHAvdnBHbVZyVjBsKzhOSWUrOGFPMHVpeTQrbFNSOTlQenc4PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzgyNzQyOTA4CWZpbGU65p6B5oCdR+eVjOWdgOeCueS6kui9rOW3peWFt18xLjQuMF94NjQtc2V0dXAuZXhlCnhyM2ZwVUhMbGNiZFFOUU1BVzRuSzhMRGV4M3hWL2hVRzN0QklhU0plc1hqL2JmT3I1NmNvbTdlRHIxdjZnR2NNVFU0TEYwcUxCeFNqZ1lhTmdxVUFRPT0K",
-      "url": "https://github.com/edcfoshan/polygon-txt/releases/download/v1.4.0/polygon-txt_1.4_x64-setup.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUd3RYL0ovejhtb0ZGZmFEdGRmTld4eXJISW13eDU2VXFHcVNsN3YveUZQQVhyc2JLek5nT0ZHT0NXSEx2QTV1eDdydUVJWk4xWjlVWTM3NG80OWM3R3BwTEI2NGJzQ2c4PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzgyNzg1MzQ4CWZpbGU65p6B5oCdR+eVjOWdgOeCueS6kui9rOW3peWFt18xLjUuMF94NjQtc2V0dXAuZXhlCjFkaGwycGtVYTlpaEFqcjg0NWlnM2pWZjNTZVJsTHJ2cExFMG41U244cTgyVER1cExlb2JVcjJyU2cyL0pHVlZWZERhZ2tpWE15dzNSWkZlYXA1QkJBPT0K",
+      "url": "https://github.com/edcfoshan/polygon-txt/releases/download/v1.5/polygon-txt_1.5_x64-setup.exe"
     }
   }
 }

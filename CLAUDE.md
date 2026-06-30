@@ -65,6 +65,11 @@ index.html (CSS 内联, Google Fonts CDN)
 - **按地块拆分 (`split_by_plot`)**: 按源建子目录 `output_dir/{source_stem}/`，内部每个 feature 一个 TXT。文件名可选 DKMC/DKBH/序号/FID；字段缺失自动用序号兜底，重名追加序号，非法字符替换为 `_`
 - **全合并 (`merge_all`)**: 所有源所有地块合并为 `merged_output_YYYYMMDD_HHMMSS.txt`（本地时间秒级时间戳）
 
+### 转换选项（面→TXT，`ShpToTxtOptions` in convert.rs）
+- `ox` XY 坐标标反 / `oj` 点号前加"J" / `on` 起始点西北角 / `oo` 首末点重合（勾上才在每个环末尾输出闭合点）/ `oc` 闭合点编号模式（false=回到环首点 默认，true=续编；前端下拉，`oo` 未勾时置灰）
+- `output_mode`（一对一/按地块拆分/全合并）、`filename_field`（拆分模式文件名字段）
+- 前端三处同步：`getOptions()` 收集（[src/main.js](src/main.js)）、`applyPreset` 恢复、`PP` 预设 `p` 对象存储。**新增选项必须三处都加 + PP 默认值**，否则预设保存/恢复丢失
+
 ### Tauri IPC 命令
 
 文件选择：`pick_shp_files`、`import_gdb`、`pick_txt_files`、`pick_output_dir`
@@ -114,7 +119,9 @@ index.html (CSS 内联, Google Fonts CDN)
 SHP 存储 (X, Y) = (东坐标, 北坐标)。TXT 存储 (Y, X) = (北坐标, 东坐标)。转换层负责交换。
 
 ### TXT 格式
-- 坐标行：`J序号,1,Y坐标,X坐标`（Y 在前）
+- 坐标行：`J{序号},{界址线号},Y坐标,X坐标`（Y 在前）。第二列"界址线号"= `IndexedRing.part_index`（外环=1、洞=2、多部件下一 part=3…逐环递增），是反向解析 TXT→SHP 切环的唯一依据，**严禁删除或重算**
+- J 序号在**单个地块内跨环连续递增**，每个地块从 J1 起（含 merge_all）。闭合点（首末点重合的末点，仅 `oo=true` 时存在）写法由 `oc` 选项决定：`oc=false`（默认"回到环首点"）→ 写本环首点序号、不占号；`oc=true`（"续编"）→ 占下一个连续序号
+- 解析侧（`txt.rs` `parse_txt`）**只读第二列 part_index 切环，完全忽略第一列序号**——J 编号算法变化不影响反向解析
 - 地块元数据行以 `,@` 结尾
 - 坐标系字符串必须精确匹配：`2000国家大地坐标系`、`1980西安坐标系`、`1954北京坐标系`、`WGS84坐标系`
 
@@ -140,7 +147,9 @@ SHP 存储 (X, Y) = (东坐标, 北坐标)。TXT 存储 (Y, X) = (北坐标, 东
 - 前端逻辑：`src/main.js` 的 `checkAppUpdate` / `setUpdateBtnState` / `skipCurrentVersion` / `doUpdate`
 - 百度云兜底链接硬编码在 `main.js` 的 `BAIDU_PAN_URL`（about.md 同步）
 - **下载 url 走 GitHub releases 直连**（不用 ghproxy 镜像——1.3.0 实测已失效且无加速）
-- **发版必须**：`scripts/build-signed.ps1`（交互输密码签名构建）+ `node scripts/gen-latest-json.js`（生成 latest.json）+ 提交进仓库根目录并上传 Release。完整流程见 [docs/RELEASE.md](docs/RELEASE.md) 和 `release` skill。
+- **`gen-latest-json.js` 多 `.sig` 陷阱**：脚本扫 `src-tauri/target/release/bundle/nsis/*.sig` 取第一个。若该目录残留旧版本 `.sig`，会误把旧签名嵌入 latest.json（下载 URL 是新版、签名是旧版 → 自动更新验签必然失败）。发版前先删该目录下旧版本的 `*-setup.exe` + `.sig`
+- **jsDelivr `@master` 缓存滞后**：push 后 `cdn.jsdelivr.net/.../@master/latest.json` 可能数分钟~更久仍返回旧版本，`purge.jsdelivr.net` 不一定立即生效且有 throttle。updater 第一端点是 jsDelivr、拿到旧 JSON 就不会 fallback 到 GitHub 端点。发版当天必须复验 `@master` 已切到新版本号
+- **发版必须**：`scripts/build-signed.ps1`（交互输密码签名构建）+ 删旧 nsis `.sig` 后 `node scripts/gen-latest-json.js --tag vX.Y`（生成 latest.json）+ 提交进仓库根目录并上传 Release。完整流程见 [docs/RELEASE.md](docs/RELEASE.md) 和 `release` skill。
 
 ## 已知问题
 

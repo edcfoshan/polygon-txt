@@ -72,9 +72,11 @@ body{
 ```css
 .app[data-mode="t"] .main{
   display:grid;
-  grid-template-columns: minmax(280px, 300fr) 1fr;
+  grid-template-columns: minmax(280px, 300fr) minmax(360px, 900fr);
 }
 ```
+
+> **设计修正记录（2026-07-06，验证阶段发现）：** 原设计写的是 `minmax(280px,300fr) 1fr`，误以为 `1fr` 表示"剩余空间"。但 CSS 的 `fr` 是比例单位——`300fr` 与 `1fr` 是 300:1 的比例，导致左栏吞掉 99.67% 空间、右栏被压到下限。改为 `minmax(360px,900fr)`，比例 300:900 = 1:3，右栏占主导（符合原"300:flex"视觉），下限 360px 保证最小可用宽度。
 
 **关键设计：`minmax(下限, 比例)`**
 - 下限保证窗口拖到 `minWidth:800` 时三栏不被挤到字段溢出（240+240+320=800 正好等于 minWidth）
@@ -86,6 +88,7 @@ body{
 需要移除/覆盖的选择器：
 - `.pnl-l{width:260px;...}` → 移除 `width:260px`（由 grid 列宽接管）
 - `.pnl-m{width:260px;...}` → 移除 `width:260px`
+- `.ctr{width:360px;flex-shrink:0;...}` → 移除 `width:360px` 和 `flex-shrink:0`（**验证阶段补登**：原 plan 漏列此项。`.ctr` 在 grid 容器中作为 grid 项，残留的 `width:360px` 会阻止它占满分配的列宽，导致大窗口下右栏仍只有 360px、列内空白）
 - `.app[data-mode="t"] .pnl-l{width:300px}` → 移除（由 grid 列宽接管）
 - `.pnl-l{flex-shrink:0}` 和 `.pnl-m{flex-shrink:0}` → 移除（grid 项不受 flex-shrink 影响，但保留无害；为清洁起见移除）
 

@@ -47,6 +47,8 @@ Key: Vite inlines all JS into a single HTML file. The built `dist/index.html` co
 ### Dual-Mode Layout
 `data-mode="s"` (面→TXT, 3 columns: 260+260+360) vs `data-mode="t"` (TXT→面, 2 columns: 300+flex). CSS toggles panels.
 
+Layout is responsive: `.main` uses CSS grid with `minmax(lower-bound, fr-ratio)`. Columns scale proportionally when the window is resized; lower bounds prevent field overflow at `minWidth:800`.
+
 ## Build & Run
 
 ```powershell

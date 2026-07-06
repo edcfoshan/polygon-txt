@@ -7,7 +7,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **极思G界址点互转工具** — 测绘与国土行业 GIS 桌面工具，实现面要素（SHP/GDB）与标准界址点 TXT 文件的双向转换。Tauri v2 桌面应用（Rust 后端 + Vite/HTML 前端）。
 
 - 仓库：https://github.com/edcfoshan/polygon-txt
-- 窗口：880×600px，无边框（`decorations: false`），自定义标题栏，支持浅色/暗色主题
+- 窗口：默认 880×600px（`minWidth:800/minHeight:540`，可自由拉伸/最大化），无边框（`decorations: false`），自定义标题栏，支持浅色/暗色主题
+- 响应式布局：`.app` 占满视口，`.main` 用 CSS grid + `minmax(下限, fr比例)`，拖拽窗口时三栏按 260:260:360 等比变宽，拖到 minWidth:800 时下限保证字段不溢出
 
 ## 构建与测试命令
 

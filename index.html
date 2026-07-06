@@ -423,7 +423,7 @@ body::before{
 }
 .app[data-mode="t"] .main{
   display:grid;
-  grid-template-columns:minmax(280px,300fr) 1fr;
+  grid-template-columns:minmax(280px,300fr) minmax(360px,900fr);
 }
 /* Mode switching */
 .app[data-mode="t"] .mode-s{display:none}
@@ -523,7 +523,7 @@ body::before{
 .pnl-bd{flex:1;overflow:hidden;padding:8px 10px}
 
 /* Center */
-.ctr{width:360px;flex-shrink:0;display:flex;flex-direction:column;overflow:hidden;min-width:0;background:var(--bg)}
+.ctr{display:flex;flex-direction:column;overflow:hidden;min-width:0;background:var(--bg)}
 .ctr-bd{flex:1;overflow:hidden;padding:12px;display:flex;flex-direction:column}
 .ctr-ft{
   background:var(--srf);border-top:1px solid var(--brd);

@@ -415,14 +415,22 @@ body::before{
 .chip.on{background:var(--acg);color:var(--ac);border-color:rgba(201,165,95,.3)}
 
 /* ═══ Main / Panels ═══ */
-.main{flex:1;display:flex;overflow:hidden}
+.main{flex:1;overflow:hidden}
+/* Responsive grid — columns scale with window, keep 260:260:360 visual ratio */
+.app[data-mode="s"] .main{
+  display:grid;
+  grid-template-columns:minmax(240px,260fr) minmax(240px,260fr) minmax(320px,360fr);
+}
+.app[data-mode="t"] .main{
+  display:grid;
+  grid-template-columns:minmax(280px,300fr) 1fr;
+}
 /* Mode switching */
 .app[data-mode="t"] .mode-s{display:none}
 .app[data-mode="s"] .mode-t{display:none}
 .ctr-inner{display:flex;flex-direction:column;flex:1;overflow:hidden}
 /* In TXT→面 mode, hide middle panel, expand left */
 .app[data-mode="t"] .pnl-m{display:none}
-.app[data-mode="t"] .pnl-l{width:300px}
 .app[data-mode="t"] .ctr{flex:1}
 /* In TXT→面 mode, hide preset config area */
 .app[data-mode="t"] .cfg-area{display:none}
@@ -443,8 +451,8 @@ body::before{
   background:var(--srf);
   transition:width .32s cubic-bezier(.4,0,.2,1), opacity .25s, border-color .3s;
 }
-.pnl-l{width:260px;border-right:1px solid var(--brd);flex-shrink:0}
-.pnl-m{width:260px;border-right:1px solid var(--brd);flex-shrink:0}
+.pnl-l{border-right:1px solid var(--brd)}
+.pnl-m{border-right:1px solid var(--brd)}
 /* Compact middle panel — no scroll */
 .pnl-m .pnl-bd{padding:6px 8px}
 .pnl-m .slabel{padding:3px 0 2px;font-size:10.5px}

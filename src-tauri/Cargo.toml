@@ -1,6 +1,6 @@
 [package]
 name = "jisig-bpoint-converter"
-version = "1.6.1"
+version = "1.6.0"
 description = "界址点互转工具 — SHP/GDB ↔ TXT 双向转换"
 authors = ["极思G"]
 edition = "2021"

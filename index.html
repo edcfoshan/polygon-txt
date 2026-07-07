@@ -10,6 +10,10 @@
    v8: cool-gray palette, calibrated for professional GIS tooling
    ═══════════════════════════════════════════ */
 :root,[data-t="light"]{
+  /* Layout ratio (s-mode three columns) — overridable via ratio settings */
+  --col1:260fr;              /* left (input) */
+  --col2:260fr;              /* middle (params) */
+  --col3:360fr;              /* right (preview) */
   --bg:#fafafa;              /* cool off-white base */
   --srf:#ffffff;             /* panel surface */
   --srf2:#f3f4f6;            /* raised / hover */
@@ -419,7 +423,7 @@ body::before{
 /* Responsive grid — columns scale with window, keep 260:260:360 visual ratio */
 .app[data-mode="s"] .main{
   display:grid;
-  grid-template-columns:minmax(240px,260fr) minmax(240px,260fr) minmax(320px,360fr);
+  grid-template-columns:minmax(200px,var(--col1)) minmax(200px,var(--col2)) minmax(280px,var(--col3));
 }
 .app[data-mode="t"] .main{
   display:grid;
@@ -478,7 +482,7 @@ body::before{
 .hdr-tab.on{color:var(--ac);border-bottom-color:var(--ac)}
 .hdr-panel{display:none}
 .hdr-panel.on{display:block}
-.hdr-textarea{width:100%;height:170px;border:1px solid var(--brd);border-radius:4px;padding:5px;font-family:"JetBrains Mono",monospace;font-size:9px;line-height:1.55;resize:none;background:var(--srf2);color:var(--tx);outline:none}
+.hdr-textarea{width:100%;height:170px;border:1px solid var(--brd);border-radius:4px;padding:5px;font-family:"JetBrains Mono",monospace;font-size:9px;line-height:1.55;resize:vertical;background:var(--srf2);color:var(--tx);outline:none}
 .hdr-textarea:focus-visible{border-color:var(--ac)}
 
 /* ─── 属性描述动态行（紧凑行式 + 拖拽） ─── */
@@ -794,10 +798,18 @@ body::before{
         <circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>
       </svg>
     </button>
+    <button class="tbar-btn" id="btnRatio" title="显示比例" aria-label="显示比例">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="2" y="4" width="6" height="16" rx="1"/><rect x="9" y="4" width="6" height="16" rx="1"/><rect x="16" y="4" width="6" height="16" rx="1"/>
+      </svg>
+    </button>
     <div class="spacer" data-tauri-drag-region></div>
     <div class="win-ctls" aria-label="窗口控制">
       <button class="win-btn" id="btnWinMin" title="最小化" aria-label="最小化">
         <svg viewBox="0 0 12 12"><path d="M2 6h8"/></svg>
+      </button>
+      <button class="win-btn" id="btnWinMax" title="最大化/还原" aria-label="最大化/还原">
+        <svg viewBox="0 0 12 12"><rect x="2.5" y="2.5" width="7" height="7" rx="0.8"/></svg>
       </button>
       <button class="win-btn close" id="btnWinClose" title="关闭" aria-label="关闭">
         <svg viewBox="0 0 12 12"><path d="M2 2l8 8M10 2l-8 8"/></svg>
@@ -1003,6 +1015,19 @@ J2,1,Y500.000,X301.000
   <div class="modal-card" data-modal="sponsor">
     <button class="modal-close" id="btnCloseSponsor" aria-label="关闭">×</button>
     <div class="modal-body" id="sponsorBody"></div>
+  </div>
+</div>
+
+<!-- Ratio Modal -->
+<div class="modal-overlay" id="ratioModal">
+  <div class="modal-card" data-modal="ratio" style="max-width:420px;width:420px;padding:24px 28px 20px;text-align:left">
+    <button class="modal-close" id="btnCloseRatio" aria-label="关闭">×</button>
+    <div style="font-size:14px;font-weight:600;color:var(--tx);margin-bottom:4px">显示比例</div>
+    <div style="font-size:11px;color:var(--tx3);margin-bottom:14px">选择三栏（输入 / 参数 / 预览）的宽度比例，仅面→TXT 模式生效</div>
+    <div class="chips" id="ratioChips" style="flex-wrap:wrap;gap:6px"></div>
+    <div style="margin-top:16px;padding:10px 12px;background:var(--srf2);border:1px solid var(--brd);border-radius:6px;font-size:11px;color:var(--tx2);line-height:1.6">
+      <strong style="color:var(--tx)">提示</strong>：选“宽主区”可在预览中看到更多坐标行；窗口拉到最小时字段不会被挤溢。设置自动记住，刷新后仍生效。
+    </div>
   </div>
 </div>
 

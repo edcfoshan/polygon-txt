@@ -508,6 +508,22 @@ fn close_window(window: tauri::WebviewWindow) -> Result<(), String> {
     window.close().map_err(|e| format!("窗口关闭失败: {}", e))
 }
 
+#[tauri::command]
+fn toggle_maximize(window: tauri::WebviewWindow) -> Result<(), String> {
+    let is_max = window
+        .is_maximized()
+        .map_err(|e| format!("读取窗口状态失败: {}", e))?;
+    if is_max {
+        window
+            .unmaximize()
+            .map_err(|e| format!("还原窗口失败: {}", e))
+    } else {
+        window
+            .maximize()
+            .map_err(|e| format!("最大化窗口失败: {}", e))
+    }
+}
+
 fn generate_parse_log(
     path: &Path,
     parsed: &txt::TxtParseResult,
@@ -593,6 +609,7 @@ pub fn run() {
             run_txt_to_shp,
             minimize_window,
             close_window,
+            toggle_maximize,
         ])
         .run(tauri::generate_context!())
         .expect("启动失败");

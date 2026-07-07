@@ -1069,15 +1069,58 @@ window.openSponsor = function () { const m = $("sponsorModal"); if (m) m.classLi
 window.closeSponsor = function (e) { if (e && e.target !== $("sponsorModal")) return; const m = $("sponsorModal"); if (m) m.classList.remove("on"); };
 window.openAbout = function () { const m = $("aboutModal"); if (m) m.classList.add("on"); };
 window.closeAbout = function (e) { if (e && e.target !== $("aboutModal")) return; const m = $("aboutModal"); if (m) m.classList.remove("on"); };
+window.openRatio = function () { const m = $("ratioModal"); if (m) m.classList.add("on"); };
+window.closeRatio = function (e) { if (e && e.target !== $("ratioModal")) return; const m = $("ratioModal"); if (m) m.classList.remove("on"); };
 document.addEventListener("keydown", function (e) {
-  if (e.key === "Escape") { const sm = $("sponsorModal"); const am = $("aboutModal"); const gm = $("gdbSelectModal"); const um = $("updateModal"); if (sm) sm.classList.remove("on"); if (am) am.classList.remove("on"); if (gm) gm.classList.remove("on"); if (um && !isUpdating) um.classList.remove("on"); }
+  if (e.key === "Escape") { const sm = $("sponsorModal"); const am = $("aboutModal"); const gm = $("gdbSelectModal"); const um = $("updateModal"); const rm = $("ratioModal"); if (sm) sm.classList.remove("on"); if (am) am.classList.remove("on"); if (gm) gm.classList.remove("on"); if (um && !isUpdating) um.classList.remove("on"); if (rm) rm.classList.remove("on"); }
 });
+
+// ═══ Display ratio (s-mode three-column) ═══
+const RATIO_PRESETS = [
+  { id: "compact", label: "紧凑输入", c1: "220fr", c2: "220fr", c3: "440fr" },
+  { id: "default", label: "默认",     c1: "260fr", c2: "260fr", c3: "360fr" },
+  { id: "wide",    label: "宽主区",   c1: "200fr", c2: "200fr", c3: "560fr" },
+  { id: "xwide",   label: "极宽主区", c1: "160fr", c2: "160fr", c3: "640fr" },
+];
+function applyRatio(preset) {
+  document.documentElement.style.setProperty("--col1", preset.c1);
+  document.documentElement.style.setProperty("--col2", preset.c2);
+  document.documentElement.style.setProperty("--col3", preset.c3);
+}
+function getCurrentRatioId() {
+  const saved = localStorage.getItem("tg_ratio");
+  return saved && RATIO_PRESETS.some(p => p.id === saved) ? saved : "default";
+}
+function renderRatioChips() {
+  const box = $("ratioChips");
+  if (!box) return;
+  const cur = getCurrentRatioId();
+  box.innerHTML = "";
+  for (const p of RATIO_PRESETS) {
+    const c = document.createElement("div");
+    c.className = "chip" + (p.id === cur ? " on" : "");
+    c.textContent = p.label;
+    c.tabIndex = 0;
+    c.onclick = () => {
+      localStorage.setItem("tg_ratio", p.id);
+      applyRatio(p);
+      renderRatioChips();
+    };
+    box.appendChild(c);
+  }
+}
 
 // ═══ Init ═══
 function init() {
   const savedTheme = localStorage.getItem("tg_theme") || "light";
   theme = savedTheme;
   document.documentElement.setAttribute("data-t", theme);
+
+  // 应用保存的显示比例（s 模式三栏）
+  const ratioId = getCurrentRatioId();
+  const preset = RATIO_PRESETS.find(p => p.id === ratioId) || RATIO_PRESETS[1];
+  applyRatio(preset);
+  renderRatioChips();
 
   const s = localStorage.getItem("tg_dark");
   if (s) cfgs = JSON.parse(s);
@@ -1097,12 +1140,18 @@ function init() {
   bind("btnSponsor", () => openSponsor());
   bind("btnTheme", () => togTheme());
   bind("btnAbout", () => openAbout());
+  bind("btnRatio", () => openRatio());
   bind("btnSave", () => saveOnly());
   bind("btnDel", () => delCfg());
   bind("btnWinMin", async (e) => {
     e.preventDefault();
     e.stopPropagation();
     await runWindowCommand("minimize_window");
+  });
+  bind("btnWinMax", async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    await runWindowCommand("toggle_maximize");
   });
   bind("btnWinClose", async (e) => {
     e.preventDefault();
@@ -1182,6 +1231,7 @@ function init() {
   bind("btnRunTts", () => runTxtToShp());
   bind("btnCloseAbout", () => closeAbout());
   bind("btnCloseSponsor", () => closeSponsor());
+  bind("btnCloseRatio", () => closeRatio());
   bind("btnUpdate", () => {
     // available/skipped 态：打开弹窗；idle/loading 态：手动触发检查
     const btn = $("btnUpdate");
@@ -1210,6 +1260,8 @@ function init() {
   if (aboutModal) aboutModal.addEventListener("click", (e) => { if (e.target === aboutModal) closeAbout(); });
   const sponsorModal = $("sponsorModal");
   if (sponsorModal) sponsorModal.addEventListener("click", (e) => { if (e.target === sponsorModal) closeSponsor(); });
+  const ratioModal = $("ratioModal");
+  if (ratioModal) ratioModal.addEventListener("click", (e) => { if (e.target === ratioModal) closeRatio(); });
   const gdbSelectModal = $("gdbSelectModal");
   if (gdbSelectModal) gdbSelectModal.addEventListener("click", (e) => { if (e.target === gdbSelectModal) closeGdbSelectModal(); });
   const updateModal = $("updateModal");

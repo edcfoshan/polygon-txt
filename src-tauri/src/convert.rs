@@ -209,7 +209,7 @@ pub fn shp_to_txt_preview(
         _ => shp_files_to_txt_preview(shp_paths, header_cfg, field_mapping, options)?,
     };
 
-    Ok(result.lines().take(200).collect::<Vec<_>>().join("\n"))
+    Ok(result.lines().take(2000).collect::<Vec<_>>().join("\n"))
 }
 
 fn shp_files_to_txt_preview(

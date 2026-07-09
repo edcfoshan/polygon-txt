@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { open as shellOpen } from '@tauri-apps/plugin-shell';
 import { check as checkForUpdater } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
+import { getVersion } from '@tauri-apps/api/app';
 import aboutContent from '../content/about.md?raw';
 import sponsorContent from '../content/sponsor.md?raw';
 import aboutQrImage from '../content/讨论群.jpg?inline';
@@ -888,11 +889,18 @@ const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24h 节流
 let pendingUpdate = null;
 let isUpdating = false;
 
-// 当前应用版本（从标题栏 brand-sub 读取，格式 "V1.2.0"），用于和远端比对
-function currentAppVersion() {
+let APP_VERSION = ""; // 启动时由 initVersion() 填充（= tauri.conf.json 的 version）
+
+// 启动时拉取 Tauri 版本并填充标题栏 brand-sub
+async function initVersion() {
+  try { APP_VERSION = await getVersion(); } catch { APP_VERSION = ""; }
   const el = document.querySelector(".brand-sub");
-  if (!el) return "0.0.0";
-  return el.textContent.trim().replace(/^V/i, "");
+  if (el) el.textContent = "V" + APP_VERSION;
+}
+
+// 当前应用版本（缓存），用于和远端比对
+function currentAppVersion() {
+  return APP_VERSION || "0.0.0";
 }
 
 // 语义化版本比较：a > b 返回 1，相等 0，小于 -1
@@ -1111,7 +1119,7 @@ function renderRatioChips() {
 }
 
 // ═══ Init ═══
-function init() {
+async function init() {
   const savedTheme = localStorage.getItem("tg_theme") || "light";
   theme = savedTheme;
   document.documentElement.setAttribute("data-t", theme);
@@ -1128,9 +1136,11 @@ function init() {
   renderChips();
   ld(localStorage.getItem("tg_last") || "usr");
 
+  await initVersion(); // 填充 APP_VERSION + 标题栏 brand-sub（须在 about 渲染前）
+
   // ─── 注入弹窗内容（Markdown → HTML） ───
   const ab = $("aboutBody");
-  if (ab) ab.innerHTML = renderMarkdown(aboutContent);
+  if (ab) ab.innerHTML = renderMarkdown(aboutContent).replace(/\{\{version\}\}/g, APP_VERSION ? "V" + APP_VERSION : "");
   const sb = $("sponsorBody");
   if (sb) sb.innerHTML = renderMarkdown(sponsorContent);
 

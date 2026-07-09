@@ -1,10 +1,10 @@
 {
   "version": "1.6.0",
   "notes": "窗口拖拽边缘/最大化时 UI 整体等比拉伸跟随，三栏保持 260:260:360 视觉比例；项目信息文本框可拽高度；预览上限 200→2000 行；新增显示比例设置（标题栏按钮+弹窗，4 个预设，仅面→TXT 模式）；恢复窗口最大化按钮。",
-  "pub_date": "2026-07-07T02:31:56.435Z",
+  "pub_date": "2026-07-09T02:34:10.941Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUd3RYL0ovejhtb0xyekxJTkxMS1Q4RmlQcjFBQjZJOFpKeGZNV1ZkTmFoNWxSZ1o1anFFWXRuTnp1RTRUdkM1UURkdWJBdG5HN09vYlA1TzNjVnhIRnp1WHIwVHdhQ0FvPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzgzMzkwNzM0CWZpbGU65p6B5oCdR+eVjOWdgOeCueS6kui9rOW3peWFt18xLjYuMF94NjQtc2V0dXAuZXhlCklSazRRdEZRWnVlWEIrRlFpQzhLRE9wNlZsaFFDOVA1RGJqT2ZQekZyWXpJdDdxUm95RVZ2WWE0eGgwNHpLTzc0YXRqZ1VWSC80dFRtN1FBcnZSUEJnPT0K",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUd3RYL0ovejhtb1BTY2JFTjA3YzVxd3FrbE5nNkJqUHAwZjA2Y2xGOUljMDFDZTIrYnYxS2NITHV5TERoa2VpalRpbm9uLzRYaDZQNUZUTzJtcTBBbnBrczJEZUdWTmcwPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzgzNTY0NDAyCWZpbGU65p6B5oCdR+eVjOWdgOeCueS6kui9rOW3peWFt18xLjYuMF94NjQtc2V0dXAuZXhlCm9OYnNrZk9HR3NpbGlZU0dPYUlPMkE4Ym00WVhaMUJDdURINVVMZ0NuOHNoaWFvQXdrWGFqUlpZNVh2SW9hVXA3eTVjTTFQUWdvTUZqNkhWeTZiRUR3PT0K",
       "url": "https://github.com/edcfoshan/polygon-txt/releases/download/v1.6/polygon-txt_1.6_x64-setup.exe"
     }
   }

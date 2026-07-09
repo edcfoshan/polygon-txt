@@ -35,3 +35,6 @@ dist-release/
 
 # 其他相关 tbx / 历史版本 exe 暂存（上传 Release 用，不入库）
 其他相关tbx放进去release/
+
+# 软件著作权申请资料（不入库）
+软件著作权申请资料/

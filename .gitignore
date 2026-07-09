@@ -32,3 +32,6 @@ vite_*
 
 # release 暂存目录（产物集中地，不入库）
 dist-release/
+
+# 其他相关 tbx / 历史版本 exe 暂存（上传 Release 用，不入库）
+其他相关tbx放进去release/

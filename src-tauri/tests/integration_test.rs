@@ -1,4 +1,4 @@
-// 界址点互转工具 — 集成测试
+﻿// 界址点互转工具 — 集成测试
 // 测试数据路径: C:\Users\Administrator\Documents\txt与gdb互转\test_data
 // 输出目录: 自动创建临时目录
 
@@ -140,7 +140,9 @@ fn test_shp_to_txt_one_to_one() {
     let options = convert::ShpToTxtOptions {
         ox: false, oj: true, on: false, oo: true, oc: false,
         output_mode: "one_to_one".into(), filename_field: String::new(),
-    };
+            og: false,
+            zone_prefix: 0,
+        };
 
     let result = convert::convert_shp_to_txt(
         &[shp_path], None, None, &header, &field_mapping, &options,
@@ -171,7 +173,9 @@ fn test_shp_to_txt_xy_swap() {
     let opts_off = convert::ShpToTxtOptions {
         ox: false, oj: true, on: false, oo: true, oc: false,
         output_mode: "one_to_one".into(), filename_field: String::new(),
-    };
+            og: false,
+            zone_prefix: 0,
+        };
     let dir_off = tempfile::tempdir().expect("temp dir");
     let _ = convert::convert_shp_to_txt(
         &[shp_path.clone()], None, None, &header, &field_mapping, &opts_off,
@@ -183,7 +187,9 @@ fn test_shp_to_txt_xy_swap() {
     let opts_on = convert::ShpToTxtOptions {
         ox: true, oj: true, on: false, oo: true, oc: false,
         output_mode: "one_to_one".into(), filename_field: String::new(),
-    };
+            og: false,
+            zone_prefix: 0,
+        };
     let dir_on = tempfile::tempdir().expect("temp dir");
     let _ = convert::convert_shp_to_txt(
         &[shp_path], None, None, &header, &field_mapping, &opts_on,
@@ -235,7 +241,9 @@ fn test_shp_to_txt_merge_all() {
     let options = convert::ShpToTxtOptions {
         ox: false, oj: true, on: false, oo: true, oc: false,
         output_mode: "merge_all".into(), filename_field: String::new(),
-    };
+            og: false,
+            zone_prefix: 0,
+        };
 
     let result = convert::convert_shp_to_txt(
         &[shp_path], None, None, &header, &field_mapping, &options,
@@ -267,7 +275,9 @@ fn test_shp_to_txt_split_by_plot() {
     let options = convert::ShpToTxtOptions {
         ox: false, oj: true, on: false, oo: true, oc: false,
         output_mode: "split_by_plot".into(), filename_field: String::new(),
-    };
+            og: false,
+            zone_prefix: 0,
+        };
 
     let result = convert::convert_shp_to_txt(
         &[shp_path], None, None, &header, &field_mapping, &options,
@@ -750,7 +760,9 @@ fn test_shp_to_txt_full() {
         oc: false,
         output_mode: "one_to_one".into(),
         filename_field: String::new(),
-    };
+            og: false,
+            zone_prefix: 0,
+        };
 
     let result = convert::convert_shp_to_txt(
         &[shp_path.clone()],
@@ -838,7 +850,9 @@ fn test_shp_txt_roundtrip() {
         oc: false,
         output_mode: "one_to_one".into(),
         filename_field: String::new(),
-    };
+            og: false,
+            zone_prefix: 0,
+        };
 
     let r2 = convert::convert_shp_to_txt(
         &generated_shp,
@@ -904,7 +918,9 @@ fn test_preview() {
         oc: false,
         output_mode: "one_to_one".into(),
         filename_field: String::new(),
-    };
+            og: false,
+            zone_prefix: 0,
+        };
 
     let preview = convert::shp_to_txt_preview(
         &[shp_path.clone()],
@@ -1058,7 +1074,9 @@ J1,2,30.000,30.000";
         oc: false,
         output_mode: "one_to_one".into(),
         filename_field: String::new(),
-    };
+            og: false,
+            zone_prefix: 0,
+        };
 
     let txt_result = convert::convert_shp_to_txt(
         &shp_paths,
@@ -1146,7 +1164,9 @@ J1,2,2.000,2.000";
         oc: false,
         output_mode: "one_to_one".into(),
         filename_field: String::new(),
-    };
+            og: false,
+            zone_prefix: 0,
+        };
 
     let txt_result = convert::convert_shp_to_txt(
         &shp_paths,
@@ -1193,7 +1213,9 @@ fn test_field_mapping_sentinels_area() {
     let options = convert::ShpToTxtOptions {
         ox: false, oj: true, on: false, oo: false, oc: false,
         output_mode: "one_to_one".into(), filename_field: String::new(),
-    };
+            og: false,
+            zone_prefix: 0,
+        };
 
     // 平方米（自动）：面积应为正数，2 位小数
     let mk = |area: &str| convert::FieldMapping {
@@ -1357,3 +1379,4 @@ fn test_read_dbf_gbk_no_cpg() {
     assert!(dkmc_values.iter().all(|v| !v.contains('\u{FFFD}')),
         "DKMC 不应含替换符 U+FFFD（说明编码识别错误），实际: {:?}", dkmc_values);
 }
+

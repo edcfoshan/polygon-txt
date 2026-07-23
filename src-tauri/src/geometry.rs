@@ -181,7 +181,8 @@ pub fn surface_to_indexed_rings(
     let mut part_index = 1u32;
 
     for part in &surface.parts {
-        let mut exterior = normalize_ring_orientation(&part.exterior, true);
+        let mut exterior: Vec<(f64, f64)> = part.exterior.clone();
+        // 保持原始顶点顺序（不做方向归一化，以免反转外环顺序导致第一个顶点错位）
         if reorder_northwest {
             exterior = rotate_ring_to_northwest_start(&exterior);
         }
@@ -196,7 +197,7 @@ pub fn surface_to_indexed_rings(
         part_index += 1;
 
         for hole in &part.holes {
-            let mut ring = normalize_ring_orientation(hole, false);
+            let mut ring = strip_closing_point(hole);
             if reorder_northwest {
                 ring = rotate_ring_to_northwest_start(&ring);
             }

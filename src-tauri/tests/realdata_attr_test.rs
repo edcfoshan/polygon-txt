@@ -48,6 +48,8 @@ fn real_shp_to_txt_custom_attr_descriptions() {
         on: false,
         oo: false,
         oc: false,
+        og: false,
+        zone_prefix: 0,
         output_mode: "one_to_one".into(),
         filename_field: String::new(),
     };

@@ -111,7 +111,7 @@ function normalizeH(h) {
 }
 
 const PP = [
-  { id: "usr", n: "自定义", h: { attrs: DEFAULT_ATTRS.map((r) => ({ ...r })), project_info: "" }, p: { pp: 3, pz: "auto", ox: 0, oj: 0, on: 0, oo: 1, oc: 0, om: 0 }, f: { fn: "__placeholder__", fi: "__placeholder__", fa: "__placeholder__", fu: "__placeholder__", fm: "__placeholder__", fd: "__placeholder__" } },
+  { id: "usr", n: "自定义", h: { attrs: DEFAULT_ATTRS.map((r) => ({ ...r })), project_info: "" }, p: { pp: 3, pz: "auto", ox: 0, oj: 0, on: 0, oo: 1, oc: 0, og: 0, om: 0 }, f: { fn: "", fi: "", fa: "__area_ha__", fu: "", fm: "", fd: "" } },
 ];
 
 const $ = (id) => document.getElementById(id);
@@ -418,21 +418,24 @@ function autoSetOutputDirT(filePath) {
 const FIELD_PLACEHOLDER = { fn: "DKMC", fi: "DKBH", fa: "MJ", fu: "DKYT", fm: "TFH", fd: "DLBM" };
 
 function autoMatchFields(fieldNames) {
-  // 统一三段式下拉：① 不填 ② 占位文字(默认选中) ③ 数据字段名
+  // 统一三段式下拉：① 不填 ② 占位文字 ③ 数据字段名
   // SHP/GDB 来源不同但结构一致；面积(fa)额外支持自动计算。
+  // 默认：fa=公顷(自动)，其余=不填
   for (const key of Object.keys(FIELD_PLACEHOLDER)) {
     const sel = $(key);
     if (!sel) continue;
+    const isArea = key === "fa";
     let html = '<option value="">不填</option>';
-    html += `<option value="__placeholder__" selected>${FIELD_PLACEHOLDER[key]} (占位)</option>`;
-    if (key === "fa") {
+    html += `<option value="__placeholder__">${FIELD_PLACEHOLDER[key]} (占位)</option>`;
+    if (isArea) {
       html += '<option value="__area_sqm__">平方米(自动)</option>';
-      html += '<option value="__area_ha__">公顷(自动)</option>';
+      html += '<option value="__area_ha__" selected>公顷(自动)</option>';
     }
     fieldNames.forEach((fn) => {
       html += `<option value="${fn}">${fn}</option>`;
     });
     sel.innerHTML = html;
+    if (!isArea) sel.value = ""; // 非面积字段默认不填
   }
 }
 
@@ -607,6 +610,7 @@ function getOptions() {
     on: $("on")?.checked || false,
     oo: $("oo")?.checked || false,
     oc: $("oc")?.value === "1",
+    og: $("og")?.checked || false,
     output_mode: outputMode,
     filename_field: filenameField,
   };
@@ -648,12 +652,12 @@ const ATTR_SELECT_OPTIONS = {
 function renderAttrRows(attrs) {
   const box = $("attrRows");
   if (!box) return;
+  const defaultCount = DEFAULT_ATTRS.length; // 前 N 行为标准行，不可删除
   box.innerHTML = "";
   attrs.forEach((row, i) => {
     const div = document.createElement("div");
     div.className = "attr-row";
     div.dataset.i = String(i);
-    // 值控件：键名命中候选表 → select；否则 input
     const opts = ATTR_SELECT_OPTIONS[row.k];
     let valueCtrl;
     if (opts) {
@@ -664,12 +668,16 @@ function renderAttrRows(attrs) {
     } else {
       valueCtrl = `<input class="av" data-i="${i}" data-f="v" value="${escAttr(row.v)}" placeholder="值">`;
     }
+    // 标准行（前 defaultCount 行）无按钮；用户新增行显示 × 删除按钮
+    const btnHtml = i >= defaultCount
+      ? `<button class="abtn del" data-act="del" data-i="${i}" title="删除此行">✕</button>`
+      : '';
     div.innerHTML =
       `<span class="grip" title="拖动排序">⠿</span>` +
       `<input class="ak" data-i="${i}" data-f="k" value="${escAttr(row.k)}" placeholder="键名">` +
       `<span class="aeq">=</span>` +
       valueCtrl +
-      `<button class="abtn del" data-act="del" data-i="${i}" title="删除">✕</button>`;
+      btnHtml;
     box.appendChild(div);
   });
 }
@@ -687,7 +695,7 @@ function collectAttrRows() {
 function bindAttrRowEvents() {
   const box = $("attrRows");
   if (!box) return;
-  // 删除
+  // 删除用户新增行（标准行无删除按钮，不会触发）
   box.addEventListener("click", (e) => {
     const btn = e.target.closest("button[data-act='del']");
     if (!btn) return;
@@ -825,6 +833,7 @@ window.ld = function (id) {
       $("oc").value = c.p.oc ? "1" : "0";
       $("oc").disabled = !$("oo").checked;
     }
+    if ($("og")) $("og").checked = !!c.p.og;
     if ($("om")) $("om").checked = !!c.p.om;
   }
   if (c.f) Object.keys(c.f).forEach((k) => { const e = $(k); if (e) e.value = c.f[k]; });

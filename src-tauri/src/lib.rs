@@ -7,6 +7,7 @@ pub mod txt;
 pub mod convert;
 pub mod gdb;
 pub mod geometry;
+pub mod projection;
 
 use convert::{FieldMapping, HeaderConfig, ShpToTxtOptions, TxtToShpOptions};
 
@@ -336,9 +337,15 @@ fn read_shp_to_txt_preview(
     source_path: Option<String>,
     header_cfg: HeaderConfig,
     field_mapping: FieldMapping,
-    options: ShpToTxtOptions,
+    mut options: ShpToTxtOptions,
     selected_layers: Option<Vec<String>>,
 ) -> Result<String, String> {
+    // 从表头提取带号注入 zone_prefix
+    if options.og {
+        if let Ok(zn) = header_cfg.attr("带号").trim().parse::<i32>() {
+            options.zone_prefix = zn;
+        }
+    }
     let shp_bufs: Vec<PathBuf> = shp_paths.iter().map(PathBuf::from).collect();
     let source_buf = source_path.as_ref().map(PathBuf::from);
 
@@ -361,12 +368,18 @@ fn run_shp_to_txt(
     source_path: Option<String>,
     header_cfg: HeaderConfig,
     field_mapping: FieldMapping,
-    options: ShpToTxtOptions,
+    mut options: ShpToTxtOptions,
     output_dir: String,
     selected_layers: Option<Vec<String>>,
 ) -> Result<ConvertResultPayload, String> {
     if header_cfg.attr("带号").trim().is_empty() {
         return Err("带号不能为空，请填写带号后再输出".to_string());
+    }
+    // 从表头提取带号注入 zone_prefix（convert_shp_to_txt 中也有此逻辑，此处提前确保预览一致性）
+    if options.og {
+        if let Ok(zn) = header_cfg.attr("带号").trim().parse::<i32>() {
+            options.zone_prefix = zn;
+        }
     }
     let out_dir = PathBuf::from(&output_dir);
     let shp_bufs: Vec<PathBuf> = shp_paths.iter().map(PathBuf::from).collect();

@@ -1,5 +1,6 @@
 use crate::gdb;
 use crate::geometry::{indexed_rings_to_surface, surface_to_indexed_rings, SurfaceGeometry};
+use crate::projection;
 use crate::shp;
 use crate::txt;
 use serde::{Deserialize, Serialize};
@@ -67,6 +68,12 @@ pub struct ShpToTxtOptions {
     /// 模式 2 下的文件名字段：DKMC / DKBH / FID / 空(序号)
     #[serde(default)]
     pub filename_field: String,
+    /// 输出公里网坐标：将经纬度坐标投影为高斯-克吕格平面坐标（米）
+    #[serde(default)]
+    pub og: bool,
+    /// 带号前缀（公里网输出时在原始东坐标前加 zone×1,000,000）
+    #[serde(default)]
+    pub zone_prefix: i32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -192,6 +199,24 @@ pub fn shp_to_txt_preview(
     options: &ShpToTxtOptions,
     selected_layers: Option<&[String]>,
 ) -> Result<String, String> {
+    // og=true 时自动将计量单位从"度"改为"米"
+    let mut header_cfg_owned;
+    let header_cfg = if options.og {
+        header_cfg_owned = HeaderConfig {
+            attrs: header_cfg.attrs.clone(),
+            project_info: header_cfg.project_info.clone(),
+        };
+        for row in &mut header_cfg_owned.attrs {
+            if row.k.trim() == "计量单位" && row.v.trim() == "度" {
+                row.v = "米".to_string();
+                break;
+            }
+        }
+        &header_cfg_owned
+    } else {
+        header_cfg
+    };
+
     let result = match source_type {
         Some("gdb") => {
             let path = source_path.ok_or_else(|| "缺少 GDB 路径".to_string())?;
@@ -241,6 +266,21 @@ pub fn convert_shp_to_txt(
     std::fs::create_dir_all(output_dir)
         .map_err(|e| format!("创建输出目录失败: {}", e))?;
 
+    // 从表头提取带号注入 options.zone_prefix（用户可能在勾选 og 之后填带号）
+    let options_with_zone;
+    let options = if options.og {
+        let zone_str = header_cfg.attr("带号");
+        let zn: i32 = zone_str.trim().parse().unwrap_or(0);
+        options_with_zone = {
+            let mut opts = options.clone();
+            opts.zone_prefix = zn;
+            opts
+        };
+        &options_with_zone
+    } else {
+        options
+    };
+
     // 统一展开成「导入源列表」
     let sources = collect_import_sources(
         shp_paths,
@@ -250,6 +290,24 @@ pub fn convert_shp_to_txt(
         options,
         selected_layers,
     )?;
+
+    // og=true 时自动将计量单位从"度"改为"米"
+    let mut header_cfg_owned;
+    let header_cfg = if options.og {
+        header_cfg_owned = HeaderConfig {
+            attrs: header_cfg.attrs.clone(),
+            project_info: header_cfg.project_info.clone(),
+        };
+        for row in &mut header_cfg_owned.attrs {
+            if row.k.trim() == "计量单位" && row.v.trim() == "度" {
+                row.v = "米".to_string();
+                break;
+            }
+        }
+        &header_cfg_owned
+    } else {
+        header_cfg
+    };
 
     match options.output_mode.as_str() {
         "split_by_plot" => convert_split_by_plot(sources, header_cfg, options, output_dir),
@@ -812,7 +870,65 @@ fn single_shp_to_source(
     options: &ShpToTxtOptions,
 ) -> Result<ImportSource, String> {
     let info = shp::read_shp_file_group(shp_path)?;
-    let features = shp::read_shp(shp_path)?;
+    let mut features = shp::read_shp(shp_path)?;
+
+
+    // —— 公里网投影：og=true 且坐标单位为度时，将几何坐标投影为高斯-克吕格平面坐标 ——
+    if options.og {
+        let is_degree = info.crs_info.get("u").map(|s| s == "度").unwrap_or(false);
+        let crs_name = info.crs_info.get("c").map(|s| s.as_str()).unwrap_or("");
+        let cm_str = info
+            .crs_info
+            .get("cm")
+            .or_else(|| info.crs_info.get("z"))
+            .and_then(|s| s.parse::<f64>().ok());
+
+        // 校验：从第一个 feature 取样，如果坐标明显超出度范围（|x|>360），则数据实际是米
+        let really_is_degree = features.first().map_or(is_degree, |f| {
+            f.surface.parts.first().map_or(is_degree, |p| {
+                p.exterior.first().map_or(is_degree, |&(x, y)| {
+                    is_degree && x.abs() < 360.0 && y.abs() < 90.0
+                })
+            })
+        });
+
+        if really_is_degree {
+            let ellipsoid = projection::Ellipsoid::from_crs_name(crs_name)
+                .unwrap_or(projection::Ellipsoid::CGCS2000);
+            // 中央经线优先级：表头带号×3 > PRJ 提取 > 兜底
+            let central_meridian = if options.zone_prefix > 0 {
+                options.zone_prefix as f64 * 3.0
+            } else {
+                cm_str.unwrap_or(117.0)
+            };
+            for feat in &mut features {
+                feat.surface = projection::project_surface(&feat.surface, central_meridian, ellipsoid);
+            }
+        }
+
+        // 东坐标前加带号前缀（无论坐标来自投影还是原本就是米）
+        // zone_prefix 由 convert_shp_to_txt 从表头"带号"注入
+        let zn = options.zone_prefix;
+        if zn > 0 {
+            // 中国标准格式：东坐标 = 带号×1,000,000 + 500km假东偏 + 真东偏
+            // 投影过的坐标已含假东偏，仅加带号；未投影的原始米坐标需补假东偏
+            let zn_f = zn as f64 * 1_000_000.0;
+            let fe = if really_is_degree { 0.0 } else { 500_000.0 };
+            for feat in &mut features {
+                for part in &mut feat.surface.parts {
+                    for (x, _) in &mut part.exterior {
+                        *x = zn_f + fe + *x;
+                    }
+                    for hole in &mut part.holes {
+                        for (x, _) in hole {
+                            *x = zn_f + fe + *x;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     let stem = shp_path
         .file_stem()
         .map(|s| s.to_string_lossy().to_string())
@@ -828,7 +944,7 @@ fn single_shp_to_source(
         let plot_dlbm = resolve_value(&field_mapping.dlbm, "dlbm", &info.field_names, &record);
         let plot_id = {
             let v = resolve_value(&field_mapping.id, "id", &info.field_names, &record);
-            if v.is_empty() { format!("FID_{}", fi) } else { v }
+            if v.is_empty() { (fi + 1).to_string() } else { v }
         };
 
         // 完整属性表（用于模式 2 按字段命名）
@@ -1114,6 +1230,33 @@ fn calculate_area_from_surface(surface: &SurfaceGeometry) -> f64 {
     total.abs()
 }
 
+/// 格式化面积值：确保不用科学计数法，保留至少 4 位小数
+fn format_area_value(val: &str) -> String {
+    if let Ok(v) = val.parse::<f64>() {
+        let s = format!("{:.10}", v);
+        // 去掉尾部多余的 0 和末尾的小数点，但保留至少 4 位小数
+        let trimmed = s.trim_end_matches('0').to_string();
+        let result = if trimmed.ends_with('.') {
+            format!("{:.4}", v)
+        } else {
+            let parts: Vec<&str> = trimmed.splitn(2, '.').collect();
+            if parts.len() == 2 && parts[1].len() < 4 {
+                format!("{:.4}", v)
+            } else {
+                trimmed
+            }
+        };
+        // 如果结果包含科学计数法的 'e'，用 fixed 格式重做
+        if result.contains('e') || result.contains('E') {
+            format!("{:.4}", v)
+        } else {
+            result
+        }
+    } else {
+        val.to_string()
+    }
+}
+
 /// 解析面积值（SHP 版，含自动计算）
 fn resolve_area(
     mapping: &str,
@@ -1124,9 +1267,16 @@ fn resolve_area(
     match mapping {
         "" => String::new(),
         "__placeholder__" => "MJ".to_string(),
-        "__area_sqm__" => format!("{:.2}", calculate_area_from_surface(surface)),
-        "__area_ha__" => format!("{:.4}", calculate_area_from_surface(surface) / 10000.0),
-        other => resolve_value(other, "area", field_names, record),
+        "__area_sqm__" => {
+            let area = calculate_area_from_surface(surface);
+            // 面积接近整数时保留 4 位，否则保留 4 位小数
+            format!("{:.4}", area)
+        }
+        "__area_ha__" => {
+            let area = calculate_area_from_surface(surface) / 10000.0;
+            format!("{:.4}", area)
+        }
+        other => format_area_value(&resolve_value(other, "area", field_names, record)),
     }
 }
 
@@ -1139,9 +1289,15 @@ fn resolve_area_map(
     match mapping {
         "" => String::new(),
         "__placeholder__" => "MJ".to_string(),
-        "__area_sqm__" => format!("{:.2}", calculate_area_from_surface(surface)),
-        "__area_ha__" => format!("{:.4}", calculate_area_from_surface(surface) / 10000.0),
-        other => resolve_value_map(other, "area", attrs),
+        "__area_sqm__" => {
+            let area = calculate_area_from_surface(surface);
+            format!("{:.4}", area)
+        }
+        "__area_ha__" => {
+            let area = calculate_area_from_surface(surface) / 10000.0;
+            format!("{:.4}", area)
+        }
+        other => format_area_value(&resolve_value_map(other, "area", attrs)),
     }
 }
 /// 从坐标点列表中提取高斯-克吕格带号。

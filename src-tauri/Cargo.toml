@@ -38,3 +38,4 @@ geonative-filegdb = "0.2"
 geonative-shapefile = "0.2"
 geo-types = "0.7"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
+proj-core = "0.9"

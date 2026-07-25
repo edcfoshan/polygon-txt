@@ -7,6 +7,7 @@ pub mod txt;
 pub mod convert;
 pub mod gdb;
 pub mod geometry;
+pub mod projection;
 
 use convert::{FieldMapping, HeaderConfig, ShpToTxtOptions, TxtToShpOptions};
 
@@ -44,6 +45,8 @@ struct GdbImportResult {
     skipped: Vec<String>,
     /// 从坐标反推的带号（探测失败为 None，前端据此决定是否回填）
     zone: Option<String>,
+    /// 坐标单位（"度"/"米"），由坐标采样判定，前端据此控制 og 按钮可用性
+    crs_info: HashMap<String, String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -244,6 +247,26 @@ fn import_gdb(app: tauri::AppHandle) -> Result<GdbImportResult, String> {
         })
         .collect();
 
+    // 采样坐标：反推带号 + 判定单位（度/米，用于前端 og 按钮门禁）
+    let first_pt = all_features
+        .iter()
+        .flat_map(|feats| feats.iter())
+        .flat_map(|f| f.points.iter())
+        .next()
+        .copied();
+    let eastings: Vec<f64> = all_features
+        .iter()
+        .flat_map(|feats| feats.iter())
+        .flat_map(|f| f.points.iter())
+        .map(|(easting, _)| *easting)
+        .collect();
+    let zone = derive_zone_from_eastings(&eastings);
+    let mut crs_info = HashMap::new();
+    if let Some((x, y)) = first_pt {
+        let u = if x.abs() <= 360.0 && y.abs() <= 90.0 { "度" } else { "米" };
+        crs_info.insert("u".to_string(), u.to_string());
+    }
+
     Ok(GdbImportResult {
         path: gdb_path.to_string_lossy().to_string(),
         name,
@@ -251,16 +274,8 @@ fn import_gdb(app: tauri::AppHandle) -> Result<GdbImportResult, String> {
         field_names,
         num_features,
         skipped,
-        zone: {
-            // 采样东坐标反推带号（与 SHP 从 .prj 中央经线反推对齐）
-            let eastings: Vec<f64> = all_features
-                .iter()
-                .flat_map(|feats| feats.iter())
-                .flat_map(|f| f.points.iter())
-                .map(|(easting, _)| *easting)
-                .collect();
-            derive_zone_from_eastings(&eastings)
-        },
+        zone,
+        crs_info,
     })
 }
 

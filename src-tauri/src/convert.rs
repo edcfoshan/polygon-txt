@@ -1,5 +1,6 @@
 use crate::gdb;
 use crate::geometry::{indexed_rings_to_surface, surface_to_indexed_rings, SurfaceGeometry};
+use crate::projection;
 use crate::shp;
 use crate::txt;
 use serde::{Deserialize, Serialize};
@@ -67,6 +68,90 @@ pub struct ShpToTxtOptions {
     /// 模式 2 下的文件名字段：DKMC / DKBH / FID / 空(序号)
     #[serde(default)]
     pub filename_field: String,
+    /// 输出公里网：大地坐标系（度）→ CGCS2000 高斯-克吕格平面坐标（米）。仅对经纬度输入生效。
+    #[serde(default)]
+    pub og: bool,
+    /// 带类型：3 = 3 度带（默认），6 = 6 度带。仅 og 时有意义。
+    #[serde(default = "default_zone_type")]
+    pub zone_type: u8,
+}
+
+fn default_zone_type() -> u8 {
+    3
+}
+
+// ─── og 公里网投影（仅大地坐标系输入生效） ───
+
+/// 投影配置：og 勾选时由表头「带号」+ zone_type 解析得出，下传给各源函数。
+#[derive(Debug, Clone, Copy)]
+struct ProjectionConfig {
+    zone: i32,
+    zone_type: u8,
+}
+
+impl ProjectionConfig {
+    /// og 未勾选 → None；勾选 → 从表头读带号（缺失则 zone=0，由源函数按需报错）。
+    fn from_options(options: &ShpToTxtOptions, header_cfg: &HeaderConfig) -> Option<ProjectionConfig> {
+        if !options.og {
+            return None;
+        }
+        let zone = header_cfg.attr("带号").trim().parse::<i32>().unwrap_or(0);
+        Some(ProjectionConfig {
+            zone,
+            zone_type: options.zone_type,
+        })
+    }
+}
+
+/// 判定是否为大地坐标系（度）。优先坐标采样（PRJ 误标时仍可靠），回退 crs_info 的单位声明。
+fn sample_is_geodetic(sample: Option<(f64, f64)>, crs_info: &HashMap<String, String>) -> bool {
+    if let Some((x, y)) = sample {
+        x.abs() <= 360.0 && y.abs() <= 90.0
+    } else {
+        crs_info.get("u").map(|s| s == "度").unwrap_or(false)
+    }
+}
+
+/// 对单个 surface 做高斯-克吕格投影并加带号前缀。仅在大地坐标系输入时调用。
+/// 东坐标 = 带号×1,000,000 + 500km 假东偏 + 真东偏（投影本身已含 500km 假东偏）。
+fn project_surface_with_prefix(
+    surface: &SurfaceGeometry,
+    cfg: &ProjectionConfig,
+    ellipsoid: projection::Ellipsoid,
+) -> Result<SurfaceGeometry, String> {
+    if cfg.zone <= 0 {
+        return Err("勾选了输出公里网但未填写带号".to_string());
+    }
+    let cm = if cfg.zone_type == 6 {
+        cfg.zone as f64 * 6.0 - 3.0
+    } else {
+        cfg.zone as f64 * 3.0
+    };
+    let mut s = projection::project_surface(surface, cm, ellipsoid);
+    let zone_f = cfg.zone as f64 * 1_000_000.0;
+    for part in &mut s.parts {
+        for (x, _) in &mut part.exterior {
+            *x += zone_f;
+        }
+        for hole in &mut part.holes {
+            for (x, _) in hole.iter_mut() {
+                *x += zone_f;
+            }
+        }
+    }
+    Ok(s)
+}
+
+/// og 输出恒为米：克隆表头并把「计量单位」行改为「米」。
+fn header_with_meter_unit(header_cfg: &HeaderConfig) -> HeaderConfig {
+    let mut h = header_cfg.clone();
+    for row in &mut h.attrs {
+        if row.k.trim() == "计量单位" {
+            row.v = "米".to_string();
+            break;
+        }
+    }
+    h
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -192,12 +277,22 @@ pub fn shp_to_txt_preview(
     options: &ShpToTxtOptions,
     selected_layers: Option<&[String]>,
 ) -> Result<String, String> {
+    // og 输出恒为米：改写表头「计量单位」（仅 og 勾选时）
+    let header_owned;
+    let header_cfg: &HeaderConfig = if options.og {
+        header_owned = header_with_meter_unit(header_cfg);
+        &header_owned
+    } else {
+        header_cfg
+    };
+    let proj_cfg = ProjectionConfig::from_options(options, header_cfg);
+
     let result = match source_type {
         Some("gdb") => {
             let path = source_path.ok_or_else(|| "缺少 GDB 路径".to_string())?;
             let info = gdb::read_gdb(path)?;
             let plots =
-                gdb_features_to_plots(&info, field_mapping, options, selected_layers)?;
+                gdb_features_to_plots(&info, field_mapping, options, proj_cfg.as_ref(), selected_layers)?;
             txt::generate_txt(
                 &header_cfg.project_info,
                 &header_cfg.attrs,
@@ -206,7 +301,7 @@ pub fn shp_to_txt_preview(
                 options.oc,
             )
         }
-        _ => shp_files_to_txt_preview(shp_paths, header_cfg, field_mapping, options)?,
+        _ => shp_files_to_txt_preview(shp_paths, header_cfg, field_mapping, options, proj_cfg.as_ref())?,
     };
 
     Ok(result.lines().take(2000).collect::<Vec<_>>().join("\n"))
@@ -217,8 +312,9 @@ fn shp_files_to_txt_preview(
     header_cfg: &HeaderConfig,
     field_mapping: &FieldMapping,
     options: &ShpToTxtOptions,
+    proj_cfg: Option<&ProjectionConfig>,
 ) -> Result<String, String> {
-    let plots = shp_files_to_plots(shp_paths, field_mapping, options)?;
+    let plots = shp_files_to_plots(shp_paths, field_mapping, options, proj_cfg)?;
     Ok(txt::generate_txt(
         &header_cfg.project_info,
         &header_cfg.attrs,
@@ -241,6 +337,16 @@ pub fn convert_shp_to_txt(
     std::fs::create_dir_all(output_dir)
         .map_err(|e| format!("创建输出目录失败: {}", e))?;
 
+    // og 输出恒为米：改写表头「计量单位」（仅 og 勾选时）
+    let header_owned;
+    let header_cfg: &HeaderConfig = if options.og {
+        header_owned = header_with_meter_unit(header_cfg);
+        &header_owned
+    } else {
+        header_cfg
+    };
+    let proj_cfg = ProjectionConfig::from_options(options, header_cfg);
+
     // 统一展开成「导入源列表」
     let sources = collect_import_sources(
         shp_paths,
@@ -248,6 +354,7 @@ pub fn convert_shp_to_txt(
         source_path,
         field_mapping,
         options,
+        proj_cfg.as_ref(),
         selected_layers,
     )?;
 
@@ -265,6 +372,7 @@ fn collect_import_sources(
     source_path: Option<&PathBuf>,
     field_mapping: &FieldMapping,
     options: &ShpToTxtOptions,
+    proj_cfg: Option<&ProjectionConfig>,
     selected_layers: Option<&[String]>,
 ) -> Result<Vec<ImportSource>, String> {
     let mut sources = Vec::new();
@@ -272,11 +380,11 @@ fn collect_import_sources(
         Some("gdb") => {
             let path = source_path.ok_or_else(|| "缺少 GDB 路径".to_string())?;
             let info = gdb::read_gdb(path)?;
-            sources = gdb_to_sources(&info, field_mapping, options, selected_layers)?;
+            sources = gdb_to_sources(&info, field_mapping, options, proj_cfg, selected_layers)?;
         }
         _ => {
             for shp_path in shp_paths {
-                sources.push(single_shp_to_source(shp_path, field_mapping, options)?);
+                sources.push(single_shp_to_source(shp_path, field_mapping, options, proj_cfg)?);
             }
         }
     }
@@ -511,6 +619,7 @@ fn txt_to_shp_one_to_one(
             .unwrap_or_else(|| "output".to_string());
 
         // 带号优先级：坐标提取值 > 表单值 > 无（跳过）
+        // 东坐标的 8 位前缀就是带号本身，比人工填的声明值可靠；矛盾时以坐标为准并记提示。
         let extracted = extract_zone_from_coords(&parsed.plots);
         let declared = parsed.attrs.get("带号").map(|s| s.as_str());
         let final_zone = match (extracted, header_cfg.attr("带号").as_str()) {
@@ -797,10 +906,11 @@ fn shp_files_to_plots(
     shp_paths: &[PathBuf],
     field_mapping: &FieldMapping,
     options: &ShpToTxtOptions,
+    proj_cfg: Option<&ProjectionConfig>,
 ) -> Result<Vec<txt::PlotData>, String> {
     let mut all_plots = Vec::new();
     for shp_path in shp_paths {
-        all_plots.extend(single_shp_to_plots(shp_path, field_mapping, options)?);
+        all_plots.extend(single_shp_to_plots(shp_path, field_mapping, options, proj_cfg)?);
     }
     Ok(all_plots)
 }
@@ -810,6 +920,7 @@ fn single_shp_to_source(
     shp_path: &PathBuf,
     field_mapping: &FieldMapping,
     options: &ShpToTxtOptions,
+    proj_cfg: Option<&ProjectionConfig>,
 ) -> Result<ImportSource, String> {
     let info = shp::read_shp_file_group(shp_path)?;
     let features = shp::read_shp(shp_path)?;
@@ -818,17 +929,45 @@ fn single_shp_to_source(
         .map(|s| s.to_string_lossy().to_string())
         .unwrap_or_else(|| "output".to_string());
 
+    // og 投影：采样判大地坐标系，是则对每个 feature 投影（仅大地坐标系输入生效）
+    let sample = features
+        .first()
+        .and_then(|f| f.surface.parts.first())
+        .and_then(|p| p.exterior.first())
+        .copied();
+    let ellipsoid = info
+        .crs_info
+        .get("c")
+        .and_then(|n| projection::Ellipsoid::from_crs_name(n))
+        .unwrap_or(projection::Ellipsoid::CGCS2000);
+    let proj_apply = match proj_cfg {
+        Some(cfg) if sample_is_geodetic(sample, &info.crs_info) => {
+            if cfg.zone <= 0 {
+                return Err("勾选了输出公里网但未填写带号".to_string());
+            }
+            true
+        }
+        _ => false,
+    };
+
     let mut plots = Vec::new();
     for (fi, feat) in features.iter().enumerate() {
         let record = info.field_records.get(fi).cloned().unwrap_or_default();
+        let projected;
+        let surface: &SurfaceGeometry = if proj_apply {
+            projected = project_surface_with_prefix(&feat.surface, proj_cfg.unwrap(), ellipsoid)?;
+            &projected
+        } else {
+            &feat.surface
+        };
         let plot_name = resolve_value(&field_mapping.name, "name", &info.field_names, &record);
-        let plot_area = resolve_area(&field_mapping.area, &feat.surface, &info.field_names, &record);
+        let plot_area = resolve_area(&field_mapping.area, surface, &info.field_names, &record);
         let plot_use = resolve_value(&field_mapping.use_field, "use_field", &info.field_names, &record);
         let plot_tfh = resolve_value(&field_mapping.tfh, "tfh", &info.field_names, &record);
         let plot_dlbm = resolve_value(&field_mapping.dlbm, "dlbm", &info.field_names, &record);
         let plot_id = {
             let v = resolve_value(&field_mapping.id, "id", &info.field_names, &record);
-            if v.is_empty() { format!("FID_{}", fi) } else { v }
+            if v.is_empty() { (fi + 1).to_string() } else { v }
         };
 
         // 完整属性表（用于模式 2 按字段命名）
@@ -841,7 +980,7 @@ fn single_shp_to_source(
 
         plots.push(PlotWithSource {
             plot: build_plot_data(
-                &feat.surface,
+                surface,
                 plot_id,
                 plot_name,
                 plot_area,
@@ -864,8 +1003,9 @@ fn single_shp_to_plots(
     shp_path: &PathBuf,
     field_mapping: &FieldMapping,
     options: &ShpToTxtOptions,
+    proj_cfg: Option<&ProjectionConfig>,
 ) -> Result<Vec<txt::PlotData>, String> {
-    let src = single_shp_to_source(shp_path, field_mapping, options)?;
+    let src = single_shp_to_source(shp_path, field_mapping, options, proj_cfg)?;
     Ok(src.plots.into_iter().map(|p| p.plot).collect())
 }
 
@@ -873,9 +1013,10 @@ fn gdb_features_to_plots(
     info: &gdb::GdbFileInfo,
     field_mapping: &FieldMapping,
     options: &ShpToTxtOptions,
+    proj_cfg: Option<&ProjectionConfig>,
     selected_layers: Option<&[String]>,
 ) -> Result<Vec<txt::PlotData>, String> {
-    let sources = gdb_to_sources(info, field_mapping, options, selected_layers)?;
+    let sources = gdb_to_sources(info, field_mapping, options, proj_cfg, selected_layers)?;
     let mut all_plots = Vec::new();
     for src in sources {
         for p in src.plots {
@@ -890,10 +1031,14 @@ fn gdb_to_sources(
     info: &gdb::GdbFileInfo,
     field_mapping: &FieldMapping,
     options: &ShpToTxtOptions,
+    proj_cfg: Option<&ProjectionConfig>,
     selected_layers: Option<&[String]>,
 ) -> Result<Vec<ImportSource>, String> {
     let gdb_stem = info.name.clone();
     let mut sources = Vec::new();
+    // GDB 不带 crs_info：ellipsoid 默认 CGCS2000，is_geodetic 纯靠坐标采样判定
+    let ellipsoid = projection::Ellipsoid::CGCS2000;
+    let empty_crs: HashMap<String, String> = HashMap::new();
 
     for (layer_idx, features) in info.all_features.iter().enumerate() {
         let layer_info = info.layers.get(layer_idx);
@@ -911,22 +1056,45 @@ fn gdb_to_sources(
             }
         }
 
+        // og 投影：采样本图层首个点判大地坐标系（是则投影，仅大地坐标系输入生效）
+        let sample = features
+            .first()
+            .and_then(|f| f.surface.parts.first())
+            .and_then(|p| p.exterior.first())
+            .copied();
+        let proj_apply = match proj_cfg {
+            Some(cfg) if sample_is_geodetic(sample, &empty_crs) => {
+                if cfg.zone <= 0 {
+                    return Err("勾选了输出公里网但未填写带号".to_string());
+                }
+                true
+            }
+            _ => false,
+        };
+
         let stem = format!("{}_{}", gdb_stem, layer_name);
         let mut plots = Vec::new();
         for (fi, feat) in features.iter().enumerate() {
+            let projected;
+            let surface: &SurfaceGeometry = if proj_apply {
+                projected = project_surface_with_prefix(&feat.surface, proj_cfg.unwrap(), ellipsoid)?;
+                &projected
+            } else {
+                &feat.surface
+            };
             let plot_name = resolve_value_map(&field_mapping.name, "name", &feat.attributes);
-            let plot_area = resolve_area_map(&field_mapping.area, &feat.surface, &feat.attributes);
+            let plot_area = resolve_area_map(&field_mapping.area, surface, &feat.attributes);
             let plot_use = resolve_value_map(&field_mapping.use_field, "use_field", &feat.attributes);
             let plot_tfh = resolve_value_map(&field_mapping.tfh, "tfh", &feat.attributes);
             let plot_dlbm = resolve_value_map(&field_mapping.dlbm, "dlbm", &feat.attributes);
             let plot_id = {
                 let v = resolve_value_map(&field_mapping.id, "id", &feat.attributes);
-                if v.is_empty() { format!("FID_{}", fi) } else { v }
+                if v.is_empty() { (fi + 1).to_string() } else { v }
             };
 
             plots.push(PlotWithSource {
                 plot: build_plot_data(
-                    &feat.surface,
+                    surface,
                     plot_id,
                     plot_name,
                     plot_area,

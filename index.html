@@ -940,6 +940,14 @@ body::before{
             <option value="1">续编</option>
           </select>
         </div>
+        <div class="oc-row">
+          <label class="ck" style="margin:0"><input type="checkbox" id="og" disabled>输出公里网（经纬度→高斯-克吕格）</label>
+          <select id="oz" disabled style="margin-left:auto">
+            <option value="3">3度带</option>
+            <option value="6">6度带</option>
+          </select>
+        </div>
+        <div id="ogWarn" style="display:none;font-size:10px;color:#c0392b;margin:-4px 0 4px">基准非 CGCS2000，按 CGCS2000 投影可能有百米级偏差</div>
 
         <div class="div"></div>
 

@@ -50,6 +50,7 @@ pub fn signed_area(points: &[(f64, f64)]) -> f64 {
 }
 
 pub fn rotate_ring_to_northwest_start(points: &[(f64, f64)]) -> Vec<(f64, f64)> {
+    // 界址点成果约定从西北角起算：取 y 最大（最北）、并列时 x 最小（最西）的点作起点，环旋到它。
     let mut ring = strip_closing_point(points);
     if ring.len() < 2 {
         return ring;
@@ -71,6 +72,8 @@ pub fn rotate_ring_to_northwest_start(points: &[(f64, f64)]) -> Vec<(f64, f64)> 
 }
 
 pub fn normalize_ring_orientation(points: &[(f64, f64)], clockwise: bool) -> Vec<(f64, f64)> {
+    // 鞋带公式定方向（有符号面积 <0 为顺时针）。外环统一顺时针、洞统一逆时针——本工具的环向约定，
+    // 后续 TXT 输出与洞识别都依赖这个一致方向。
     let ring = strip_closing_point(points);
     if ring.len() < 3 {
         return ring;
@@ -124,6 +127,8 @@ pub fn build_surface_from_rings(rings: &[Vec<(f64, f64)>]) -> SurfaceGeometry {
     }
 
     let areas: Vec<f64> = clean.iter().map(|ring| signed_area(ring).abs()).collect();
+    // 洞识别靠嵌套深度：每个环找"包含它且面积最小的外层环"作容器，再沿容器链数深度。
+    // 深度偶数=外环、奇数=洞——这样"外环套洞套外环套洞"的嵌套（如洞里的小岛）也能正确切分。
     let mut containers: Vec<Option<usize>> = vec![None; clean.len()];
 
     for i in 0..clean.len() {

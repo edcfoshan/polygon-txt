@@ -1,6 +1,6 @@
 [package]
 name = "jisig-bpoint-converter"
-version = "1.6.1"
+version = "2.0.0"
 description = "界址点互转工具 — SHP/GDB ↔ TXT 双向转换"
 authors = ["极思G"]
 edition = "2021"
@@ -38,3 +38,4 @@ geonative-filegdb = "0.2"
 geonative-shapefile = "0.2"
 geo-types = "0.7"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
+proj-core = "0.9"

@@ -60,6 +60,7 @@ index.html (CSS 内联, Google Fonts CDN)
 | `txt.rs` | TXT 三段式格式解析与生成 |
 | `gdb.rs` + `gdb/gdb_templates.rs` | GDB 读取（geonative-filegdb）+ 模板化最小 OpenFileGDB 写入 |
 | `convert.rs` | 转换编排：SHP/GDB→TXT（三模式：一对一/按地块拆分/全合并）、TXT→SHP（一对一/合并） |
+| `projection.rs` | 高斯-克吕格投影正算（proj-core EPSG 标准，回退经典 Krüger 公式 + 告警）。仅 og 且输入为大地坐标系（度）时投影 |
 
 ### 输出模式（面→TXT）
 - **一对一 (`one_to_one`)**: 每个导入源（SHP 文件 / GDB 要素类）输出一个 TXT。同名冲突自动追加 `_2/_3`
@@ -68,6 +69,7 @@ index.html (CSS 内联, Google Fonts CDN)
 
 ### 转换选项（面→TXT，`ShpToTxtOptions` in convert.rs）
 - `ox` XY 坐标标反 / `oj` 点号前加"J" / `on` 起始点西北角 / `oo` 首末点重合（勾上才在每个环末尾输出闭合点）/ `oc` 闭合点编号模式（false=回到环首点 默认，true=续编；前端下拉，`oo` 未勾时置灰）
+- `og` 输出公里网：仅当输入为大地坐标系（单位=度）时可用（前端按 `crs_info.u` 给按钮门禁，米坐标置灰）。勾选 → 经纬度投影为 CGCS2000 高斯-克吕格平面坐标（米）+ 带号前缀；计量单位自动 度→米。`zone_type`（3/6 度带）决定中央经线 `CM = 3° ? 带号×3 : 带号×6−3`。带号取自表头，仅 og+大地坐标系 时必填。逻辑在 `convert.rs::single_shp_to_source` / `gdb_to_sources`，靠坐标采样判度/米（PRJ 误标也可靠）
 - `output_mode`（一对一/按地块拆分/全合并）、`filename_field`（拆分模式文件名字段）
 - 前端三处同步：`getOptions()` 收集（[src/main.js](src/main.js)）、`applyPreset` 恢复、`PP` 预设 `p` 对象存储。**新增选项必须三处都加 + PP 默认值**，否则预设保存/恢复丢失
 

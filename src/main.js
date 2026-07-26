@@ -58,8 +58,10 @@ let txtFiles = [];
 let cur = "usr";
 let cfgs = {};
 let headerManual = {};
+let projMode = "keep"; // prototype: dynamic projection selection
 let lastPreviewKey = "";
 let previewTimer = null;
+let autoSaveTimer = null;
 let theme = "light";
 let sourceType = null;
 let sourcePath = null;
@@ -391,6 +393,152 @@ window.removeFile = function (i) {
   updatePreview();
 };
 
+
+// ═══ Dynamic Projection Modal (Prototype) ═══
+// 暂用 mock 检测（基于 currentCrsInfo）；真实实现由 Rust 端补 detect.rs 后接入。
+//
+// URL hash demo（仅 prototype 用，确认 UI 后删除）：
+//   #demo=geodetic        假装大地（度）
+//   #demo=projected-3     假装投影 3°带
+//   #demo=projected-6     假装投影 6°带
+//   #demo=unknown         假装未知
+function getDemoCrInfo(type) {
+  switch (type) {
+    case 'geodetic':    return { c: 'CGCS2000', u: '度',  b: '3', z: 38 };
+    case 'projected-3': return { c: 'CGCS2000', u: '米',  b: '3', z: 38 };
+    case 'projected-6': return { c: 'CGCS2000', u: '米',  b: '6', z: 20 };
+    case 'unknown':     return { c: '',         u: '米',  b: null, z: null };
+  }
+  return null;
+}
+function applyDemoSeed(type) {
+  const info = getDemoCrInfo(type);
+  if (!info) return false;
+  loadedFiles = [{ file_name: 'demo.shp', field_names: [], crs_info: info }];
+  txtFiles = [];
+  processImport();
+  toast('已注入 demo 场景: ' + type);
+  return true;
+}
+
+function updateProjButton() {
+  const btn = $('btnProj');
+  if (!btn) return;
+  const ok = loadedFiles.length === 1;
+  btn.disabled = !ok;
+  btn.title = ok ? '点击打开动态投影设置' : '请先导入单个 SHP 或 GDB';
+  const label = $('projModeLabel');
+  if (!label) return;
+  if (projMode === 'keep' || !ok) {
+    label.style.display = 'none';
+    btn.classList.remove('on');
+  } else {
+    label.style.display = '';
+    const tag = projMode === 'A' ? '大地→投影 3°带'
+            : projMode === 'B' ? '大地→投影 6°带'
+            : projMode === 'C' ? '投影→大地'
+            : projMode === 'F' ? '投影 3°→6°'
+            : projMode === 'G' ? '投影 6°→3°' : projMode;
+    label.textContent = tag;
+    btn.classList.add('on');
+  }
+}
+
+function renderProjDetection(info) {
+  const grid = $('projDetectGrid');
+  if (!grid) return;
+  const u = info && info.u || '';
+  const c = info && info.c || '';
+  const b = info && info.b;
+  const z = info && info.z;
+  const form = u === '度' ? '大地（度）'
+             : u === '米' ? '投影（米）'
+             : '<span class="na">未识别</span>';
+  let band = '<span class="na">—</span>';
+  if (b === '3') band = '3°带';
+  else if (b === '6') band = '6°带';
+  let zone = '<span class="na">—</span>';
+  if (typeof z === 'number' && z > 0) zone = z + ' <span class="ok">✓</span>';
+  grid.innerHTML = [
+    '<span class="k">坐标系</span><span class="v">' + (c || '<span class="na">—</span>') + '</span>',
+    '<span class="k">形式</span><span class="v">' + form + '</span>',
+    '<span class="k">分带</span><span class="v">' + band + '</span>',
+    '<span class="k">带号</span><span class="v">' + zone + '</span>'
+  ].join('');
+}
+
+function getProjAvailableModes(info) {
+  const u = info && info.u;
+  const b = info && info.b;
+  if (!info || !u) return [];
+  const modes = [];
+  if (u === '度') {
+    modes.push({ id: 'A', label: '大地 → 投影', tag: '3°带' });
+    modes.push({ id: 'B', label: '大地 → 投影', tag: '6°带' });
+  } else if (u === '米') {
+    modes.push({ id: 'C', label: '投影 → 大地（反算）', tag: '' });
+    if (b === '3') modes.push({ id: 'F', label: '投影 3° ↔ 6° 互转', tag: '→ 6°' });
+    else if (b === '6') modes.push({ id: 'G', label: '投影 6° ↔ 3° 互转', tag: '→ 3°' });
+  }
+  return modes;
+}
+
+function renderProjModes(info) {
+  const box = $('projModes');
+  const qc = $('projQcLabel');
+  if (!box) return;
+  const modes = getProjAvailableModes(info);
+  const items = [{ id: 'keep', label: '保持原样（不转换）', tag: '' }].concat(modes);
+  const currentMode = projMode && items.some(function (m) { return m.id === projMode; }) ? projMode : 'keep';
+  box.innerHTML = items.map(function (m) {
+    const on = m.id === currentMode;
+    return '<label class="proj-mode' + (on ? ' on' : '') + '">'
+      + '<input type="radio" name="projMode" value="' + m.id + '"' + (on ? ' checked' : '') + '>'
+      + m.label
+      + (m.tag ? ' <span class="mode-tag">' + m.tag + '</span>' : '')
+      + '</label>';
+  }).join('');
+  if (qc) {
+    qc.classList.toggle('disabled', modes.length === 0);
+    const qcInput = $('projQc');
+    if (qcInput) qcInput.disabled = modes.length === 0;
+  }
+  box.querySelectorAll('input[name=projMode]').forEach(function (el) {
+    el.addEventListener('change', function () {
+      projMode = el.value;
+      box.querySelectorAll('.proj-mode').forEach(function (d) {
+        d.classList.toggle('on', d.querySelector('input').checked);
+      });
+      updateProjButton();
+    });
+  });
+}
+
+window.openProjModal = function () {
+  const overlay = $('projModal');
+  if (!overlay) return;
+  const info = currentCrsInfo || (loadedFiles[0] && loadedFiles[0].crs_info);
+  renderProjDetection(info);
+  renderProjModes(info);
+  const qcInput = $('projQc');
+  if (qcInput) qcInput.checked = !!window._projQc;
+  overlay.classList.add('on');
+};
+
+window.closeProjModal = function () {
+  const overlay = $('projModal');
+  if (overlay) overlay.classList.remove('on');
+};
+
+window.applyProjMode = function () {
+  const sel = document.querySelector('input[name=projMode]:checked');
+  projMode = sel ? sel.value : 'keep';
+  window._projQc = !!$('projQc') && $('projQc').checked;
+  toast('动态投影: ' + (projMode === 'keep' ? '保持原样' : projMode));
+  updateProjButton();
+  window.closeProjModal();
+};
+
 // 当前导入源的 CRS 信息（og 门禁 / 软提示用）
 let currentCrsInfo = null;
 
@@ -424,6 +572,7 @@ function processImport() {
   if (first.crs_info) autoFillHeader(first.crs_info);
   syncOgGate(first.crs_info);
   updatePreview();
+  updateProjButton();
   toast("已导入 " + loadedFiles.length + " 个文件");
 }
 
@@ -545,6 +694,20 @@ window.clearAllFilesTxt = function () { txtFiles = []; const fl = $("flT"); if (
 function updatePreview() {
   clearTimeout(previewTimer);
   previewTimer = setTimeout(() => window.up(), 150);
+  scheduleAutoSave();
+}
+
+// 自动保存 usr 工作副本（命名预设由「保存」按钮管理，避免 HMR / 刷新丢失未保存编辑）
+function flushAutoSave() {
+  if (cur !== "usr") return;
+  const c = getConfig();
+  cfgs["usr"] = { ...cfgs["usr"], h: c.h, p: getOptions(), f: c.f };
+  try { localStorage.setItem("tg_dark", JSON.stringify(cfgs)); } catch (e) { console.warn("autoSave failed:", e); }
+}
+
+function scheduleAutoSave() {
+  clearTimeout(autoSaveTimer);
+  autoSaveTimer = setTimeout(flushAutoSave, 400);
 }
 
 window.up = async function () {
@@ -823,6 +986,9 @@ window.prefillProject = function () {
 window.resetDefaults = function () {
   renderAttrRows(DEFAULT_ATTRS.map((r) => ({ ...r })));
   updatePreview();
+  // 立即落盘「已恢复默认」的结果，避免下次加载时旧自定义值再次复活
+  clearTimeout(autoSaveTimer);
+  flushAutoSave();
   toast("已恢复默认");
 };
 
@@ -1167,6 +1333,15 @@ function renderRatioChips() {
 // ═══ Init ═══
 async function init() {
   const savedTheme = localStorage.getItem("tg_theme") || "light";
+  // prototype: URL hash demo seeding (#demo=geodetic|projected-3|projected-6|unknown)
+  const demoType = (location.hash.match(/demo=([\w-]+)/) || [])[1];
+  if (demoType) {
+    try {
+      applyDemoSeed(demoType);
+    } catch (e) {
+      console.warn("demo seed failed:", e);
+    }
+  }
   theme = savedTheme;
   document.documentElement.setAttribute("data-t", theme);
 
@@ -1178,7 +1353,17 @@ async function init() {
 
   const s = localStorage.getItem("tg_dark");
   if (s) cfgs = JSON.parse(s);
-  PP.forEach((p) => { if (!cfgs[p.id]) cfgs[p.id] = p; });
+  PP.forEach((p) => {
+    if (p.id === "usr") {
+      // 恢复：localStorage 里的 usr 必须包含全部 DEFAULT_ATTRS 键，否则重建
+      const u = cfgs[p.id];
+      const ok = u && typeof u === "object" && u.h && Array.isArray(u.h.attrs)
+        && DEFAULT_ATTRS.every((d) => u.h.attrs.some((r) => r.k === d.k));
+      if (!ok) cfgs[p.id] = p;
+    } else if (!cfgs[p.id]) {
+      cfgs[p.id] = p;
+    }
+  });
   renderChips();
   ld(localStorage.getItem("tg_last") || "usr");
 
@@ -1288,6 +1473,17 @@ async function init() {
   bind("hdrTabProj", () => switchHdrTab("proj"));
   bind("btnPrefill", () => prefillProject());
   bind("btnResetDefaults", () => resetDefaults());
+  bind("btnProj", () => openProjModal());
+  bind("btnProjClose", () => closeProjModal());
+  bind("btnProjCancel", () => closeProjModal());
+  bind("btnProjApply", () => applyProjMode());
+  // click outside proj modal closes it
+  const projOverlay = projModal;
+  if (projOverlay) projOverlay.addEventListener("click", (e) => { if (e.target === projOverlay) closeProjModal(); });
+  // esc closes proj modal
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && projOverlay && projOverlay.classList.contains("on")) closeProjModal(); });
+  // initial gate state
+  updateProjButton();
   bind("btnAddAttr", () => {
     const rows = collectAttrRows();
     rows.push({ k: "", v: "" });

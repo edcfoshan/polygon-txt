@@ -736,7 +736,43 @@ body::before{
 .card:nth-child(1){animation-delay:.05s}
 .card:nth-child(2){animation-delay:.1s}
 @keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
-</style>
+
+/* Dynamic Projection Modal (Prototype) */
+.btn-proj{font-size:11px;padding:3px 10px;border-radius:4px;border:1px solid var(--brd);background:var(--srf2);color:var(--tx);cursor:pointer;transition:all .15s;display:inline-flex;align-items:center;gap:4px;line-height:1}
+.btn-proj:hover:not(:disabled){border-color:var(--ac);color:var(--ac);background:var(--acg)}
+.btn-proj:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
+.btn-proj:disabled{opacity:.45;cursor:not-allowed}
+.btn-proj.on{border-color:var(--ac);color:var(--ac);background:var(--acg)}
+.proj-mode-label{font-size:10.5px;color:var(--ok);margin-left:auto;font-weight:500}
+.modal-card[data-modal="proj"]{width:460px;max-width:92vw;padding:0;text-align:left}
+.modal-card[data-modal="proj"] h3{padding:18px 22px 2px;margin:0;font-size:14px}
+.modal-card[data-modal="proj"] .modal-sub{padding:0 22px 14px;font-size:11px;margin:0}
+.proj-section{padding:0 22px 14px;border-bottom:1px solid var(--brd);margin-bottom:14px}
+.proj-section:last-of-type{border-bottom:none;margin-bottom:0}
+.proj-section-hd{font-size:10px;color:var(--tx3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px;font-weight:600}
+.proj-detect-grid{display:grid;grid-template-columns:64px 1fr;gap:6px 12px;font-size:12px}
+.proj-detect-grid .k{color:var(--tx3)}
+.proj-detect-grid .v{color:var(--tx);font-weight:500;font-family:"JetBrains Mono",monospace}
+.proj-detect-grid .v .ok{color:var(--ok)}
+.proj-detect-grid .v .warn{color:#c0392b}
+.proj-detect-grid .v .na{color:var(--tx3);font-weight:normal;font-style:italic}
+.proj-modes{display:flex;flex-direction:column;gap:2px;margin-bottom:10px}
+.proj-mode{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--tx);cursor:pointer;padding:5px 6px;border-radius:4px;transition:background .12s}
+.proj-mode:hover{background:var(--srf2)}
+.proj-mode input{accent-color:var(--ac);cursor:pointer;margin:0}
+.proj-mode.on{background:var(--acg)}
+.proj-mode .mode-tag{margin-left:auto;font-size:10px;color:var(--tx3);font-family:"JetBrains Mono",monospace}
+.proj-mode.empty{color:var(--tx3);font-style:italic;justify-content:center;padding:10px 0;cursor:default}
+.proj-mode.empty:hover{background:transparent}
+.proj-qc{display:flex;align-items:center;gap:7px;font-size:11.5px;padding:10px 6px 2px;color:var(--tx);cursor:pointer;margin:0;border-top:1px dashed var(--brd);margin-top:8px}
+.proj-qc input{accent-color:var(--ac);width:13px;height:13px;cursor:pointer;margin:0}
+.proj-qc.disabled{opacity:.45;cursor:not-allowed}
+.proj-qc.disabled input{cursor:not-allowed}
+.proj-foot{display:flex;justify-content:flex-end;gap:8px;padding:14px 22px 18px;border-top:1px solid var(--brd);margin-top:14px}
+.proj-foot .btn{padding:5px 16px;font-size:11.5px;border-radius:4px;border:1px solid var(--brd);background:var(--srf);color:var(--tx);cursor:pointer;transition:all .15s}
+.proj-foot .btn:hover{background:var(--srf2)}
+.proj-foot .proj-apply{background:var(--ac);color:#fff;border-color:var(--ac)}
+.proj-foot .proj-apply:hover:not(:disabled){background:var(--ach);border-color:var(--ach)}</style>
 </head>
 <body>
 
@@ -940,14 +976,10 @@ body::before{
             <option value="1">续编</option>
           </select>
         </div>
-        <div class="oc-row">
-          <label class="ck" style="margin:0"><input type="checkbox" id="og" disabled>输出公里网（经纬度→高斯-克吕格）</label>
-          <select id="oz" disabled style="margin-left:auto">
-            <option value="3">3度带</option>
-            <option value="6">6度带</option>
-          </select>
+                <div class="oc-row">
+          <button class="btn-proj" id="btnProj" disabled title="placeholder">+ 动态投影</button>
+          <span id="projModeLabel" class="proj-mode-label" style="display:none"></span>
         </div>
-        <div id="ogWarn" style="display:none;font-size:10px;color:#c0392b;margin:-4px 0 4px">基准非 CGCS2000，按 CGCS2000 投影可能有百米级偏差</div>
 
         <div class="div"></div>
 
@@ -1083,5 +1115,31 @@ J2,1,Y500.000,X301.000
 <div class="toast" id="toast"></div>
 
 <script type="module" src="src/main.js"></script>
+
+<!-- Dynamic Projection Modal (Prototype) -->
+<div class="modal-overlay" id="projModal">
+  <div class="modal-card" data-modal="proj">
+    <button class="modal-close" id="btnProjClose" aria-label="关闭">×</button>
+    <h3>动态投影</h3>
+    <div class="modal-sub">基于导入数据自动识别 · 同基准内互转 · 单文件模式</div>
+    <div class="modal-body">
+      <div class="proj-section">
+        <div class="proj-section-hd">导入识别</div>
+        <div class="proj-detect-grid" id="projDetectGrid"></div>
+      </div>
+      <div class="proj-section">
+        <div class="proj-section-hd">可用转换</div>
+        <div class="proj-modes" id="projModes"></div>
+        <label class="proj-qc" id="projQcLabel">
+          <input type="checkbox" id="projQc"> 无代号质检（缺带号时反推 + 校验）
+        </label>
+      </div>
+    </div>
+    <div class="proj-foot">
+      <button class="btn" id="btnProjCancel">取消</button>
+      <button class="btn proj-apply" id="btnProjApply">应用</button>
+    </div>
+  </div>
+</div>
 </body>
 </html>

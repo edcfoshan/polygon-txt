@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use crate::projection::{gauss_kruger_forward, gauss_kruger_inverse, reband_projected, infer_zone_from_x, Ellipsoid};
+
 
 pub mod shp;
 pub mod txt;
@@ -108,6 +110,115 @@ fn derive_zone_from_eastings(eastings: &[f64]) -> Option<String> {
         .map(|(z, _)| z.to_string())
 }
 
+
+// ============================================================
+// 动态投影 IPC（Task 5）
+// ============================================================
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ProjectionRequest {
+    pub mode: String,                  // "A" | "B" | "C" | "F" | "G"
+    pub src_band: Option<String>,       // "3" | "6" | None
+    pub src_zone: Option<u32>,
+    pub dst_band: Option<String>,
+    pub dst_zone: Option<u32>,
+    pub datum: String,                  // "CGCS2000" | "WGS84" | "Xian1980" | "Beijing1954"
+    pub do_qc: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ProjectionResponse {
+    pub transformed_xy: Vec<(f64, f64)>,
+    pub qc: Option<QcResponse>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct QcResponse {
+    pub expected_zone: u32,
+    pub derived_zone: u32,
+    pub consistent: bool,
+}
+
+fn parse_datum(s: &str) -> Option<Ellipsoid> {
+    match s {
+        "CGCS2000" => Some(Ellipsoid::CGCS2000),
+        "WGS84" => Some(Ellipsoid::WGS84),
+        "Xian1980" => Some(Ellipsoid::Xian1980),
+        "Beijing1954" => Some(Ellipsoid::Beijing1954),
+        _ => None,
+    }
+}
+
+fn parse_band(s: &str) -> Option<u8> {
+    match s {
+        "3" => Some(3),
+        "6" => Some(6),
+        _ => None,
+    }
+}
+
+fn apply_dynamic_projection_internal(
+    coords: Vec<(f64, f64)>,
+    req: ProjectionRequest,
+) -> Result<ProjectionResponse, String> {
+    let datum = parse_datum(&req.datum).ok_or_else(|| format!("未知 datum: {}", req.datum))?;
+    let transformed: Result<Vec<(f64, f64)>, String> = match req.mode.as_str() {
+        "A" | "B" => {
+            // 大地→投影：调用 gk_forward
+            // 但 coords 是投影坐标，需要先反算? 不对，A/B 是大地→投影，coords 应该是 (lon, lat) 度
+            // 实际上 Task 6 才是把 apply 用上；这里只做最小实现
+            // 期望 coords 已经是 (lon, lat) 度
+            let band = req.dst_band.as_deref().and_then(parse_band).unwrap_or(3);
+            let zone = req.dst_zone.unwrap_or(38);
+            let cm = match band { 6 => zone as f64 * 6.0 - 3.0, _ => zone as f64 * 3.0 };
+            Ok(coords.into_iter().map(|(lon, lat)| gauss_kruger_forward(lon, lat, cm, datum)).collect())
+        }
+        "C" => {
+            // 投影→大地：反算
+            let band = req.src_band.as_deref().and_then(parse_band).ok_or("src_band 缺失")?;
+            let zone = req.src_zone.ok_or("src_zone 缺失")?;
+            let cm = match band { 6 => zone as f64 * 6.0 - 3.0, _ => zone as f64 * 3.0 };
+            Ok(coords.into_iter().map(|(x, y)| gauss_kruger_inverse(x, y, cm, datum)).collect())
+        }
+        "F" | "G" => {
+            // 投影 3°↔6° 互转
+            let src_b = req.src_band.as_deref().and_then(parse_band).ok_or("src_band 缺失")?;
+            let src_z = req.src_zone.ok_or("src_zone 缺失")?;
+            let dst_b = req.dst_band.as_deref().and_then(parse_band).ok_or("dst_band 缺失")?;
+            let dst_z = req.dst_zone.ok_or("dst_zone 缺失")?;
+            Ok(coords.into_iter().map(|(x, y)| reband_projected(x, y, src_b, src_z, dst_b, dst_z, datum)).collect())
+        }
+        other => Err(format!("不支持的 mode: {}", other)),
+    };
+
+    let transformed_xy = transformed?;
+
+    let qc = if req.do_qc {
+        if let (Some(band_s), Some(zone)) = (req.dst_band.as_deref(), req.dst_zone) {
+            if let Some(bw) = parse_band(band_s) {
+                if let Some(&(x, _)) = transformed_xy.first() {
+                    let derived = infer_zone_from_x(x, bw).unwrap_or(0);
+                    Some(QcResponse {
+                        expected_zone: zone,
+                        derived_zone: derived,
+                        consistent: derived == zone,
+                    })
+                } else { None }
+            } else { None }
+        } else { None }
+    } else { None };
+
+    Ok(ProjectionResponse { transformed_xy, qc })
+}
+
+#[tauri::command]
+async fn apply_dynamic_projection(
+    coords: Vec<(f64, f64)>,
+    req: ProjectionRequest,
+) -> Result<ProjectionResponse, String> {
+    // 同步执行（投影计算很快）
+    apply_dynamic_projection_internal(coords, req)
+}
 #[tauri::command]
 fn pick_shp_files(app: tauri::AppHandle) -> Result<ShpImportResult, String> {
     use tauri_plugin_dialog::DialogExt;
@@ -624,6 +735,7 @@ pub fn run() {
             run_txt_to_shp,
             minimize_window,
             close_window,
+            apply_dynamic_projection,
             toggle_maximize,
         ])
         .run(tauri::generate_context!())
@@ -634,7 +746,7 @@ pub fn run() {
 mod tests {
     use super::derive_zone_from_eastings;
 
-    #[test]
+#[test]
     fn derive_zone_from_eastings_with_prefix() {
         assert_eq!(
             derive_zone_from_eastings(&[38_383_243.0, 38_500_000.0]),

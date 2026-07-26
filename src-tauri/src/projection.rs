@@ -6,6 +6,7 @@
 
 use crate::geometry::SurfaceGeometry;
 use proj_core::transform::Transform;
+use std::collections::HashMap;
 
 const PI: f64 = std::f64::consts::PI;
 const DEG_TO_RAD: f64 = PI / 180.0;
@@ -346,4 +347,180 @@ mod tests {
         assert!(max_de < 0.01, "proj-core 与经典公式东坐标分歧 {:.4}m", max_de);
         assert!(max_dn < 0.01, "proj-core 与经典公式北坐标分歧 {:.4}m", max_dn);
     }
+}
+
+// ============================================================
+// Dynamic projection additions (Task 2-4)
+// ============================================================
+
+/// .prj 完整性分类
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum Completeness {
+    /// .prj 完整 + 字段一致
+    Complete,
+    /// .prj 文件不存在
+    PrjMissing,
+    /// .prj 内容缺带号或基准信息
+    PrjIncomplete,
+    /// .prj 与字段值冲突
+    Conflicting,
+}
+
+/// 检测 .prj 完整性
+///
+/// 简化策略：c 空 → PrjMissing；u==米 且 b 空/z 空 → PrjIncomplete；否则 Complete
+pub fn detect_crs_completeness(info: &HashMap<String, String>) -> Completeness {
+    let c = info.get("c").map(|s| s.as_str()).unwrap_or("");
+    if c.is_empty() {
+        return Completeness::PrjMissing;
+    }
+    if info.get("u").map(|s| s.as_str()) == Some("米") {
+        let b = info.get("b").map(|s| s.as_str()).unwrap_or("");
+        let z = info.get("z");
+        if b.is_empty() || b == "—" || z.is_none() {
+            return Completeness::PrjIncomplete;
+        }
+    }
+    Completeness::Complete
+}
+
+/// 根据投影后 x 坐标反推带号
+/// 公式: zone = round((x - 500000) / 1_000_000)
+/// 3°带: zone 范围 24-45（中心经度 72°-135°E 覆盖中国）
+/// 6°带: zone 范围 13-23（中心经度 75°-135°E）
+pub fn infer_zone_from_x(x: f64, band_width_deg: u8) -> Option<u32> {
+    let z = ((x - 500_000.0) / 1_000_000.0).round() as i64;
+    if z < 1 {
+        return None;
+    }
+    let z = z as u32;
+    let ok = match band_width_deg {
+        3 => (24..=45).contains(&z),
+        6 => (13..=23).contains(&z),
+        _ => false,
+    };
+    if ok { Some(z) } else { None }
+}
+
+/// GK 投影反算：投影坐标 (x, y) → 大地坐标 (lon, lat)
+/// 输入 x 可含带号前缀（如 38500000），自动剥离
+pub fn gauss_kruger_inverse(
+    x: f64,
+    y: f64,
+    central_meridian_deg: f64,
+    ellipsoid: Ellipsoid,
+) -> (f64, f64) {
+    match proj_core_inverse(x, y, central_meridian_deg, ellipsoid) {
+        Ok(result) => result,
+        Err(e) => {
+            eprintln!("proj-core 反算失败({}), 回退经典 Krüger 公式", e);
+            classic_inverse(x, y, central_meridian_deg, ellipsoid)
+        }
+    }
+}
+
+fn proj_core_inverse(
+    x: f64,
+    y: f64,
+    central_meridian_deg: f64,
+    ellipsoid: Ellipsoid,
+) -> Result<(f64, f64), String> {
+    let geo_epsg = ellipsoid.geo_epsg().ok_or("无地理 EPSG 代码")?;
+    let zone = (central_meridian_deg / 3.0).round() as i32;
+    let proj_epsg = ellipsoid
+        .proj_epsg_3degree(zone)
+        .ok_or("无投影 EPSG 代码")?;
+
+    // 还原带号前缀（proj_epsg 4513+ 的 easting 含 zone×1,000,000）
+    let zone_f = zone as f64 * 1_000_000.0;
+    let e_with_prefix = if x.abs() < 1_000_000.0 { x + zone_f } else { x };
+
+    // 反向 transform: proj → geo
+    let transform = Transform::new(&proj_epsg, geo_epsg)
+        .map_err(|e| format!("创建反向坐标变换失败: {}", e))?;
+    let (e_wgs, n): (f64, f64) = transform
+        .convert((e_with_prefix, y))
+        .map_err(|e| format!("反向坐标转换失败: {}", e))?;
+
+    Ok((e_wgs, n))
+}
+
+/// 经典 Krüger l-series 反算（后备方案）
+///
+/// 简化实现：用 proj-core forward + inverse pair 走通；
+/// proj-core 失败时使用标准 Krüger 反算公式
+fn classic_inverse(
+    x: f64,
+    y: f64,
+    central_meridian_deg: f64,
+    ellipsoid: Ellipsoid,
+) -> (f64, f64) {
+    // 剥离带号前缀
+    let zone = (central_meridian_deg / 3.0).round() as i32;
+    let zone_f = zone as f64 * 1_000_000.0;
+    let e_local = if x.abs() >= 1_000_000.0 { x - zone_f } else { x };
+
+    let a = ellipsoid.a();
+    let f = ellipsoid.f();
+    let e2 = 2.0 * f - f * f;
+    let ep2 = e2 / (1.0 - e2);
+
+    let m = y / a;
+    let e1 = (1.0 - (1.0 - e2).sqrt()) / (1.0 + (1.0 - e2).sqrt());
+    let mu = m
+        + (1.5 * e1 - 0.843_333_3 * e1.powi(3) + 0.041_666_7 * e1.powi(5)) * (2.0 * e1 - 0.375 * e1.powi(3))
+        * m.powi(3)
+        + (1.066_666_7 * e1.powi(3) - 0.266_666_7 * e1.powi(5)) * m.powi(5)
+        + 0.016_666_7 * e1.powi(3) * m.powi(7);
+    let phi1 = mu
+        + (3.0 * ep2 / 2.0 - 27.0 / 32.0 * ep2.powi(3)) * (2.0 * e1 - 0.5 * e1.powi(3)) * mu.powi(3)
+        + (21.0 / 16.0 * ep2.powi(2) - 55.0 / 32.0 * ep2.powi(4)) * mu.powi(5)
+        + 151.0 / 96.0 * ep2.powi(3) * mu.powi(7)
+        + 1097.0 / 512.0 * ep2.powi(4) * mu.powi(9);
+    let c1 = ep2 * (phi1.cos().powi(2));
+    let t1 = phi1.tan().powi(2);
+    let n1 = a / (1.0 - e2 * phi1.sin().powi(2)).sqrt();
+    let d = e_local / (n1 * 1000.0);
+    let phi = phi1
+        - (n1 * phi1.tan() / 1.0)
+            * (1.0 / 2.0
+                - 5.0 / 24.0 * (1.0 + 3.0 * t1 + 10.0 * c1 - 4.0 * c1.powi(2) - 9.0 * ep2) * d.powi(2)
+                + 61.0 / 720.0
+                    * (1.0 + 90.0 * t1 + 298.0 * c1 + 45.0 * t1.powi(2) - 252.0 * ep2 - 3.0 * c1.powi(2))
+                    * d.powi(4))
+            / 1000.0;
+    let lam = (1.0 / (n1 * phi1.cos() * 3600.0 / 206264.806))
+        * (1.0
+            - (1.0 + 2.0 * t1 + c1) * d.powi(2) / 6.0
+            + (5.0 - 2.0 * c1 + 28.0 * t1 - 3.0 * c1.powi(2) + 8.0 * ep2 + 24.0 * t1.powi(2)) * d.powi(4) / 120.0)
+        * 206264.806;
+    let lon = central_meridian_deg + lam;
+    (lon, phi.to_degrees())
+}
+
+/// 根据带宽和带号计算中央经线
+/// 3°带: CM = 3 * zone
+/// 6°带: CM = 6 * zone - 3
+fn cm_for_band(band: u8, zone: u32) -> f64 {
+    match band {
+        6 => zone as f64 * 6.0 - 3.0,
+        _ => zone as f64 * 3.0,
+    }
+}
+
+/// 同一基准内投影带间互转（3° ↔ 6°）
+/// 实现：反算 → 正算（不做跨基准）
+pub fn reband_projected(
+    x: f64, y: f64,
+    src_band: u8, src_zone: u32,
+    dst_band: u8, dst_zone: u32,
+    datum: Ellipsoid,
+) -> (f64, f64) {
+    if src_band == dst_band && src_zone == dst_zone {
+        return (x, y); // no-op
+    }
+    let src_cm = cm_for_band(src_band, src_zone);
+    let (lon, lat) = gauss_kruger_inverse(x, y, src_cm, datum);
+    let dst_cm = cm_for_band(dst_band, dst_zone);
+    gauss_kruger_forward(lon, lat, dst_cm, datum)
 }

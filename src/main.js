@@ -396,29 +396,6 @@ window.removeFile = function (i) {
 // ═══ Dynamic Projection Modal (Prototype) ═══
 // 暂用 mock 检测（基于 currentCrsInfo）；真实实现由 Rust 端补 detect.rs 后接入。
 //
-// URL hash demo（仅 prototype 用，确认 UI 后删除）：
-//   #demo=geodetic        假装大地（度）
-//   #demo=projected-3     假装投影 3°带
-//   #demo=projected-6     假装投影 6°带
-//   #demo=unknown         假装未知
-function getDemoCrInfo(type) {
-  switch (type) {
-    case 'geodetic':    return { c: 'CGCS2000', u: '度',  b: '3', z: 38 };
-    case 'projected-3': return { c: 'CGCS2000', u: '米',  b: '3', z: 38 };
-    case 'projected-6': return { c: 'CGCS2000', u: '米',  b: '6', z: 20 };
-    case 'unknown':     return { c: '',         u: '米',  b: null, z: null };
-  }
-  return null;
-}
-function applyDemoSeed(type) {
-  const info = getDemoCrInfo(type);
-  if (!info) return false;
-  loadedFiles = [{ file_name: 'demo.shp', field_names: [], crs_info: info }];
-  txtFiles = [];
-  processImport();
-  toast('已注入 demo 场景: ' + type);
-  return true;
-}
 
 function updateProjButton() {
   const btn = $('btnProj');
@@ -1309,14 +1286,6 @@ function renderRatioChips() {
 // ═══ Init ═══
 async function init() {
   const savedTheme = localStorage.getItem("tg_theme") || "light";
-  // prototype: URL hash demo seeding (#demo=geodetic|projected-3|projected-6|unknown)
-  const demoType = (location.hash.match(/demo=([\w-]+)/) || [])[1];
-  if (demoType) {
-    try {
-      applyDemoSeed(demoType);
-    } catch (e) {
-      console.warn("demo seed failed:", e);
-    }
   }
   theme = savedTheme;
   document.documentElement.setAttribute("data-t", theme);

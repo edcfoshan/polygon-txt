@@ -138,6 +138,9 @@ fn test_shp_to_txt_one_to_one() {
         use_field: "DKYT".into(), tfh: "TFH".into(), dlbm: "DLBM".into(),
     };
     let options = convert::ShpToTxtOptions {
+        proj_mode: "keep".to_string(),
+        proj_zone: None,
+        proj_qc: false,
         ox: false, oj: true, on: false, oo: true, oc: false,
         output_mode: "one_to_one".into(), filename_field: String::new(), og: false, zone_type: 3,
     };
@@ -169,6 +172,9 @@ fn test_shp_to_txt_xy_swap() {
 
     // ox=false（默认，输出标准 Y,X 顺序：北坐标在前）
     let opts_off = convert::ShpToTxtOptions {
+        proj_mode: "keep".to_string(),
+        proj_zone: None,
+        proj_qc: false,
         ox: false, oj: true, on: false, oo: true, oc: false,
         output_mode: "one_to_one".into(), filename_field: String::new(), og: false, zone_type: 3,
     };
@@ -181,6 +187,9 @@ fn test_shp_to_txt_xy_swap() {
 
     // ox=true（勾选标反，输出 X,Y 顺序：东坐标在前）
     let opts_on = convert::ShpToTxtOptions {
+        proj_mode: "keep".to_string(),
+        proj_zone: None,
+        proj_qc: false,
         ox: true, oj: true, on: false, oo: true, oc: false,
         output_mode: "one_to_one".into(), filename_field: String::new(), og: false, zone_type: 3,
     };
@@ -233,6 +242,9 @@ fn test_shp_to_txt_merge_all() {
         use_field: "DKYT".into(), tfh: "TFH".into(), dlbm: "DLBM".into(),
     };
     let options = convert::ShpToTxtOptions {
+        proj_mode: "keep".to_string(),
+        proj_zone: None,
+        proj_qc: false,
         ox: false, oj: true, on: false, oo: true, oc: false,
         output_mode: "merge_all".into(), filename_field: String::new(), og: false, zone_type: 3,
     };
@@ -265,6 +277,9 @@ fn test_shp_to_txt_split_by_plot() {
     };
     // 用序号命名（filename_field 为空）
     let options = convert::ShpToTxtOptions {
+        proj_mode: "keep".to_string(),
+        proj_zone: None,
+        proj_qc: false,
         ox: false, oj: true, on: false, oo: true, oc: false,
         output_mode: "split_by_plot".into(), filename_field: String::new(), og: false, zone_type: 3,
     };
@@ -743,6 +758,9 @@ fn test_shp_to_txt_full() {
     let header = make_header();
 
     let options = convert::ShpToTxtOptions {
+        proj_mode: "keep".to_string(),
+        proj_zone: None,
+        proj_qc: false,
         ox: false,
         oj: true,
         on: false,
@@ -831,6 +849,9 @@ fn test_shp_txt_roundtrip() {
     };
 
     let options = convert::ShpToTxtOptions {
+        proj_mode: "keep".to_string(),
+        proj_zone: None,
+        proj_qc: false,
         ox: false,
         oj: true,
         on: false,
@@ -897,6 +918,9 @@ fn test_preview() {
     };
 
     let options = convert::ShpToTxtOptions {
+        proj_mode: "keep".to_string(),
+        proj_zone: None,
+        proj_qc: false,
         ox: false,
         oj: true,
         on: false,
@@ -1051,6 +1075,9 @@ J1,2,30.000,30.000";
         dlbm: "DLBM".into(),
     };
     let shp_to_txt = convert::ShpToTxtOptions {
+        proj_mode: "keep".to_string(),
+        proj_zone: None,
+        proj_qc: false,
         ox: false,
         oj: true,
         on: false,
@@ -1139,6 +1166,9 @@ J1,2,2.000,2.000";
         dlbm: "DLBM".into(),
     };
     let shp_to_txt = convert::ShpToTxtOptions {
+        proj_mode: "keep".to_string(),
+        proj_zone: None,
+        proj_qc: false,
         ox: false,
         oj: true,
         on: true,
@@ -1191,6 +1221,9 @@ fn test_field_mapping_sentinels_area() {
     let shp_path = test_shp_stem();
     let header = make_header();
     let options = convert::ShpToTxtOptions {
+        proj_mode: "keep".to_string(),
+        proj_zone: None,
+        proj_qc: false,
         ox: false, oj: true, on: false, oo: false, oc: false,
         output_mode: "one_to_one".into(), filename_field: String::new(), og: false, zone_type: 3,
     };

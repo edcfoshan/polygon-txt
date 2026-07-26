@@ -50,7 +50,10 @@ fn real_shp_to_txt_custom_attr_descriptions() {
         oc: false,
         output_mode: "one_to_one".into(),
         filename_field: String::new(), og: false, zone_type: 3,
-    };
+            proj_mode: "keep".to_string(),
+        proj_zone: None,
+        proj_qc: false,
+};
     let preview = convert::shp_to_txt_preview(&[shp], None, None, &header, &field_mapping(), &opts, None)
         .expect("SHP→TXT 预览失败");
 

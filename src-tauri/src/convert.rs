@@ -74,6 +74,15 @@ pub struct ShpToTxtOptions {
     /// 带类型：3 = 3 度带（默认），6 = 6 度带。仅 og 时有意义。
     #[serde(default = "default_zone_type")]
     pub zone_type: u8,
+    /// 动态投影模式："keep" = 不做转换（默认），"A"/"B"/"C"/"F"/"G" = 5 种转换
+    #[serde(default)]
+    pub proj_mode: String,
+    /// 用户在 modal 填的带号（仅 F/G 模式需要）
+    #[serde(default)]
+    pub proj_zone: Option<u32>,
+    /// 无代号质检开关
+    #[serde(default)]
+    pub proj_qc: bool,
 }
 
 fn default_zone_type() -> u8 {
@@ -286,6 +295,11 @@ pub fn shp_to_txt_preview(
         header_cfg
     };
     let proj_cfg = ProjectionConfig::from_options(options, header_cfg);
+    // Task 6: 动态投影钩子（stub）
+    if options.proj_mode != "keep" && !options.proj_mode.is_empty() {
+        // TODO Task 6: 调用 apply_dynamic_projection_internal 改造 features
+        eprintln!("[WARN] proj_mode={} is set but Task 6 stub is not yet wired; existing og path used", options.proj_mode);
+    }
 
     let result = match source_type {
         Some("gdb") => {

@@ -225,6 +225,7 @@ window.importGdb = async function () {
     window._gdbName = result.name;
     autoMatchFields(result.field_names);
     if (result.zone) autoFillHeader({ z: result.zone });
+    syncOgGate(result.crs_info);
     autoSetOutputDirS(result.path);
     toast(`已读取 GDB: ${result.name}（${result.layers.length} 个面状要素类），请在弹窗中勾选`);
     renderLeftGdbSummary();     // 左栏先显示"待选择"占位行
@@ -396,6 +397,29 @@ window.removeFile = function (i) {
 // ═══ Dynamic Projection Modal (Prototype) ═══
 // 暂用 mock 检测（基于 currentCrsInfo）；真实实现由 Rust 端补 detect.rs 后接入。
 //
+// URL hash demo（仅 prototype 用，确认 UI 后删除）：
+//   #demo=geodetic        假装大地（度）
+//   #demo=projected-3     假装投影 3°带
+//   #demo=projected-6     假装投影 6°带
+//   #demo=unknown         假装未知
+function getDemoCrInfo(type) {
+  switch (type) {
+    case 'geodetic':    return { c: 'CGCS2000', u: '度',  b: '3', z: 38 };
+    case 'projected-3': return { c: 'CGCS2000', u: '米',  b: '3', z: 38 };
+    case 'projected-6': return { c: 'CGCS2000', u: '米',  b: '6', z: 20 };
+    case 'unknown':     return { c: '',         u: '米',  b: null, z: null };
+  }
+  return null;
+}
+function applyDemoSeed(type) {
+  const info = getDemoCrInfo(type);
+  if (!info) return false;
+  loadedFiles = [{ file_name: 'demo.shp', field_names: [], crs_info: info }];
+  txtFiles = [];
+  processImport();
+  toast('已注入 demo 场景: ' + type);
+  return true;
+}
 
 function updateProjButton() {
   const btn = $('btnProj');
@@ -519,11 +543,34 @@ window.applyProjMode = function () {
 let currentCrsInfo = null;
 
 // og 按钮门禁：仅大地坐标系（单位=度）输入时可点；切源时重置勾选残留。
+function syncOgGate(crsInfo) {
+  currentCrsInfo = crsInfo || null;
+  const og = $("og");
+  const oz = $("oz");
+  if (!og) return;
+  const isDegree = currentCrsInfo?.u === "度";
+  og.disabled = !isDegree;
+  if (!isDegree) og.checked = false;
+  if (oz) oz.disabled = !(isDegree && og.checked);
+  refreshOgWarn();
+}
+
+// og 软提示：勾选且基准非 CGCS2000/WGS84（西安80/北京54 等）时提示百米级偏差。
+function refreshOgWarn() {
+  const og = $("og");
+  const warn = $("ogWarn");
+  if (!og || !warn) return;
+  const c = currentCrsInfo?.c || "";
+  const nonStd = !!c && !/2000|CGCS|WGS/i.test(c);
+  warn.style.display = og.checked && nonStd && !og.disabled ? "block" : "none";
+}
+
 function processImport() {
   if (!loadedFiles.length) return;
   const first = loadedFiles[0];
   autoMatchFields(first.field_names || []);
   if (first.crs_info) autoFillHeader(first.crs_info);
+  syncOgGate(first.crs_info);
   updatePreview();
   updateProjButton();
   toast("已导入 " + loadedFiles.length + " 个文件");
@@ -758,14 +805,10 @@ function getOptions() {
     on: $("on")?.checked || false,
     oo: $("oo")?.checked || false,
     oc: $("oc")?.value === "1",
+    og: ($("og")?.checked && !$("og")?.disabled) || false,
+    zone_type: parseInt($("oz")?.value, 10) || 3,
     output_mode: outputMode,
     filename_field: filenameField,
-    proj_mode: window.projMode || "keep",
-    proj_zone: (typeof window.projZone === "number") ? window.projZone : null,
-    proj_qc: !!window._projQc,
-    proj_mode: window.projMode || "keep",
-    proj_zone: (typeof window.projZone === "number") ? window.projZone : null,
-    proj_qc: !!window._projQc,
   };
 }
 
@@ -990,6 +1033,10 @@ window.ld = function (id) {
       $("oc").value = c.p.oc ? "1" : "0";
       $("oc").disabled = !$("oo").checked;
     }
+    if ($("og")) $("og").checked = !!c.p.og;
+    if ($("oz")) $("oz").value = c.p.oz === "6" ? "6" : "3";
+    if ($("oz") && $("og")) $("oz").disabled = !$("og").checked || $("og").disabled;
+    refreshOgWarn();
     if ($("om")) $("om").checked = !!c.p.om;
   }
   if (c.f) Object.keys(c.f).forEach((k) => { const e = $(k); if (e) e.value = c.f[k]; });
@@ -1286,6 +1333,14 @@ function renderRatioChips() {
 // ═══ Init ═══
 async function init() {
   const savedTheme = localStorage.getItem("tg_theme") || "light";
+  // prototype: URL hash demo seeding (#demo=geodetic|projected-3|projected-6|unknown)
+  const demoType = (location.hash.match(/demo=([\w-]+)/) || [])[1];
+  if (demoType) {
+    try {
+      applyDemoSeed(demoType);
+    } catch (e) {
+      console.warn("demo seed failed:", e);
+    }
   }
   theme = savedTheme;
   document.documentElement.setAttribute("data-t", theme);
@@ -1370,6 +1425,21 @@ async function init() {
     oo.addEventListener("change", syncOcDisabled);
     oc.addEventListener("change", () => { lastPreviewKey = ""; updatePreview(); });
   }
+
+  // og 公里网：未勾时 oz 置灰；og/oz 变更刷新预览与软提示
+  const og = $("og");
+  const oz = $("oz");
+  if (og && oz) {
+    const syncOz = () => {
+      oz.disabled = !og.checked;
+      refreshOgWarn();
+      lastPreviewKey = "";
+      updatePreview();
+    };
+    og.addEventListener("change", syncOz);
+    oz.addEventListener("change", () => { lastPreviewKey = ""; updatePreview(); });
+  }
+
   // 字段映射下拉框改选后刷新预览（fn/fi/fa/fu/fm/fd = 地块名/编号/面积/用途/图幅号/地类编码）
   ["fn", "fi", "fa", "fu", "fm", "fd"].forEach((id) => {
     const el = $(id);

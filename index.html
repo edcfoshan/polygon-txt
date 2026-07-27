@@ -763,6 +763,15 @@ body::before{
 .proj-mode.on{background:var(--acg)}
 .proj-mode .mode-tag{margin-left:auto;font-size:10px;color:var(--tx3);font-family:"JetBrains Mono",monospace}
 .proj-mode.empty{color:var(--tx3);font-style:italic;justify-content:center;padding:10px 0;cursor:default}
+    .proj-form{display:flex;flex-direction:column;gap:6px;padding:4px 0}
+    .proj-row{display:flex;align-items:center;gap:8px;font-size:12px;padding:4px 0}
+    .proj-label{color:var(--tx3);min-width:48px;font-size:11.5px}
+    .proj-val{color:var(--tx);font-weight:500;font-family:"JetBrains Mono",monospace;font-size:11.5px;flex:1}
+    .proj-hint{color:var(--tx3);font-size:10.5px;font-style:italic}
+    .proj-sel,.proj-input{padding:3px 6px;border:1px solid var(--brd);border-radius:3px;background:var(--srf);color:var(--tx);font-size:11.5px;font-family:inherit;flex:0 0 140px}
+    .proj-sel:focus,.proj-input:focus{outline:none;border-color:var(--ac)}
+    .proj-row.hidden{display:none}
+    .proj-band-locked{opacity:0.4;pointer-events:none}
 .proj-mode.empty:hover{background:transparent}
 .proj-qc{display:flex;align-items:center;gap:7px;font-size:11.5px;padding:10px 6px 2px;color:var(--tx);cursor:pointer;margin:0;border-top:1px dashed var(--brd);margin-top:8px}
 .proj-qc input{accent-color:var(--ac);width:13px;height:13px;cursor:pointer;margin:0}
@@ -1129,7 +1138,8 @@ J2,1,Y500.000,X301.000
       </div>
       <div class="proj-section">
         <div class="proj-section-hd">可用转换</div>
-        <div class="proj-modes" id="projModes"></div>
+        <label class="proj-mode on" id="projKeepBtn"><input type="radio" name="projMode" value="keep" checked> 保持原样（不转换）</label>
+        <div class="proj-form"><div class="proj-row"><span class="proj-label">坐标系</span><span class="proj-val" id="projDatumLabel">-</span><span class="proj-hint">（锁源 = 输入基准）</span></div><div class="proj-row"><span class="proj-label">形式</span><select class="proj-sel" id="projTypeSel"><option value="geodetic">大地（度）</option><option value="projected">投影（米）</option></select></div><div class="proj-row" id="projBandRow"><span class="proj-label">分带</span><select class="proj-sel" id="projBandSel"><option value="3">3°带</option><option value="6">6°带</option></select></div><div class="proj-row" id="projZoneRow"><span class="proj-label">带号</span><input class="proj-input" type="number" id="projZoneInput" min="1" max="60" placeholder="例: 38" /><span class="proj-hint" id="projZoneHint">（空 = 自动反推）</span></div></div>
         <label class="proj-qc" id="projQcLabel">
           <input type="checkbox" id="projQc"> 无代号质检（缺带号时反推 + 校验）
         </label>

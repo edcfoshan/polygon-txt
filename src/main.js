@@ -484,41 +484,83 @@ function getProjAvailableModes(info) {
 }
 
 function renderProjModes(info) {
-  const box = $('projModes');
-  const qc = $('projQcLabel');
-  if (!box) return;
-  const modes = getProjAvailableModes(info);
-  const items = [{ id: 'keep', label: '保持原样（不转换）', tag: '' }].concat(modes);
-  const currentMode = projMode && items.some(function (m) { return m.id === projMode; }) ? projMode : 'keep';
-  box.innerHTML = items.map(function (m) {
-    const on = m.id === currentMode;
-    return '<label class="proj-mode' + (on ? ' on' : '') + '">'
-      + '<input type="radio" name="projMode" value="' + m.id + '"' + (on ? ' checked' : '') + '>'
-      + m.label
-      + (m.tag ? ' <span class="mode-tag">' + m.tag + '</span>' : '')
-      + '</label>';
-  }).join('');
-  if (qc) {
-    qc.classList.toggle('disabled', modes.length === 0);
-    const qcInput = $('projQc');
-    if (qcInput) qcInput.disabled = modes.length === 0;
+  const u = info && info.u || '';
+  const c = info && info.c || '';
+  const b = info && info.b;
+  const z = info && info.z;
+  const det = $('projDetectGrid');
+  if (det) {
+    const form = u === '度' ? '大地（度）' : u === '米' ? '投影（米）' : '<span class="na">未识别</span>';
+    let band = '<span class="na">—</span>';
+    if (b === '3') band = '3°带';
+    else if (b === '6') band = '6°带';
+    let zone = '<span class="na">—</span>';
+    if (typeof z === 'number' && z > 0) zone = z + ' <span class="ok">✓</span>';
+    det.innerHTML = [
+      '<span class="k">坐标系</span><span class="v">' + (c || '<span class="na">—</span>') + '</span>',
+      '<span class="k">形式</span><span class="v">' + form + '</span>',
+      '<span class="k">分带</span><span class="v">' + band + '</span>',
+      '<span class="k">带号</span><span class="v">' + zone + '</span>'
+    ].join('');
   }
-  box.querySelectorAll('input[name=projMode]').forEach(function (el) {
-    el.addEventListener('change', function () {
-      projMode = el.value;
-      box.querySelectorAll('.proj-mode').forEach(function (d) {
-        d.classList.toggle('on', d.querySelector('input').checked);
+  const datum = c || 'CGCS2000';
+  const isGeo = u === '度';
+  const isProj = u === '米';
+  const typeSel = $('projTypeSel');
+  if (typeSel) typeSel.value = isGeo ? 'geodetic' : (isProj ? 'projected' : 'geodetic');
+  const datumLabel = $('projDatumLabel');
+  if (datumLabel) datumLabel.textContent = datum;
+  const bandRow = $('projBandRow');
+  const zoneRow = $('projZoneRow');
+  function updateFormVisibility() {
+    if (!typeSel) return;
+    const isProjected = typeSel.value === 'projected';
+    if (bandRow) bandRow.classList.toggle('hidden', !isProjected);
+    if (zoneRow) zoneRow.classList.toggle('hidden', !isProjected);
+  }
+  if (typeSel && !typeSel._bound) {
+    typeSel.addEventListener('change', updateFormVisibility);
+    typeSel._bound = true;
+  }
+  updateFormVisibility();
+  const bandSel = $('projBandSel');
+  if (bandSel && (b === '3' || b === '6')) bandSel.value = b;
+  const zoneInput = $('projZoneInput');
+  if (zoneInput && typeof z === 'number' && z > 0) {
+    zoneInput.value = String(z);
+  }
+  const keepBtn = $('projKeepBtn');
+  if (keepBtn) {
+    if (!keepBtn._bound) {
+      keepBtn.addEventListener('click', function () {
+        const isKeep = keepBtn.classList.toggle('on');
+        const form = document.querySelector('.proj-form');
+        if (form) {
+          form.style.opacity = isKeep ? '0.4' : '1';
+          form.style.pointerEvents = isKeep ? 'none' : 'auto';
+        }
       });
-      updateProjButton();
-    });
-  });
+      keepBtn._bound = true;
+    }
+    const isKeep = projMode === 'keep';
+    keepBtn.classList.toggle('on', isKeep);
+    const form = document.querySelector('.proj-form');
+    if (form) {
+      form.style.opacity = isKeep ? '0.4' : '1';
+      form.style.pointerEvents = isKeep ? 'none' : 'auto';
+    }
+  }
+  const qcLabel = $('projQcLabel');
+  if (qcLabel) {
+    const needsQc = !c;
+    qcLabel.style.display = needsQc ? 'flex' : 'none';
+  }
 }
 
 window.openProjModal = function () {
   const overlay = $('projModal');
   if (!overlay) return;
   const info = currentCrsInfo || (loadedFiles[0] && loadedFiles[0].crs_info);
-  renderProjDetection(info);
   renderProjModes(info);
   const qcInput = $('projQc');
   if (qcInput) qcInput.checked = !!window._projQc;
@@ -531,11 +573,35 @@ window.closeProjModal = function () {
 };
 
 window.applyProjMode = function () {
-  const sel = document.querySelector('input[name=projMode]:checked');
-  projMode = sel ? sel.value : 'keep';
+  const keepBtn = $('projKeepBtn');
+  const isKeep = keepBtn && keepBtn.classList.contains('on');
+  if (isKeep) {
+    projMode = 'keep';
+    projZone = null;
+  } else {
+    const t = $('projTypeSel') ? $('projTypeSel').value : 'geodetic';
+    const b = $('projBandSel') ? $('projBandSel').value : '3';
+    const zRaw = $('projZoneInput') ? $('projZoneInput').value.trim() : '';
+    const z = zRaw ? parseInt(zRaw, 10) : null;
+    if (t === 'geodetic') {
+      projMode = b === '6' ? 'B' : 'A';
+    } else {
+      if (!z) { toast('请输入带号'); return; }
+      const inputBand = currentCrsInfo && currentCrsInfo.b;
+      if (inputBand === '3' && b === '6') projMode = 'F';
+      else if (inputBand === '6' && b === '3') projMode = 'G';
+      else projMode = 'C';
+    }
+    projZone = z;
+  }
   window._projQc = !!$('projQc') && $('projQc').checked;
-  toast('动态投影: ' + (projMode === 'keep' ? '保持原样' : projMode));
+  window._projBand = $('projBandSel') ? parseInt($('projBandSel').value, 10) : 3;
+  const bStr = $('projBandSel') ? $('projBandSel').value : '3';
+  const zStr = projZone ? String(projZone) : '?';
+  const label = projMode === 'keep' ? '保持原样' : (projMode + ' ' + bStr + '°带 ' + zStr);
+  toast('动态投影: ' + label);
   updateProjButton();
+  updatePreview();
   window.closeProjModal();
 };
 

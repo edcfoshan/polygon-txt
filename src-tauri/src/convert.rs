@@ -191,24 +191,24 @@ pub struct ConvertResult {
 
 /// 单个地块 + 源信息（模式 2 按地块拆分用）
 #[derive(Debug, Clone)]
-struct PlotWithSource {
-    plot: txt::PlotData,
+pub struct PlotWithSource {
+    pub plot: txt::PlotData,
     /// 源的 stem（shp 文件名 / GDB 文件夹名_图层名），用于建子目录
     #[allow(dead_code)]
-    source_stem: String,
+    pub source_stem: String,
     /// 该地块在源内的序号（0-based）
-    index_in_source: usize,
+    pub index_in_source: usize,
     /// 该地块的完整属性表（用于按字段取文件名）
-    attributes: HashMap<String, String>,
+    pub attributes: HashMap<String, String>,
 }
 
 /// 一个导入源：SHP 文件或 GDB 单个要素类
 #[derive(Debug, Clone)]
-struct ImportSource {
+pub struct ImportSource {
     /// 源的 stem，用于命名（SHP 文件名 / GDB 文件夹名_图层名）
-    stem: String,
+    pub stem: String,
     /// 源内所有地块
-    plots: Vec<PlotWithSource>,
+    pub plots: Vec<PlotWithSource>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -338,6 +338,169 @@ fn shp_files_to_txt_preview(
     ))
 }
 
+/// 动态投影 + 头表同步 wrapper（Task 6 完整化）
+pub fn apply_dynamic_projection_to_sources(
+    sources: &mut Vec<ImportSource>,
+    header: &HeaderConfig,
+    options: &ShpToTxtOptions,
+) -> HeaderConfig {
+    if options.proj_mode.is_empty() || options.proj_mode == "keep" {
+        return header.clone();
+    }
+    let mode = options.proj_mode.clone();
+    let (src_band, src_zone) = extract_band_zone(header);
+    let datum = parse_datum_for_proj(&header.attr("坐标系"));
+    let dst_band: Option<u8> = match mode.as_str() {
+        "A" | "G" => Some(3),
+        "B" | "F" => Some(6),
+        _ => None,
+    };
+    let dst_zone = options.proj_zone.or(src_zone);
+    if let Err(e) = transform_sources_dynamic(
+        sources, &mode, src_band, src_zone, dst_band, dst_zone, datum,
+    ) {
+        eprintln!("[WARN] transform_sources_dynamic failed: {}", e);
+        return header.clone();
+    }
+    let mut new_header = header.clone();
+    sync_header_crs_fields(
+        &mut new_header.attrs,
+        &mode,
+        dst_band,
+        dst_zone,
+        src_band,
+        src_zone,
+        &header.attr("坐标系"),
+    );
+    new_header
+}
+
+fn parse_datum_for_proj(s: &str) -> projection::Ellipsoid {
+    match s {
+        "WGS84" => projection::Ellipsoid::WGS84,
+        "Xian1980" | "1980西安坐标系" => projection::Ellipsoid::Xian1980,
+        "Beijing1954" | "1954北京坐标系" => projection::Ellipsoid::Beijing1954,
+        _ => projection::Ellipsoid::CGCS2000,
+    }
+}
+
+fn extract_band_zone(header: &HeaderConfig) -> (Option<u8>, Option<u32>) {
+    let band_s = header.attr("分带");
+    let zone_s = header.attr("带号");
+    let band = match band_s.as_str() {
+        "3" | "3°带" => Some(3),
+        "6" | "6°带" => Some(6),
+        _ => None,
+    };
+    let zone = zone_s.trim().parse::<u32>().ok().filter(|z| *z > 0);
+    (band, zone)
+}
+
+fn transform_xy(
+    x: f64, y: f64,
+    mode: &str,
+    src_band: Option<u8>,
+    src_zone: Option<u32>,
+    dst_band: Option<u8>,
+    dst_zone: Option<u32>,
+    datum: projection::Ellipsoid,
+) -> (f64, f64) {
+    match mode {
+        "A" | "B" => {
+            let bw = dst_band.unwrap_or(3);
+            let zone = src_zone.unwrap_or(38);
+            let cm = if bw == 6 { zone as f64 * 6.0 - 3.0 } else { zone as f64 * 3.0 };
+            // x = coord.0 = lat, y = coord.1 = lon. forward expects (lon, lat) = (y, x).
+            // gauss_kruger_forward returns (easting without zone prefix, northing). Add zone prefix.
+            let (ex, ny) = projection::gauss_kruger_forward(y, x, cm, datum);
+            let zone_f = zone as f64 * 1_000_000.0;
+            ((ex + zone_f) as f64, ny)
+        }
+        "C" => {
+            let bw = src_band.unwrap_or(3);
+            let zone = src_zone.unwrap_or(38);
+            let cm = if bw == 6 { zone as f64 * 6.0 - 3.0 } else { zone as f64 * 3.0 };
+            // x = coord.0 = northing, y = coord.1 = easting. inverse expects (easting, northing) = (y, x)
+            projection::gauss_kruger_inverse(y, x, cm, datum)
+        }
+        "F" | "G" => {
+            let sb = src_band.unwrap_or(3);
+            let sz = src_zone.unwrap_or(38);
+            let db = dst_band.unwrap_or(6);
+            let dz = dst_zone.unwrap_or(38);
+            // reband expects (x, y) projected = (easting, northing) = (y, x)
+            let (ex, ny) = projection::reband_projected(y, x, sb, sz, db, dz, datum);
+            let zone_f = dz as f64 * 1_000_000.0;
+            ((ex + zone_f) as f64, ny)
+        }
+        _ => (x, y),
+    }
+}
+
+fn transform_sources_dynamic(
+    sources: &mut Vec<ImportSource>,
+    mode: &str,
+    src_band: Option<u8>,
+    src_zone: Option<u32>,
+    dst_band: Option<u8>,
+    dst_zone: Option<u32>,
+    datum: projection::Ellipsoid,
+) -> Result<(), String> {
+    for src in sources.iter_mut() {
+        for pws in src.plots.iter_mut() {
+            for coord in pws.plot.coords.iter_mut() {
+                let (nx, ny) = transform_xy(coord.0, coord.1, mode, src_band, src_zone, dst_band, dst_zone, datum);
+                // coord.0 = y_coord (lat/northing), coord.1 = x_coord (lon/easting)
+                coord.0 = ny;
+                coord.1 = nx;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn sync_header_crs_fields(
+    attrs: &mut Vec<AttrRow>,
+    mode: &str,
+    dst_band: Option<u8>,
+    dst_zone: Option<u32>,
+    src_band: Option<u8>,
+    src_zone: Option<u32>,
+    datum_name: &str,
+) {
+    let find_attr = |attrs: &Vec<AttrRow>, key: &str| -> Option<usize> {
+        attrs.iter().position(|a| a.k == key)
+    };
+    let set_val = |attrs: &mut Vec<AttrRow>, key: &str, val: String| {
+        if let Some(i) = find_attr(attrs, key) {
+            attrs[i].v = val;
+        }
+    };
+    set_val(attrs, "坐标系", datum_name.to_string());
+    match mode {
+        "A" | "B" | "F" | "G" => {
+            set_val(attrs, "形式", "投影（米）".to_string());
+            let bw = dst_band.unwrap_or(3);
+            set_val(attrs, "分带", match bw { 3 => "3°带".to_string(), 6 => "6°带".to_string(), _ => "—".to_string() });
+            set_val(attrs, "投影类型", "高斯克吕格".to_string());
+            set_val(attrs, "计量单位", "米".to_string());
+            if let Some(z) = dst_zone {
+                set_val(attrs, "带号", z.to_string());
+            } else if let Some(sz) = src_zone {
+                set_val(attrs, "带号", sz.to_string());
+            }
+        }
+        "C" => {
+            set_val(attrs, "形式", "大地（度）".to_string());
+            set_val(attrs, "分带", "—".to_string());
+            set_val(attrs, "投影类型", "—".to_string());
+            set_val(attrs, "计量单位", "—".to_string());
+            set_val(attrs, "带号", "".to_string());
+        }
+        _ => {}
+    }
+}
+
 pub fn convert_shp_to_txt(
     shp_paths: &[PathBuf],
     source_type: Option<&str>,
@@ -362,7 +525,7 @@ pub fn convert_shp_to_txt(
     let proj_cfg = ProjectionConfig::from_options(options, header_cfg);
 
     // 统一展开成「导入源列表」
-    let sources = collect_import_sources(
+    let mut sources = collect_import_sources(
         shp_paths,
         source_type,
         source_path,
@@ -372,10 +535,13 @@ pub fn convert_shp_to_txt(
         selected_layers,
     )?;
 
+    // Task 6 完整化：动态投影（mutates sources + returns updated header）
+    let header_for_convert = apply_dynamic_projection_to_sources(&mut sources, header_cfg, options);
+
     match options.output_mode.as_str() {
-        "split_by_plot" => convert_split_by_plot(sources, header_cfg, options, output_dir),
-        "merge_all" => convert_merge_all(sources, header_cfg, options, output_dir),
-        _ => convert_one_to_one(sources, header_cfg, options, output_dir),
+        "split_by_plot" => convert_split_by_plot(sources, &header_for_convert, options, output_dir),
+        "merge_all" => convert_merge_all(sources, &header_for_convert, options, output_dir),
+        _ => convert_one_to_one(sources, &header_for_convert, options, output_dir),
     }
 }
 
@@ -1407,5 +1573,22 @@ mod tests {
         // 负坐标取绝对值后判断（理论上东坐标不应为负，但防御性测试）
         let p = plot_with_coords(vec![(-1000000.0, -38378508.0)]);
         assert_eq!(extract_zone_from_coords(&[p]), Some(38));
+    }
+}
+
+
+/// 测试用：根据坐标列表构造 PlotData
+pub fn __plot_with_coords(c: Vec<(f64, f64)>) -> crate::txt::PlotData {
+    crate::txt::PlotData {
+        point_count: c.len() as u32,
+        area: String::new(),
+        fid: String::new(),
+        name: String::new(),
+        geom_type: "polygon".to_string(),
+        tfh: String::new(),
+        use_field: String::new(),
+        dlbm: String::new(),
+        coords: c,
+        rings: vec![],
     }
 }

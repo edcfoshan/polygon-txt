@@ -74,8 +74,9 @@ fn dynamic_proj_mode_a_forward() {
 }
 
 #[test]
-fn dynamic_proj_mode_c_inverse() {
-    let mut sources = vec![make_test_source(vec![(3_381_842.0, 38_537_123.0)])];
+fn dynamic_proj_mode_c_add_prefix() {
+    // 模式 C 同带含带号：自然值 easting + zone×1,000,000
+    let mut sources = vec![make_test_source(vec![(3_381_842.0, 537_123.0)])]; // easting 无前缀
     let header = header_with_test_attrs(vec![
         ("坐标系", "CGCS2000"),
         ("形式", "投影（米）"),
@@ -83,18 +84,34 @@ fn dynamic_proj_mode_c_inverse() {
         ("带号", "38"),
         ("投影类型", "高斯克吕格"),
         ("计量单位", "米"),
+    ]);
+    let options = ShpToTxtOptions { proj_mode: "C".to_string(), proj_zone: Some(38), ..shp_opts_test_default() };
+    let new_header = apply_dynamic_projection_to_sources(&mut sources, &header, &options).unwrap();
+    let (y, x) = sources[0].plots[0].plot.coords[0];
+    assert_eq!(y, 3_381_842.0, "northing unchanged");
+    assert_eq!(x, 38_537_123.0, "easting should have zone 38 prefix, got {}", x);
+    assert_eq!(new_header.attrs.iter().find(|a| a.k == "形式").unwrap().v, "投影（米）");
+    assert_eq!(new_header.attrs.iter().find(|a| a.k == "分带").unwrap().v, "3°带");
+}
+
+#[test]
+fn dynamic_proj_mode_c_strip_prefix() {
+    // 模式 C 同带不含带号：剥离 zone×1,000,000 前缀
+    let mut sources = vec![make_test_source(vec![(3_381_842.0, 38_537_123.0)])]; // easting 有前缀
+    let header = header_with_test_attrs(vec![
+        ("坐标系", "CGCS2000"),
+        ("形式", "投影（米）"),
+        ("分带", "3°带"),
+        ("带号", "38"),
         ("投影类型", "高斯克吕格"),
         ("计量单位", "米"),
     ]);
-    let options = ShpToTxtOptions { proj_mode: "C".to_string(), proj_zone: None, ..shp_opts_test_default() };
+    let options = ShpToTxtOptions { proj_mode: "C".to_string(), proj_zone: Some(38), proj_no_prefix: true, ..shp_opts_test_default() };
     let new_header = apply_dynamic_projection_to_sources(&mut sources, &header, &options).unwrap();
     let (y, x) = sources[0].plots[0].plot.coords[0];
-    assert!(x < 200.0, "x should be degrees (<200), got {}", x);
-    assert!(y > 0.0 && y < 90.0, "y should be degrees (0-90), got {}", y);
-    assert_eq!(new_header.attrs.iter().find(|a| a.k == "形式").unwrap().v, "大地（度）");
-    assert_eq!(new_header.attrs.iter().find(|a| a.k == "分带").unwrap().v, "—");
-    assert_eq!(new_header.attrs.iter().find(|a| a.k == "投影类型").unwrap().v, "—");
-    assert_eq!(new_header.attrs.iter().find(|a| a.k == "计量单位").unwrap().v, "—");
+    assert_eq!(y, 3_381_842.0, "northing unchanged");
+    assert_eq!(x, 537_123.0, "easting should have prefix stripped, got {}", x);
+    assert_eq!(new_header.attrs.iter().find(|a| a.k == "形式").unwrap().v, "投影（米）");
 }
 
 #[test]

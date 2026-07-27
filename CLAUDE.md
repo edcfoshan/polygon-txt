@@ -51,15 +51,16 @@ index.html (CSS 内联, Google Fonts CDN)
 - Markdown 弹窗：`content/about.md` 和 `content/sponsor.md` 通过 `?raw` 导入，`renderMarkdown()` 渲染
 - 双模式：`data-mode="s"`（面→TXT，3 列 260+260+360）/ `data-mode="t"`（TXT→面，2 列 300+flex）
 - 预设配置 `PP` 数组包含三种模式（基础地块/规划审批/自定义），字段自动匹配规则在 `FIELD_MATCH_RULES`
-- **动态投影弹窗**（`#projModal`）：toggle 开关默认 ON（保持原样）→ 表单灰色；OFF → 表单亮色可编辑。四选一 radio（3°/6° × 含/不含带号）+ 带号输入 + 中央经线显示 + 坐标范围推荐文案。模式自动推断表：
+- **动态投影弹窗**（`#projModal`）：推荐区（顶部，基于经纬度范围智能推荐分带/带号/CM）+ 导入识别网格 + toggle 开关 + 5 选 1 radio（3°/6° × 含/不含带号 + 转为大地坐标）+ 带号输入 → CM 实时联动。选中「转为大地坐标」时含/不含带号和带号输入置灰。模式自动推断表：
 
 | 输入形式 | 目标分带 | mode |
 |---------|---------|------|
-| 大地(度) | 3° | A |
-| 大地(度) | 6° | B |
-| 投影(米) 同带 | — | C |
-| 投影(米) 源3°→6° | 6° | F |
-| 投影(米) 源6°→3° | 3° | G |
+| 大地(度) | 3° | A（大地→投影 3°） |
+| 大地(度) | 6° | B（大地→投影 6°） |
+| 投影(米) 同带 | — | C（同带前缀调整） |
+| 投影(米) 源3°→6° | 6° | F（换带 3°→6°） |
+| 投影(米) 源6°→3° | 3° | G（换带 6°→3°） |
+| 任意 | 转为大地坐标 | D（投影→大地，逆投影） |
 
 ### Rust 后端模块
 
@@ -81,7 +82,7 @@ index.html (CSS 内联, Google Fonts CDN)
 ### 转换选项（面→TXT，`ShpToTxtOptions` in convert.rs）
 - `ox` XY 坐标标反 / `oj` 点号前加"J" / `on` 起始点西北角 / `oo` 首末点重合 / `oc` 闭合点编号模式
 - `og` 输出公里网：仅当输入为大地坐标系（度）时可用。与动态投影互斥（`proj_mode ≠ "keep"` 时前端强制 og=false 并置灰）
-- `proj_mode` 动态投影模式：`"keep"`（不转换）/ `"A"`（大地→3°）/ `"B"`（大地→6°）/ `"C"`（投影→大地反算）/ `"F"`（3°→6°换带）/ `"G"`（6°→3°换带）
+- `proj_mode` 动态投影模式：`"keep"`（不转换）/ `"A"`（大地→3°投影）/ `"B"`（大地→6°投影）/ `"C"`（同带前缀调整，仅加减 zone×1,000,000 不做实际投影）/ `"D"`（投影→大地，逆投影）/ `"F"`（3°→6°换带）/ `"G"`（6°→3°换带）
 - `proj_zone`: 用户填的带号（null=自动推算），`proj_no_prefix`: 不含带号前缀（自然值）
 - `output_mode`（一对一/按地块拆分/全合并）、`filename_field`（拆分模式文件名字段）
 - 前端 `getOptions()` 收集 → `applyProjMode()` 写入全局变量 → `updatePreview()`/`runShpToTxt()` 发送 IPC
@@ -135,8 +136,15 @@ index.html (CSS 内联, Google Fonts CDN)
 ### 坐标顺序交换
 SHP 存储 (X, Y) = (东坐标, 北坐标)。TXT 存储 (Y, X) = (北坐标, 东坐标)。转换层负责交换。动态投影 `transform_xy` 内部：
 - A/B 模式：`x=lat, y=lon`，返回 `(easting, northing)`，调用方写回 `coord = (ny, nx)` = `(Y, X)`
-- C 模式：`x=northing, y=easting`，返回 `(lon, lat)`
+- C 模式（同带前缀）：`x=northing, y=easting`，含带号时 `y+zone×1e6`，不含时剥离前缀
+- D 模式（逆投影）：`x=northing, y=easting`，调用 `gauss_kruger_inverse(y, x, cm)` 返回 `(lon, lat)`
 - **预览与转换路径必须一致**，否则预览坐标与输出 TXT 不对齐
+
+### 预览坐标管线（关键）
+
+`shp_to_txt_preview` → `shp_files_to_plots` / `gdb_features_to_plots`（og 投影）→ `apply_dynamic_projection_to_plots`（动态投影）→ `txt::generate_txt`
+
+**陷阱**：`PlotData` 同时有 `coords`（扁平坐标列表）和 `rings`（结构化环坐标）。`generate_txt` 优先使用 `rings`（非空时）。`apply_dynamic_projection_to_plots` 必须**同时更新 `coords` 和 `rings`**，否则预览显示原始坐标而非投影后坐标。
 
 ### PRJ 坐标系识别（shp.rs `read_prj`）
 支持匹配：`CGCS2000` / `Xian_1980` / `Beijing_1954` / `WGS84` / `WGS_84` / **`WGS_1984`**（最后一个是 v2.0 新增，之前遗漏导致 WGS84 PRJ 坐标系显示为空）。
@@ -156,7 +164,7 @@ SHP 存储 (X, Y) = (东坐标, 北坐标)。TXT 存储 (Y, X) = (北坐标, 东
 手动二进制写入（未使用 dbase crate API）。字段偏移量必须为 4 字节（LE），不是 2 字节。
 
 ### 动态投影 `proj_no_prefix`
-`ShpToTxtOptions.proj_no_prefix = true` 时，`transform_xy` 在 A/B/F/G 模式中不添加 `zone × 1,000,000` 前缀，输出纯自然值东坐标（6 位），用于"不含带号"场景。不影响 C 模式（输出经纬度）。
+`ShpToTxtOptions.proj_no_prefix = true` 时，`transform_xy` 在 A/B/F/G 模式中不添加 `zone × 1,000,000` 前缀。对 C 模式（前缀调整）：`true`=剥离前缀取自然值，`false`=自然值加前缀。对 D 模式（逆投影）：无影响（输出经纬度无前缀概念）。
 
 ### 发布打包
 `npm run tauri build` → 产物复制到 `其他相关tbx放进去release/`（便携版 + NSIS 安装包）。签名需 `TAURI_SIGNING_PRIVATE_KEY` 环境变量或 `scripts/build-signed.ps1`。

@@ -440,7 +440,8 @@ function updateProjButton() {
     label.style.display = '';
     const tag = projMode === 'A' ? '大地→投影 3°带'
             : projMode === 'B' ? '大地→投影 6°带'
-            : projMode === 'C' ? '投影→大地'
+            : projMode === 'C' ? '同带调整'
+            : projMode === 'D' ? '投影→大地'
             : projMode === 'F' ? '投影 3°→6°'
             : projMode === 'G' ? '投影 6°→3°' : projMode;
     label.textContent = tag;
@@ -454,39 +455,55 @@ function parseProjBand(value) {
   return { band: parseInt(parts[0], 10) || 3, noPrefix: parts[1] === 'no' };
 }
 
-/// 从检测信息推算源中央经线，再按目标带找最近带号 + 中央经线
-function computeRecommendedZone(info, band) {
-  let srcCM = null;
-  // 优先从检测到的带号+分带反推源 CM
-  if (info && info.b && info.z) {
-    const srcBand = info.b === '6' ? 6 : 3;
-    srcCM = srcBand === 6 ? info.z * 6 - 3 : info.z * 3;
-  } else if (info && info.u === '度') {
-    // 大地坐标无分带信息：取坐标范围中点估算 CM
-    if (info.xmin != null && info.xmax != null) {
-      srcCM = (info.xmin + info.xmax) / 2;
-    } else {
-      srcCM = 114; // 兜底
-    }
+/// 根据导入数据的经纬度范围，智能推荐最佳分带/带号/中央经线
+function buildRecommendText(info) {
+  if (!info) return '导入数据后可显示坐标范围建议';
+  let lonMin, lonMax;
+  if (info.u === '度') {
+    // 地理数据：直接用 xmin/xmax 作为经纬度范围
+    if (info.xmin == null || info.xmax == null) return '导入数据后可显示坐标范围建议';
+    lonMin = info.xmin; lonMax = info.xmax;
+  } else if (info.b && info.z && info.xmin != null && info.ymin != null) {
+    // 投影数据：近似逆投影得到经纬度范围
+    const cm = info.b === '6' ? info.z * 6 - 3 : info.z * 3;
+    const latMid = ((info.ymin + info.ymax) / 2) / 111320; // 近似纬度
+    const mPerDeg = 111320 * Math.cos(latMid * Math.PI / 180);
+    lonMin = cm + ((info.xmin - 500000) / mPerDeg);
+    lonMax = cm + ((info.xmax - 500000) / mPerDeg);
+  } else {
+    return '导入数据后可显示坐标范围建议';
   }
-  // 按目标分带找最近带号
-  if (srcCM != null) {
-    const zone = band === 6 ? Math.round((srcCM + 3) / 6) : Math.round(srcCM / 3);
-    const cm = band === 6 ? zone * 6 - 3 : zone * 3;
-    return { zone, cm };
+  // 推荐最佳分带
+  const midLon = (lonMin + lonMax) / 2;
+  const z3 = Math.round(midLon / 3);
+  const z6 = Math.round((midLon + 3) / 6);
+  const cm3 = z3 * 3;
+  const cm6 = z6 * 6 - 3;
+  const span = lonMax - lonMin;
+  const rangeText = `经纬度范围: ${lonMin.toFixed(2)}° ~ ${lonMax.toFixed(2)}°E`;
+  if (span <= 3) {
+    return `${rangeText}。建议 3°分带，中央经线 ${cm3}°，带号 ${z3}`;
   }
-  return { zone: null, cm: null };
+  return `${rangeText}。3°带：CM ${cm3}° 带号 ${z3}；6°带：CM ${cm6}° 带号 ${z6}`;
 }
 
-/// 根据坐标范围和推荐生成建议文案
-function buildRecommendText(info, recBand, recZone, recCm) {
-  const xmin = info && info.xmin;
-  const xmax = info && info.xmax;
-  if (xmin == null || xmax == null) return '（导入数据后可显示坐标范围建议）';
-  return `本矢量数据最西的图斑坐标为 ${xmin.toFixed(4)}°，`
-    + `最东的图斑坐标为 ${xmax.toFixed(4)}°，`
-    + `最接近的中央经线为 ${recCm}° 经线，`
-    + `因此建议选择 ${recBand}° 分度带。`;
+/// 简化：根据 info + band 返回推荐 zone/cm
+function computeRecommendedZone(info, band) {
+  if (!info) return { zone: null, cm: null };
+  let midLon;
+  if (info.u === '度' && info.xmin != null) {
+    midLon = (info.xmin + info.xmax) / 2;
+  } else if (info.b && info.z && info.xmin != null && info.ymin != null) {
+    const cm = info.b === '6' ? info.z * 6 - 3 : info.z * 3;
+    const latMid = ((info.ymin + info.ymax) / 2) / 111320;
+    const mPerDeg = 111320 * Math.cos(latMid * Math.PI / 180);
+    midLon = cm + (((info.xmin + info.xmax) / 2 - 500000) / mPerDeg);
+  } else {
+    return { zone: null, cm: null };
+  }
+  const zone = band === 6 ? Math.round((midLon + 3) / 6) : Math.round(midLon / 3);
+  const cm = band === 6 ? zone * 6 - 3 : zone * 3;
+  return { zone, cm };
 }
 
 function renderProjModal(info) {
@@ -494,6 +511,9 @@ function renderProjModal(info) {
   const c = info && info.c || '';
   const b = info && info.b;
   const z = info && info.z;
+
+  // 保存原始头表快照，供 applyProjMode 切换"保持原样"时恢复
+  window._origAttrs = collectAttrRows().map(r => ({ ...r }));
 
   // 导入识别
   const det = $('projDetectGrid');
@@ -512,31 +532,63 @@ function renderProjModal(info) {
     ].join('');
   }
 
-  // 目标分带 radio：根据检测结果默认选中对应项
-  const radio3y = document.querySelector('input[name="projBand"][value="3-yes"]');
-  const radio3n = document.querySelector('input[name="projBand"][value="3-no"]');
-  const radio6y = document.querySelector('input[name="projBand"][value="6-yes"]');
-  const radio6n = document.querySelector('input[name="projBand"][value="6-no"]');
-  const defaultBand = (b === '6') ? '6-yes' : '3-yes';
-  const defaultRadio = document.querySelector(`input[name="projBand"][value="${defaultBand}"]`);
-  if (defaultRadio) defaultRadio.checked = true;
+  // 设置初始推荐文案
+  const rm = $('projRecommend');
+  if (rm) rm.textContent = buildRecommendText(info);
 
-  // 刷新推荐信息
+  // 目标分带 radio：优先恢复上次设置，否则根据检测结果默认选中
+  const defaultBand = (b === '6') ? '6-yes' : '3-yes';
+  const restoreValue = (projMode !== 'keep') ? window._projBandValue : null;
+  const selValue = restoreValue || defaultBand;
+  const selRadio = document.querySelector(`input[name="projBand"][value="${selValue}"]`);
+  if (selRadio) selRadio.checked = true;
+
+  /// 根据当前 radio 选中状态刷新 zone / CM / disabled
   function refreshRecommend() {
     const checked = document.querySelector('input[name="projBand"]:checked');
-    const p = parseProjBand(checked ? checked.value : '3-yes');
-    const rec = computeRecommendedZone(info, p.band);
+    const val = checked ? checked.value : '3-yes';
+    const isToDeg = (val === 'to-deg');
+    const p = parseProjBand(val);
+    const rec = isToDeg ? { zone: null, cm: null } : computeRecommendedZone(info, p.band);
     const zi = $('projZoneInput');
-    if (zi) {
-      zi.placeholder = rec.zone ? '推荐: ' + rec.zone : '自动推算';
-      if (rec.zone) zi.value = String(rec.zone); else zi.value = '';
-    }
     const cm = $('projCM');
-    if (cm) cm.textContent = rec.cm ? '中央经线 ' + rec.cm + '°' : '';
-    const rm = $('projRecommend');
-    if (rm) rm.textContent = buildRecommendText(info, p.band, rec.zone, rec.cm);
+    // 转大地模式：置灰带号
+    if (isToDeg) {
+      if (zi) { zi.disabled = true; zi.value = ''; zi.placeholder = '逆投影无需带号'; }
+      if (cm) cm.textContent = '';
+    } else if (p.noPrefix) {
+      if (zi) { zi.disabled = true; zi.value = ''; zi.placeholder = '不含带号无需填写'; }
+      if (cm) cm.textContent = '';
+    } else {
+      if (zi) { zi.disabled = false; zi.placeholder = rec.zone ? '推荐: ' + rec.zone : '自动推算'; if (rec.zone) zi.value = String(rec.zone); else zi.value = ''; }
+      if (cm) cm.textContent = rec.cm ? '中央经线 ' + rec.cm + '°' : '';
+    }
   }
   refreshRecommend();
+
+  // 恢复上次填写的带号（优先级高于推荐值）
+  if (projZone != null) {
+    const zi = $('projZoneInput');
+    if (zi && !zi.disabled) zi.value = String(projZone);
+  }
+
+  // 带号输入实时联动中央经线
+  const zi = $('projZoneInput');
+  if (zi && !zi._cmBound) {
+    zi.addEventListener('input', () => {
+      const checked = document.querySelector('input[name="projBand"]:checked');
+      const val = checked ? checked.value : '3-yes';
+      if (val === 'to-deg') return;
+      const p = parseProjBand(val);
+      const v = parseInt(zi.value, 10);
+      const cmEl = $('projCM');
+      if (cmEl && v > 0) {
+        const cmVal = p.band === 6 ? v * 6 - 3 : v * 3;
+        cmEl.textContent = '中央经线 ' + cmVal + '°';
+      }
+    });
+    zi._cmBound = true;
+  }
 
   // 分带切换时联动刷新
   document.querySelectorAll('input[name="projBand"]').forEach(r => {
@@ -555,6 +607,7 @@ function renderProjModal(info) {
     if (!toggle._bound) {
       toggle.addEventListener('change', () => {
         form.classList.toggle('dimmed', toggle.checked);
+        if (!toggle.checked) refreshRecommend(); // 切到动态投影时刷新带号输入 disabled 状态
       });
       toggle._bound = true;
     }
@@ -582,35 +635,66 @@ window.applyProjMode = function () {
     projZone = null;
   } else {
     const checked = document.querySelector('input[name="projBand"]:checked');
-    const p = parseProjBand(checked ? checked.value : '3-yes');
-    const zRaw = $('projZoneInput') ? $('projZoneInput').value.trim() : '';
-    projZone = zRaw ? parseInt(zRaw, 10) : null;
-    window._projNoPrefix = p.noPrefix;
-    const inputBand = currentCrsInfo && currentCrsInfo.b;
-    const inputIsDegree = currentCrsInfo && currentCrsInfo.u === '度';
-    if (inputIsDegree) {
-      projMode = p.band === 6 ? 'B' : 'A';
+    const val = checked ? checked.value : '3-yes';
+    // 转为大地坐标 → mode D
+    if (val === 'to-deg') {
+      projMode = 'D';
+      projZone = null;
+      window._projNoPrefix = false;
     } else {
-      if (inputBand === String(p.band)) {
-        projMode = 'C';
-      } else if (inputBand === '3' && p.band === 6) {
-        projMode = 'F';
-      } else if (inputBand === '6' && p.band === 3) {
-        projMode = 'G';
+      const p = parseProjBand(val);
+      const zRaw = $('projZoneInput') ? $('projZoneInput').value.trim() : '';
+      projZone = zRaw ? parseInt(zRaw, 10) : null;
+      window._projNoPrefix = p.noPrefix;
+      const inputBand = currentCrsInfo && currentCrsInfo.b;
+      const inputIsDegree = currentCrsInfo && currentCrsInfo.u === '度';
+      if (inputIsDegree) {
+        projMode = p.band === 6 ? 'B' : 'A';
       } else {
-        projMode = 'C';
+        if (inputBand === String(p.band)) {
+          projMode = 'C';
+        } else if (inputBand === '3' && p.band === 6) {
+          projMode = 'F';
+        } else if (inputBand === '6' && p.band === 3) {
+          projMode = 'G';
+        } else {
+          projMode = 'C';
+        }
       }
     }
   }
   const checked = document.querySelector('input[name="projBand"]:checked');
   const p = parseProjBand(checked ? checked.value : '3-yes');
+  window._projBandValue = checked ? checked.value : '3-yes'; // 记忆 radio 选择，下次打开恢复
   const bStr = String(p.band);
   const zStr = projZone ? String(projZone) : '?';
   const noPre = window._projNoPrefix ? ' 自然值' : '';
-  const label = projMode === 'keep' ? '保持原样' : (projMode + ' ' + bStr + '°带' + noPre + ' ' + zStr);
+  const label = projMode === 'keep' ? '保持原样'
+    : projMode === 'D' ? '投影→大地'
+    : (projMode + ' ' + bStr + '°带' + noPre + ' ' + zStr);
   // og 与动态投影互斥
   syncOgGate(currentCrsInfo);
   toast('动态投影: ' + label);
+
+  // 同步头表 CRS 字段
+  const rows = collectAttrRows();
+  const setRow = (key, val) => { const r = rows.find(a => a.k === key); if (r) r.v = val; };
+  if (projMode === 'keep') {
+    if (window._origAttrs) {
+      window._origAttrs.forEach((orig, i) => { if (i < rows.length) rows[i].v = orig.v; });
+    }
+  } else {
+    const bw = p.band;
+    const srcZone = currentCrsInfo && currentCrsInfo.z ? parseInt(currentCrsInfo.z, 10) : null;
+    const zone = projZone || srcZone;
+    setRow('形式', '投影（米）');
+    setRow('分带', bw === 6 ? '6°带' : '3°带');
+    setRow('投影类型', '高斯克吕格');
+    setRow('计量单位', '米');
+    if (zone) setRow('带号', String(zone));
+  }
+  renderAttrRows(rows);
+
   updateProjButton();
   updatePreview();
   window.closeProjModal();
@@ -811,7 +895,7 @@ window.up = async function () {
     try {
       const txt = await tauriInvoke("read_shp_to_txt_preview", { shpPaths, sourceType, sourcePath, headerCfg: cfg.h, fieldMapping: cfg.f, options: opt, selectedLayers: sourceType === "gdb" ? selectedLayers : [] });
       if (txt) { const pv = $("pv"); if (pv) pv.textContent = txt; return; }
-    } catch (e) { console.log("Preview error:", e); }
+    } catch (e) { console.error("Preview error:", e); toast("预览失败: " + (e?.message || e)); }
   }
   const pv = $("pv");
   if (pv) pv.textContent = out || "请先导入 SHP 或 GDB 文件";

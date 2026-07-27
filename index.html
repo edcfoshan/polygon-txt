@@ -772,6 +772,7 @@ body::before{
 .proj-hint{color:var(--tx2);font-size:11px}
 .proj-input{padding:3px 8px;border:1px solid var(--brd);border-radius:3px;background:var(--srf);color:var(--tx);font-size:11.5px;font-family:inherit}
 .proj-input:focus{outline:none;border-color:var(--ac)}
+.proj-input:disabled{opacity:.35;pointer-events:none;background:var(--bg);cursor:not-allowed}
 .proj-radios{display:flex;flex-wrap:wrap;gap:6px 14px}
 .proj-radio{display:flex;align-items:center;gap:4px;font-size:11.5px;color:var(--tx);cursor:pointer;white-space:nowrap}
 .proj-radio input{accent-color:var(--ac);margin:0}
@@ -1131,6 +1132,7 @@ J2,1,Y500.000,X301.000
     <h3>动态投影</h3>
     <div class="modal-sub">基于导入数据自动识别 · 同基准内互转</div>
     <div class="modal-body">
+      <div class="proj-recommend" id="projRecommend"></div>
       <div class="proj-section">
         <div class="proj-section-hd">导入识别</div>
         <div class="proj-detect-grid" id="projDetectGrid"></div>
@@ -1149,6 +1151,7 @@ J2,1,Y500.000,X301.000
               <label class="proj-radio"><input type="radio" name="projBand" value="3-no"> 3°带 不含带号</label>
               <label class="proj-radio"><input type="radio" name="projBand" value="6-yes"> 6°带 含带号</label>
               <label class="proj-radio"><input type="radio" name="projBand" value="6-no"> 6°带 不含带号</label>
+              <label class="proj-radio"><input type="radio" name="projBand" value="to-deg"> 转为大地坐标（度）</label>
             </div>
           </div>
           <div class="proj-row">
@@ -1156,7 +1159,6 @@ J2,1,Y500.000,X301.000
             <input class="proj-input" type="number" id="projZoneInput" min="1" max="60" placeholder="自动推算">
             <span class="proj-hint" id="projCM"></span>
           </div>
-          <div class="proj-recommend" id="projRecommend"></div>
         </div>
       </div>
     </div>

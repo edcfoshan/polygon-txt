@@ -413,12 +413,34 @@ pub fn apply_dynamic_projection_to_plots(
             .or(src_zone),
         _ => options.proj_zone.or(src_zone),
     };
+    eprintln!(
+        "[preview proj] mode={}, src_band={:?}, src_zone={:?}, dst_band={:?}, dst_zone={:?}, no_prefix={}",
+        mode, src_band, src_zone, dst_band, dst_zone, options.proj_no_prefix
+    );
+    if let Some(first_plot) = plots.first() {
+        if let Some(first_coord) = first_plot.coords.first() {
+            eprintln!("[preview proj] first coord before: ({:.6}, {:.6})", first_coord.0, first_coord.1);
+        }
+    }
     for plot in plots.iter_mut() {
         for coord in &mut plot.coords {
             let (x, y) = *coord;
             let (nx, ny) = transform_xy(x, y, &mode, src_band, src_zone, dst_band, dst_zone, datum, options.proj_no_prefix);
             // coord = (Y, X) = (北坐标, 东坐标) TXT 格式，与 transform_sources_dynamic 保持一致
             *coord = (ny, nx);
+        }
+        // 同步更新 rings：generate_txt 优先使用 plot.rings，必须同步变换
+        for ring in &mut plot.rings {
+            for coord in &mut ring.coords {
+                let (x, y) = *coord;
+                let (nx, ny) = transform_xy(x, y, &mode, src_band, src_zone, dst_band, dst_zone, datum, options.proj_no_prefix);
+                *coord = (ny, nx);
+            }
+        }
+    }
+    if let Some(first_plot) = plots.first() {
+        if let Some(first_coord) = first_plot.coords.first() {
+            eprintln!("[preview proj] first coord after:  ({:.6}, {:.6})", first_coord.0, first_coord.1);
         }
     }
     let mut new_header = header.clone();
@@ -468,13 +490,26 @@ fn transform_xy(
     match mode {
         "A" | "B" => {
             let bw = dst_band.unwrap_or(3);
-            let zone = src_zone.unwrap_or(38);
+            let zone = dst_zone.or(src_zone).unwrap_or(38);
             let cm = if bw == 6 { zone as f64 * 6.0 - 3.0 } else { zone as f64 * 3.0 };
             let (ex, ny) = projection::gauss_kruger_forward(y, x, cm, datum);
             if no_prefix { (ex, ny) }
             else { let zone_f = zone as f64 * 1_000_000.0; ((ex + zone_f), ny) }
         }
         "C" => {
+            // 同带仅更新带号前缀，不做实际逆投影（避免把米坐标转成度）
+            let zone = dst_zone.or(src_zone).unwrap_or(38);
+            let zone_f = zone as f64 * 1_000_000.0;
+            if no_prefix {
+                // 不含带号：剥离已有前缀取自然值
+                if y.abs() >= 1_000_000.0 { (y % zone_f, x) } else { (y, x) }
+            } else {
+                // 含带号：自然值加前缀
+                if y.abs() < 1_000_000.0 { (y + zone_f, x) } else { (y, x) }
+            }
+        }
+        "D" => {
+            // 投影→大地：逆投影，米坐标转回经纬度（度）
             let bw = src_band.unwrap_or(3);
             let zone = src_zone.unwrap_or(38);
             let cm = if bw == 6 { zone as f64 * 6.0 - 3.0 } else { zone as f64 * 3.0 };
@@ -520,7 +555,7 @@ fn sync_header_crs_fields(
     mode: &str,
     dst_band: Option<u8>,
     dst_zone: Option<u32>,
-    _src_band: Option<u8>,
+    src_band: Option<u8>,
     src_zone: Option<u32>,
     datum_name: &str,
 ) {
@@ -547,6 +582,18 @@ fn sync_header_crs_fields(
             }
         }
         "C" => {
+            // 同带仅更新前缀：输出仍为投影坐标
+            set_val(attrs, "形式", "投影（米）".to_string());
+            let bw = src_band.unwrap_or(3);
+            set_val(attrs, "分带", match bw { 3 => "3°带".to_string(), 6 => "6°带".to_string(), _ => "—".to_string() });
+            set_val(attrs, "投影类型", "高斯克吕格".to_string());
+            set_val(attrs, "计量单位", "米".to_string());
+            if let Some(z) = dst_zone.or(src_zone) {
+                set_val(attrs, "带号", z.to_string());
+            }
+        }
+        "D" => {
+            // 投影→大地：逆投影输出为度
             set_val(attrs, "形式", "大地（度）".to_string());
             set_val(attrs, "分带", "—".to_string());
             set_val(attrs, "投影类型", "—".to_string());

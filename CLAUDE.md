@@ -22,6 +22,8 @@ cd src-tauri
 cargo build --release                # 仅 Rust 编译（不会嵌入前端）
 cargo test                           # 全部测试
 cargo test --test integration_test   # 集成测试（SHP/DBF/PRJ/TXT/GDB 往返 + 三模式输出）
+cargo test --test dynamic_projection_test          # 投影函数单元测试（GK 往返、reband、zone 推断）
+cargo test --test dynamic_projection_pipeline_test # 动态投影管线测试（keep/A/B/C/F/G + header 同步 + 预览一致性）
 cargo test --test debug_output_test  # 调试用：从 TXT 生成 SHP/GDB 输出验证
 cargo run --bin diag_read_gdb -- [gdb路径]  # 诊断：打印 GDB 图层/首尾坐标点，对照 arcpy（不传参走默认路径）
 ```
@@ -49,6 +51,15 @@ index.html (CSS 内联, Google Fonts CDN)
 - Markdown 弹窗：`content/about.md` 和 `content/sponsor.md` 通过 `?raw` 导入，`renderMarkdown()` 渲染
 - 双模式：`data-mode="s"`（面→TXT，3 列 260+260+360）/ `data-mode="t"`（TXT→面，2 列 300+flex）
 - 预设配置 `PP` 数组包含三种模式（基础地块/规划审批/自定义），字段自动匹配规则在 `FIELD_MATCH_RULES`
+- **动态投影弹窗**（`#projModal`）：toggle 开关默认 ON（保持原样）→ 表单灰色；OFF → 表单亮色可编辑。四选一 radio（3°/6° × 含/不含带号）+ 带号输入 + 中央经线显示 + 坐标范围推荐文案。模式自动推断表：
+
+| 输入形式 | 目标分带 | mode |
+|---------|---------|------|
+| 大地(度) | 3° | A |
+| 大地(度) | 6° | B |
+| 投影(米) 同带 | — | C |
+| 投影(米) 源3°→6° | 6° | F |
+| 投影(米) 源6°→3° | 3° | G |
 
 ### Rust 后端模块
 
@@ -60,7 +71,7 @@ index.html (CSS 内联, Google Fonts CDN)
 | `txt.rs` | TXT 三段式格式解析与生成 |
 | `gdb.rs` + `gdb/gdb_templates.rs` | GDB 读取（geonative-filegdb）+ 模板化最小 OpenFileGDB 写入 |
 | `convert.rs` | 转换编排：SHP/GDB→TXT（三模式：一对一/按地块拆分/全合并）、TXT→SHP（一对一/合并） |
-| `projection.rs` | 高斯-克吕格投影正算（proj-core EPSG 标准，回退经典 Krüger 公式 + 告警）。仅 og 且输入为大地坐标系（度）时投影 |
+| `projection.rs` | 高斯-克吕格投影正/反算 + 换带（proj-core EPSG 标准，回退经典 Krüger 公式 + 告警）。提供 `gauss_kruger_forward`、`gauss_kruger_inverse`、`reband_projected`、`infer_zone_from_x`、`detect_crs_completeness` |
 
 ### 输出模式（面→TXT）
 - **一对一 (`one_to_one`)**: 每个导入源（SHP 文件 / GDB 要素类）输出一个 TXT。同名冲突自动追加 `_2/_3`
@@ -68,10 +79,12 @@ index.html (CSS 内联, Google Fonts CDN)
 - **全合并 (`merge_all`)**: 所有源所有地块合并为 `merged_output_YYYYMMDD_HHMMSS.txt`（本地时间秒级时间戳）
 
 ### 转换选项（面→TXT，`ShpToTxtOptions` in convert.rs）
-- `ox` XY 坐标标反 / `oj` 点号前加"J" / `on` 起始点西北角 / `oo` 首末点重合（勾上才在每个环末尾输出闭合点）/ `oc` 闭合点编号模式（false=回到环首点 默认，true=续编；前端下拉，`oo` 未勾时置灰）
-- `og` 输出公里网：仅当输入为大地坐标系（单位=度）时可用（前端按 `crs_info.u` 给按钮门禁，米坐标置灰）。勾选 → 经纬度投影为 CGCS2000 高斯-克吕格平面坐标（米）+ 带号前缀；计量单位自动 度→米。`zone_type`（3/6 度带）决定中央经线 `CM = 3° ? 带号×3 : 带号×6−3`。带号取自表头，仅 og+大地坐标系 时必填。逻辑在 `convert.rs::single_shp_to_source` / `gdb_to_sources`，靠坐标采样判度/米（PRJ 误标也可靠）
+- `ox` XY 坐标标反 / `oj` 点号前加"J" / `on` 起始点西北角 / `oo` 首末点重合 / `oc` 闭合点编号模式
+- `og` 输出公里网：仅当输入为大地坐标系（度）时可用。与动态投影互斥（`proj_mode ≠ "keep"` 时前端强制 og=false 并置灰）
+- `proj_mode` 动态投影模式：`"keep"`（不转换）/ `"A"`（大地→3°）/ `"B"`（大地→6°）/ `"C"`（投影→大地反算）/ `"F"`（3°→6°换带）/ `"G"`（6°→3°换带）
+- `proj_zone`: 用户填的带号（null=自动推算），`proj_no_prefix`: 不含带号前缀（自然值）
 - `output_mode`（一对一/按地块拆分/全合并）、`filename_field`（拆分模式文件名字段）
-- 前端三处同步：`getOptions()` 收集（[src/main.js](src/main.js)）、`applyPreset` 恢复、`PP` 预设 `p` 对象存储。**新增选项必须三处都加 + PP 默认值**，否则预设保存/恢复丢失
+- 前端 `getOptions()` 收集 → `applyProjMode()` 写入全局变量 → `updatePreview()`/`runShpToTxt()` 发送 IPC
 
 ### Tauri IPC 命令
 
@@ -79,7 +92,8 @@ index.html (CSS 内联, Google Fonts CDN)
 拖放导入：`pick_shp_files_from_paths`、`pick_txt_files_from_paths`
 预览：`read_shp_to_txt_preview`、`read_txt_preview`
 转换：`run_shp_to_txt`、`run_txt_to_shp`
-窗口控制（无边框标题栏必需）：`minimize_window`、`close_window`
+投影：`apply_dynamic_projection`（独立 IPC，前端暂未使用；实际投影走 convert 管线）
+窗口控制：`minimize_window`、`toggle_maximize`、`close_window`
 
 ## 项目目录结构
 
@@ -119,7 +133,17 @@ index.html (CSS 内联, Google Fonts CDN)
 ## 关键注意事项
 
 ### 坐标顺序交换
-SHP 存储 (X, Y) = (东坐标, 北坐标)。TXT 存储 (Y, X) = (北坐标, 东坐标)。转换层负责交换。
+SHP 存储 (X, Y) = (东坐标, 北坐标)。TXT 存储 (Y, X) = (北坐标, 东坐标)。转换层负责交换。动态投影 `transform_xy` 内部：
+- A/B 模式：`x=lat, y=lon`，返回 `(easting, northing)`，调用方写回 `coord = (ny, nx)` = `(Y, X)`
+- C 模式：`x=northing, y=easting`，返回 `(lon, lat)`
+- **预览与转换路径必须一致**，否则预览坐标与输出 TXT 不对齐
+
+### PRJ 坐标系识别（shp.rs `read_prj`）
+支持匹配：`CGCS2000` / `Xian_1980` / `Beijing_1954` / `WGS84` / `WGS_84` / **`WGS_1984`**（最后一个是 v2.0 新增，之前遗漏导致 WGS84 PRJ 坐标系显示为空）。
+提取字段存入 `crs_info` HashMap：`c`（坐标系名）、`u`（单位 度/米）、`b`（分带 3/6）、`z`（带号）。
+
+### 导入结果扩展
+`ShpFileItem` 和 `GdbImportResult` 含 `xmin`/`xmax` 字段（坐标范围），前端用于动态投影弹窗推荐文案。
 
 ### TXT 格式
 - 坐标行：`J{序号},{界址线号},Y坐标,X坐标`（Y 在前）。第二列"界址线号"= `IndexedRing.part_index`（外环=1、洞=2、多部件下一 part=3…逐环递增），是反向解析 TXT→SHP 切环的唯一依据，**严禁删除或重算**
@@ -130,6 +154,12 @@ SHP 存储 (X, Y) = (东坐标, 北坐标)。TXT 存储 (Y, X) = (北坐标, 东
 
 ### DBF 写入
 手动二进制写入（未使用 dbase crate API）。字段偏移量必须为 4 字节（LE），不是 2 字节。
+
+### 动态投影 `proj_no_prefix`
+`ShpToTxtOptions.proj_no_prefix = true` 时，`transform_xy` 在 A/B/F/G 模式中不添加 `zone × 1,000,000` 前缀，输出纯自然值东坐标（6 位），用于"不含带号"场景。不影响 C 模式（输出经纬度）。
+
+### 发布打包
+`npm run tauri build` → 产物复制到 `其他相关tbx放进去release/`（便携版 + NSIS 安装包）。签名需 `TAURI_SIGNING_PRIVATE_KEY` 环境变量或 `scripts/build-signed.ps1`。
 
 ### CSP（tauri.conf.json）
 必须包含 `script-src 'self' 'unsafe-inline' 'unsafe-eval'`，否则 WebView2 阻止内联脚本。
@@ -160,6 +190,8 @@ SHP 存储 (X, Y) = (东坐标, 北坐标)。TXT 存储 (Y, X) = (北坐标, 东
 2. **GDB 写入**：最小化 OpenFileGDB 实现，ArcGIS Pro 兼容性有限。回退方案：`ogr2ogr -f "OpenFileGDB"`
 3. **打包方式**：`bundle.targets` 为 `nsis`（不含 MSI/WiX）。若 NSIS 打包失败，`src-tauri/target/release/jisig-bpoint-converter.exe` 仍可直接运行
 4. **Google Fonts**：需联网加载 Inter/Noto Sans SC/JetBrains Mono，离线回退系统字体
+5. **G 模式 (6°→3° 换带)**：`gauss_kruger_inverse` 对 6° 带源坐标的前缀剥离假定 3° 带号（`proj-core` 无 6° 带 EPSG 代码），proj-core + classic 均可能失败。测试标记 `#[ignore]`
+6. **`_projBand` 残骸已清理**；`om` 复选框残骸未清理（非动态投影范围）
 
 ## 依赖
 

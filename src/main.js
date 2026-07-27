@@ -59,6 +59,7 @@ let cur = "usr";
 let cfgs = {};
 let headerManual = {};
 let projMode = "keep"; // prototype: dynamic projection selection
+let projZone = null;   // dynamic projection zone (A/B: dst zone; C: src zone; F/G: auto or user)
 let lastPreviewKey = "";
 let previewTimer = null;
 let autoSaveTimer = null;
@@ -225,7 +226,11 @@ window.importGdb = async function () {
     window._gdbName = result.name;
     autoMatchFields(result.field_names);
     if (result.zone) autoFillHeader({ z: result.zone });
-    syncOgGate(result.crs_info);
+    // 合并 extent 信息
+    const crsWithExtent = result.crs_info || {};
+    if (result.xmin != null) crsWithExtent.xmin = result.xmin;
+    if (result.xmax != null) crsWithExtent.xmax = result.xmax;
+    syncOgGate(crsWithExtent);
     autoSetOutputDirS(result.path);
     toast(`已读取 GDB: ${result.name}（${result.layers.length} 个面状要素类），请在弹窗中勾选`);
     renderLeftGdbSummary();     // 左栏先显示"待选择"占位行
@@ -394,10 +399,9 @@ window.removeFile = function (i) {
 };
 
 
-// ═══ Dynamic Projection Modal (Prototype) ═══
-// 暂用 mock 检测（基于 currentCrsInfo）；真实实现由 Rust 端补 detect.rs 后接入。
-//
-// URL hash demo（仅 prototype 用，确认 UI 后删除）：
+// ═══ Dynamic Projection Modal ═══
+
+// URL hash demo（开发调试用）：
 //   #demo=geodetic        假装大地（度）
 //   #demo=projected-3     假装投影 3°带
 //   #demo=projected-6     假装投影 6°带
@@ -444,50 +448,54 @@ function updateProjButton() {
   }
 }
 
-function renderProjDetection(info) {
-  const grid = $('projDetectGrid');
-  if (!grid) return;
-  const u = info && info.u || '';
-  const c = info && info.c || '';
-  const b = info && info.b;
-  const z = info && info.z;
-  const form = u === '度' ? '大地（度）'
-             : u === '米' ? '投影（米）'
-             : '<span class="na">未识别</span>';
-  let band = '<span class="na">—</span>';
-  if (b === '3') band = '3°带';
-  else if (b === '6') band = '6°带';
-  let zone = '<span class="na">—</span>';
-  if (typeof z === 'number' && z > 0) zone = z + ' <span class="ok">✓</span>';
-  grid.innerHTML = [
-    '<span class="k">坐标系</span><span class="v">' + (c || '<span class="na">—</span>') + '</span>',
-    '<span class="k">形式</span><span class="v">' + form + '</span>',
-    '<span class="k">分带</span><span class="v">' + band + '</span>',
-    '<span class="k">带号</span><span class="v">' + zone + '</span>'
-  ].join('');
+/// 解析 radio value "3-yes"/"3-no"/"6-yes"/"6-no" → { band, noPrefix }
+function parseProjBand(value) {
+  const parts = (value || '3-yes').split('-');
+  return { band: parseInt(parts[0], 10) || 3, noPrefix: parts[1] === 'no' };
 }
 
-function getProjAvailableModes(info) {
-  const u = info && info.u;
-  const b = info && info.b;
-  if (!info || !u) return [];
-  const modes = [];
-  if (u === '度') {
-    modes.push({ id: 'A', label: '大地 → 投影', tag: '3°带' });
-    modes.push({ id: 'B', label: '大地 → 投影', tag: '6°带' });
-  } else if (u === '米') {
-    modes.push({ id: 'C', label: '投影 → 大地（反算）', tag: '' });
-    if (b === '3') modes.push({ id: 'F', label: '投影 3° ↔ 6° 互转', tag: '→ 6°' });
-    else if (b === '6') modes.push({ id: 'G', label: '投影 6° ↔ 3° 互转', tag: '→ 3°' });
+/// 从检测信息推算源中央经线，再按目标带找最近带号 + 中央经线
+function computeRecommendedZone(info, band) {
+  let srcCM = null;
+  // 优先从检测到的带号+分带反推源 CM
+  if (info && info.b && info.z) {
+    const srcBand = info.b === '6' ? 6 : 3;
+    srcCM = srcBand === 6 ? info.z * 6 - 3 : info.z * 3;
+  } else if (info && info.u === '度') {
+    // 大地坐标无分带信息：取坐标范围中点估算 CM
+    if (info.xmin != null && info.xmax != null) {
+      srcCM = (info.xmin + info.xmax) / 2;
+    } else {
+      srcCM = 114; // 兜底
+    }
   }
-  return modes;
+  // 按目标分带找最近带号
+  if (srcCM != null) {
+    const zone = band === 6 ? Math.round((srcCM + 3) / 6) : Math.round(srcCM / 3);
+    const cm = band === 6 ? zone * 6 - 3 : zone * 3;
+    return { zone, cm };
+  }
+  return { zone: null, cm: null };
 }
 
-function renderProjModes(info) {
+/// 根据坐标范围和推荐生成建议文案
+function buildRecommendText(info, recBand, recZone, recCm) {
+  const xmin = info && info.xmin;
+  const xmax = info && info.xmax;
+  if (xmin == null || xmax == null) return '（导入数据后可显示坐标范围建议）';
+  return `本矢量数据最西的图斑坐标为 ${xmin.toFixed(4)}°，`
+    + `最东的图斑坐标为 ${xmax.toFixed(4)}°，`
+    + `最接近的中央经线为 ${recCm}° 经线，`
+    + `因此建议选择 ${recBand}° 分度带。`;
+}
+
+function renderProjModal(info) {
   const u = info && info.u || '';
   const c = info && info.c || '';
   const b = info && info.b;
   const z = info && info.z;
+
+  // 导入识别
   const det = $('projDetectGrid');
   if (det) {
     const form = u === '度' ? '大地（度）' : u === '米' ? '投影（米）' : '<span class="na">未识别</span>';
@@ -503,57 +511,53 @@ function renderProjModes(info) {
       '<span class="k">带号</span><span class="v">' + zone + '</span>'
     ].join('');
   }
-  const datum = c || 'CGCS2000';
-  const isGeo = u === '度';
-  const isProj = u === '米';
-  const typeSel = $('projTypeSel');
-  if (typeSel) typeSel.value = isGeo ? 'geodetic' : (isProj ? 'projected' : 'geodetic');
-  const datumLabel = $('projDatumLabel');
-  if (datumLabel) datumLabel.textContent = datum;
-  const bandRow = $('projBandRow');
-  const zoneRow = $('projZoneRow');
-  function updateFormVisibility() {
-    if (!typeSel) return;
-    const isProjected = typeSel.value === 'projected';
-    if (bandRow) bandRow.classList.toggle('hidden', !isProjected);
-    if (zoneRow) zoneRow.classList.toggle('hidden', !isProjected);
+
+  // 目标分带 radio：根据检测结果默认选中对应项
+  const radio3y = document.querySelector('input[name="projBand"][value="3-yes"]');
+  const radio3n = document.querySelector('input[name="projBand"][value="3-no"]');
+  const radio6y = document.querySelector('input[name="projBand"][value="6-yes"]');
+  const radio6n = document.querySelector('input[name="projBand"][value="6-no"]');
+  const defaultBand = (b === '6') ? '6-yes' : '3-yes';
+  const defaultRadio = document.querySelector(`input[name="projBand"][value="${defaultBand}"]`);
+  if (defaultRadio) defaultRadio.checked = true;
+
+  // 刷新推荐信息
+  function refreshRecommend() {
+    const checked = document.querySelector('input[name="projBand"]:checked');
+    const p = parseProjBand(checked ? checked.value : '3-yes');
+    const rec = computeRecommendedZone(info, p.band);
+    const zi = $('projZoneInput');
+    if (zi) {
+      zi.placeholder = rec.zone ? '推荐: ' + rec.zone : '自动推算';
+      if (rec.zone) zi.value = String(rec.zone); else zi.value = '';
+    }
+    const cm = $('projCM');
+    if (cm) cm.textContent = rec.cm ? '中央经线 ' + rec.cm + '°' : '';
+    const rm = $('projRecommend');
+    if (rm) rm.textContent = buildRecommendText(info, p.band, rec.zone, rec.cm);
   }
-  if (typeSel && !typeSel._bound) {
-    typeSel.addEventListener('change', updateFormVisibility);
-    typeSel._bound = true;
-  }
-  updateFormVisibility();
-  const bandSel = $('projBandSel');
-  if (bandSel && (b === '3' || b === '6')) bandSel.value = b;
-  const zoneInput = $('projZoneInput');
-  if (zoneInput && typeof z === 'number' && z > 0) {
-    zoneInput.value = String(z);
-  }
-  const keepBtn = $('projKeepBtn');
-  if (keepBtn) {
-    if (!keepBtn._bound) {
-      keepBtn.addEventListener('click', function () {
-        const isKeep = keepBtn.classList.toggle('on');
-        const form = document.querySelector('.proj-form');
-        if (form) {
-          form.style.opacity = isKeep ? '0.4' : '1';
-          form.style.pointerEvents = isKeep ? 'none' : 'auto';
-        }
+  refreshRecommend();
+
+  // 分带切换时联动刷新
+  document.querySelectorAll('input[name="projBand"]').forEach(r => {
+    if (!r._projBound) {
+      r.addEventListener('change', refreshRecommend);
+      r._projBound = true;
+    }
+  });
+
+  // Toggle 切换表单 dimmed 状态
+  const toggle = $('projToggle');
+  const form = $('projForm');
+  if (toggle && form) {
+    toggle.checked = (projMode === 'keep');
+    form.classList.toggle('dimmed', toggle.checked);
+    if (!toggle._bound) {
+      toggle.addEventListener('change', () => {
+        form.classList.toggle('dimmed', toggle.checked);
       });
-      keepBtn._bound = true;
+      toggle._bound = true;
     }
-    const isKeep = projMode === 'keep';
-    keepBtn.classList.toggle('on', isKeep);
-    const form = document.querySelector('.proj-form');
-    if (form) {
-      form.style.opacity = isKeep ? '0.4' : '1';
-      form.style.pointerEvents = isKeep ? 'none' : 'auto';
-    }
-  }
-  const qcLabel = $('projQcLabel');
-  if (qcLabel) {
-    const needsQc = !c;
-    qcLabel.style.display = needsQc ? 'flex' : 'none';
   }
 }
 
@@ -561,9 +565,7 @@ window.openProjModal = function () {
   const overlay = $('projModal');
   if (!overlay) return;
   const info = currentCrsInfo || (loadedFiles[0] && loadedFiles[0].crs_info);
-  renderProjModes(info);
-  const qcInput = $('projQc');
-  if (qcInput) qcInput.checked = !!window._projQc;
+  renderProjModal(info);
   overlay.classList.add('on');
 };
 
@@ -573,32 +575,41 @@ window.closeProjModal = function () {
 };
 
 window.applyProjMode = function () {
-  const keepBtn = $('projKeepBtn');
-  const isKeep = keepBtn && keepBtn.classList.contains('on');
+  const toggle = $('projToggle');
+  const isKeep = toggle ? toggle.checked : true;
   if (isKeep) {
     projMode = 'keep';
     projZone = null;
   } else {
-    const t = $('projTypeSel') ? $('projTypeSel').value : 'geodetic';
-    const b = $('projBandSel') ? $('projBandSel').value : '3';
+    const checked = document.querySelector('input[name="projBand"]:checked');
+    const p = parseProjBand(checked ? checked.value : '3-yes');
     const zRaw = $('projZoneInput') ? $('projZoneInput').value.trim() : '';
-    const z = zRaw ? parseInt(zRaw, 10) : null;
-    if (t === 'geodetic') {
-      projMode = b === '6' ? 'B' : 'A';
+    projZone = zRaw ? parseInt(zRaw, 10) : null;
+    window._projNoPrefix = p.noPrefix;
+    const inputBand = currentCrsInfo && currentCrsInfo.b;
+    const inputIsDegree = currentCrsInfo && currentCrsInfo.u === '度';
+    if (inputIsDegree) {
+      projMode = p.band === 6 ? 'B' : 'A';
     } else {
-      if (!z) { toast('请输入带号'); return; }
-      const inputBand = currentCrsInfo && currentCrsInfo.b;
-      if (inputBand === '3' && b === '6') projMode = 'F';
-      else if (inputBand === '6' && b === '3') projMode = 'G';
-      else projMode = 'C';
+      if (inputBand === String(p.band)) {
+        projMode = 'C';
+      } else if (inputBand === '3' && p.band === 6) {
+        projMode = 'F';
+      } else if (inputBand === '6' && p.band === 3) {
+        projMode = 'G';
+      } else {
+        projMode = 'C';
+      }
     }
-    projZone = z;
   }
-  window._projQc = !!$('projQc') && $('projQc').checked;
-  window._projBand = $('projBandSel') ? parseInt($('projBandSel').value, 10) : 3;
-  const bStr = $('projBandSel') ? $('projBandSel').value : '3';
+  const checked = document.querySelector('input[name="projBand"]:checked');
+  const p = parseProjBand(checked ? checked.value : '3-yes');
+  const bStr = String(p.band);
   const zStr = projZone ? String(projZone) : '?';
-  const label = projMode === 'keep' ? '保持原样' : (projMode + ' ' + bStr + '°带 ' + zStr);
+  const noPre = window._projNoPrefix ? ' 自然值' : '';
+  const label = projMode === 'keep' ? '保持原样' : (projMode + ' ' + bStr + '°带' + noPre + ' ' + zStr);
+  // og 与动态投影互斥
+  syncOgGate(currentCrsInfo);
   toast('动态投影: ' + label);
   updateProjButton();
   updatePreview();
@@ -615,9 +626,11 @@ function syncOgGate(crsInfo) {
   const oz = $("oz");
   if (!og) return;
   const isDegree = currentCrsInfo?.u === "度";
-  og.disabled = !isDegree;
-  if (!isDegree) og.checked = false;
-  if (oz) oz.disabled = !(isDegree && og.checked);
+  const projActive = projMode !== "keep";
+  // og 与动态投影互斥：projMode 非 keep 时强制 og=false 并置灰
+  og.disabled = !isDegree || projActive;
+  if (!isDegree || projActive) og.checked = false;
+  if (oz) oz.disabled = !(isDegree && og.checked && !projActive);
   refreshOgWarn();
 }
 
@@ -635,7 +648,12 @@ function processImport() {
   if (!loadedFiles.length) return;
   const first = loadedFiles[0];
   autoMatchFields(first.field_names || []);
-  if (first.crs_info) autoFillHeader(first.crs_info);
+  if (first.crs_info) {
+    // 合并 extent 信息到 crs_info
+    if (first.xmin != null) first.crs_info.xmin = first.xmin;
+    if (first.xmax != null) first.crs_info.xmax = first.xmax;
+    autoFillHeader(first.crs_info);
+  }
   syncOgGate(first.crs_info);
   updatePreview();
   updateProjButton();
@@ -871,8 +889,11 @@ function getOptions() {
     on: $("on")?.checked || false,
     oo: $("oo")?.checked || false,
     oc: $("oc")?.value === "1",
-    og: ($("og")?.checked && !$("og")?.disabled) || false,
+    og: ($("og")?.checked && !$("og")?.disabled && projMode === "keep") || false,
     zone_type: parseInt($("oz")?.value, 10) || 3,
+    proj_mode: projMode || "keep",
+    proj_zone: typeof projZone !== "undefined" ? (projZone || null) : null,
+    proj_no_prefix: !!window._projNoPrefix,
     output_mode: outputMode,
     filename_field: filenameField,
   };

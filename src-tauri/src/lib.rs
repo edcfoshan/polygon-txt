@@ -34,6 +34,8 @@ struct ShpFileItem {
     shape_type: String,
     prj_text: Option<String>,
     crs_info: HashMap<String, String>,
+    xmin: Option<f64>,
+    xmax: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -43,12 +45,11 @@ struct GdbImportResult {
     layers: Vec<GdbLayerItem>,
     field_names: Vec<String>,
     num_features: usize,
-    /// 被过滤掉的非面状图层名（前端用于 toast 提示）
     skipped: Vec<String>,
-    /// 从坐标反推的带号（探测失败为 None，前端据此决定是否回填）
     zone: Option<String>,
-    /// 坐标单位（"度"/"米"），由坐标采样判定，前端据此控制 og 按钮可用性
     crs_info: HashMap<String, String>,
+    xmin: Option<f64>,
+    xmax: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -261,6 +262,7 @@ fn pick_shp_files(app: tauri::AppHandle) -> Result<ShpImportResult, String> {
             Ok(info) => {
                 // 仅接收面状 SHP；非面状（点/线等）拒收并记录
                 if is_polygon_geometry_type(&info.shape_type) {
+                    let (xmin, xmax) = compute_extent_from_shp(&shp_path);
                     items.push(ShpFileItem {
                         shp_path: info.shp_path,
                         dbf_path: info.dbf_path,
@@ -271,6 +273,8 @@ fn pick_shp_files(app: tauri::AppHandle) -> Result<ShpImportResult, String> {
                         shape_type: info.shape_type,
                         prj_text: info.prj_text,
                         crs_info: info.crs_info,
+                        xmin,
+                        xmax,
                     });
                 } else {
                     skipped.push(format!(
@@ -289,6 +293,24 @@ fn pick_shp_files(app: tauri::AppHandle) -> Result<ShpImportResult, String> {
         dir: base_dir,
         skipped,
     })
+}
+
+/// 从 SHP 采样计算坐标范围（东坐标/经度）
+fn compute_extent_from_shp(shp_path: &PathBuf) -> (Option<f64>, Option<f64>) {
+    match shp::read_shp(shp_path) {
+        Ok(features) => {
+            let mut xs: Vec<f64> = features.iter()
+                .flat_map(|f| f.surface.parts.iter())
+                .flat_map(|p| p.exterior.iter())
+                .map(|(x, _)| *x)
+                .collect();
+            xs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+            let xmin = xs.first().copied();
+            let xmax = xs.last().copied();
+            (xmin, xmax)
+        }
+        Err(_) => (None, None),
+    }
 }
 
 #[tauri::command]
@@ -378,6 +400,16 @@ fn import_gdb(app: tauri::AppHandle) -> Result<GdbImportResult, String> {
         crs_info.insert("u".to_string(), u.to_string());
     }
 
+    // 计算坐标范围
+    let xs: Vec<f64> = all_features.iter()
+        .flat_map(|feats| feats.iter())
+        .flat_map(|f| f.points.iter())
+        .map(|(easting, _)| *easting)
+        .collect();
+    let xmin = xs.iter().cloned().fold(f64::INFINITY, f64::min);
+    let xmax = xs.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+    let (xmin, xmax) = if xs.is_empty() { (None, None) } else { (Some(xmin), Some(xmax)) };
+
     Ok(GdbImportResult {
         path: gdb_path.to_string_lossy().to_string(),
         name,
@@ -387,6 +419,8 @@ fn import_gdb(app: tauri::AppHandle) -> Result<GdbImportResult, String> {
         skipped,
         zone,
         crs_info,
+        xmin,
+        xmax,
     })
 }
 
@@ -559,6 +593,7 @@ fn pick_shp_files_from_paths(paths: Vec<String>) -> Result<ShpImportResult, Stri
         match shp::read_shp_file_group(&shp_path) {
             Ok(info) => {
                 if is_polygon_geometry_type(&info.shape_type) {
+                    let (xmin, xmax) = compute_extent_from_shp(&shp_path);
                     items.push(ShpFileItem {
                         shp_path: info.shp_path,
                         dbf_path: info.dbf_path,
@@ -569,6 +604,8 @@ fn pick_shp_files_from_paths(paths: Vec<String>) -> Result<ShpImportResult, Stri
                         shape_type: info.shape_type,
                         prj_text: info.prj_text,
                         crs_info: info.crs_info,
+                        xmin,
+                        xmax,
                     });
                 } else {
                     skipped.push(format!("{}.shp（{}）", info.name, info.shape_type));

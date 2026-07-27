@@ -80,9 +80,9 @@ pub struct ShpToTxtOptions {
     /// 用户在 modal 填的带号（仅 F/G 模式需要）
     #[serde(default)]
     pub proj_zone: Option<u32>,
-    /// 无代号质检开关
+    /// 不含带号前缀（自然值）：true 时东坐标不加 zone×1,000,000
     #[serde(default)]
-    pub proj_qc: bool,
+    pub proj_no_prefix: bool,
 }
 
 fn default_zone_type() -> u8 {
@@ -119,6 +119,18 @@ fn sample_is_geodetic(sample: Option<(f64, f64)>, crs_info: &HashMap<String, Str
     } else {
         crs_info.get("u").map(|s| s == "度").unwrap_or(false)
     }
+}
+
+/// F/G 模式：从源带号自动推算目标带号（3°↔6° 映射）。
+/// 3° zone N → CM = 3N → 6° zone = round((CM+3)/6)
+/// 6° zone M → CM = 6M−3 → 3° zone = round(CM/3)
+fn compute_reband_dst_zone(src_band: Option<u8>, src_zone: Option<u32>, dst_band: Option<u8>) -> Option<u32> {
+    let sb = src_band?;
+    let sz = src_zone?;
+    let db = dst_band?;
+    let src_cm = if sb == 6 { sz as f64 * 6.0 - 3.0 } else { sz as f64 * 3.0 };
+    let dz = if db == 6 { ((src_cm + 3.0) / 6.0).round() as u32 } else { (src_cm / 3.0).round() as u32 };
+    Some(dz)
 }
 
 /// 对单个 surface 做高斯-克吕格投影并加带号前缀。仅在大地坐标系输入时调用。
@@ -295,21 +307,18 @@ pub fn shp_to_txt_preview(
         header_cfg
     };
     let proj_cfg = ProjectionConfig::from_options(options, header_cfg);
-    // Task 6: 动态投影钩子（stub）
-    if options.proj_mode != "keep" && !options.proj_mode.is_empty() {
-        // TODO Task 6: 调用 apply_dynamic_projection_internal 改造 features
-        eprintln!("[WARN] proj_mode={} is set but Task 6 stub is not yet wired; existing og path used", options.proj_mode);
-    }
 
     let result = match source_type {
         Some("gdb") => {
             let path = source_path.ok_or_else(|| "缺少 GDB 路径".to_string())?;
             let info = gdb::read_gdb(path)?;
-            let plots =
+            let mut plots =
                 gdb_features_to_plots(&info, field_mapping, options, proj_cfg.as_ref(), selected_layers)?;
+            // 动态投影：在 generate_txt 之前应用（预览路径直接操作 PlotData 坐标）
+            let header_for_txt = apply_dynamic_projection_to_plots(&mut plots, header_cfg, options)?;
             txt::generate_txt(
-                &header_cfg.project_info,
-                &header_cfg.attrs,
+                &header_for_txt.project_info,
+                &header_for_txt.attrs,
                 &plots,
                 options.oj,
                 options.oc,
@@ -328,10 +337,12 @@ fn shp_files_to_txt_preview(
     options: &ShpToTxtOptions,
     proj_cfg: Option<&ProjectionConfig>,
 ) -> Result<String, String> {
-    let plots = shp_files_to_plots(shp_paths, field_mapping, options, proj_cfg)?;
+    let mut plots = shp_files_to_plots(shp_paths, field_mapping, options, proj_cfg)?;
+    // 动态投影：在 generate_txt 之前应用
+    let header_for_txt = apply_dynamic_projection_to_plots(&mut plots, header_cfg, options)?;
     Ok(txt::generate_txt(
-        &header_cfg.project_info,
-        &header_cfg.attrs,
+        &header_for_txt.project_info,
+        &header_for_txt.attrs,
         &plots,
         options.oj,
         options.oc,
@@ -343,9 +354,9 @@ pub fn apply_dynamic_projection_to_sources(
     sources: &mut Vec<ImportSource>,
     header: &HeaderConfig,
     options: &ShpToTxtOptions,
-) -> HeaderConfig {
+) -> Result<HeaderConfig, String> {
     if options.proj_mode.is_empty() || options.proj_mode == "keep" {
-        return header.clone();
+        return Ok(header.clone());
     }
     let mode = options.proj_mode.clone();
     let (src_band, src_zone) = extract_band_zone(header);
@@ -355,12 +366,60 @@ pub fn apply_dynamic_projection_to_sources(
         "B" | "F" => Some(6),
         _ => None,
     };
-    let dst_zone = options.proj_zone.or(src_zone);
-    if let Err(e) = transform_sources_dynamic(
-        sources, &mode, src_band, src_zone, dst_band, dst_zone, datum,
-    ) {
-        eprintln!("[WARN] transform_sources_dynamic failed: {}", e);
-        return header.clone();
+    // F/G 模式：从源带号自动推算目标带号（3°zone↔6°zone 映射）；A/B/C：用户指定或沿用源带号
+    let dst_zone = match mode.as_str() {
+        "F" | "G" => compute_reband_dst_zone(src_band, src_zone, dst_band)
+            .or(options.proj_zone)
+            .or(src_zone),
+        _ => options.proj_zone.or(src_zone),
+    };
+    transform_sources_dynamic(
+        sources, &mode, src_band, src_zone, dst_band, dst_zone, datum, options.proj_no_prefix,
+    ).map_err(|e| format!("动态投影失败: {}", e))?;
+    let mut new_header = header.clone();
+    sync_header_crs_fields(
+        &mut new_header.attrs,
+        &mode,
+        dst_band,
+        dst_zone,
+        src_band,
+        src_zone,
+        &header.attr("坐标系"),
+    );
+    Ok(new_header)
+}
+
+/// 预览路径的动态投影：直接操作 Vec<PlotData>（坐标为 TXT 格式 Y,X = 北,东）。
+/// 逻辑与 apply_dynamic_projection_to_sources 一致，但操作对象是 PlotData 而非 ImportSource。
+pub fn apply_dynamic_projection_to_plots(
+    plots: &mut Vec<txt::PlotData>,
+    header: &HeaderConfig,
+    options: &ShpToTxtOptions,
+) -> Result<HeaderConfig, String> {
+    if options.proj_mode.is_empty() || options.proj_mode == "keep" {
+        return Ok(header.clone());
+    }
+    let mode = options.proj_mode.clone();
+    let (src_band, src_zone) = extract_band_zone(header);
+    let datum = parse_datum_for_proj(&header.attr("坐标系"));
+    let dst_band: Option<u8> = match mode.as_str() {
+        "A" | "G" => Some(3),
+        "B" | "F" => Some(6),
+        _ => None,
+    };
+    let dst_zone = match mode.as_str() {
+        "F" | "G" => compute_reband_dst_zone(src_band, src_zone, dst_band)
+            .or(options.proj_zone)
+            .or(src_zone),
+        _ => options.proj_zone.or(src_zone),
+    };
+    for plot in plots.iter_mut() {
+        for coord in &mut plot.coords {
+            let (x, y) = *coord;
+            let (nx, ny) = transform_xy(x, y, &mode, src_band, src_zone, dst_band, dst_zone, datum, options.proj_no_prefix);
+            // coord = (Y, X) = (北坐标, 东坐标) TXT 格式，与 transform_sources_dynamic 保持一致
+            *coord = (ny, nx);
+        }
     }
     let mut new_header = header.clone();
     sync_header_crs_fields(
@@ -372,7 +431,7 @@ pub fn apply_dynamic_projection_to_sources(
         src_zone,
         &header.attr("坐标系"),
     );
-    new_header
+    Ok(new_header)
 }
 
 fn parse_datum_for_proj(s: &str) -> projection::Ellipsoid {
@@ -404,23 +463,21 @@ fn transform_xy(
     dst_band: Option<u8>,
     dst_zone: Option<u32>,
     datum: projection::Ellipsoid,
+    no_prefix: bool,
 ) -> (f64, f64) {
     match mode {
         "A" | "B" => {
             let bw = dst_band.unwrap_or(3);
             let zone = src_zone.unwrap_or(38);
             let cm = if bw == 6 { zone as f64 * 6.0 - 3.0 } else { zone as f64 * 3.0 };
-            // x = coord.0 = lat, y = coord.1 = lon. forward expects (lon, lat) = (y, x).
-            // gauss_kruger_forward returns (easting without zone prefix, northing). Add zone prefix.
             let (ex, ny) = projection::gauss_kruger_forward(y, x, cm, datum);
-            let zone_f = zone as f64 * 1_000_000.0;
-            ((ex + zone_f) as f64, ny)
+            if no_prefix { (ex, ny) }
+            else { let zone_f = zone as f64 * 1_000_000.0; ((ex + zone_f), ny) }
         }
         "C" => {
             let bw = src_band.unwrap_or(3);
             let zone = src_zone.unwrap_or(38);
             let cm = if bw == 6 { zone as f64 * 6.0 - 3.0 } else { zone as f64 * 3.0 };
-            // x = coord.0 = northing, y = coord.1 = easting. inverse expects (easting, northing) = (y, x)
             projection::gauss_kruger_inverse(y, x, cm, datum)
         }
         "F" | "G" => {
@@ -428,10 +485,9 @@ fn transform_xy(
             let sz = src_zone.unwrap_or(38);
             let db = dst_band.unwrap_or(6);
             let dz = dst_zone.unwrap_or(38);
-            // reband expects (x, y) projected = (easting, northing) = (y, x)
             let (ex, ny) = projection::reband_projected(y, x, sb, sz, db, dz, datum);
-            let zone_f = dz as f64 * 1_000_000.0;
-            ((ex + zone_f) as f64, ny)
+            if no_prefix { (ex, ny) }
+            else { let zone_f = dz as f64 * 1_000_000.0; ((ex + zone_f), ny) }
         }
         _ => (x, y),
     }
@@ -445,12 +501,12 @@ fn transform_sources_dynamic(
     dst_band: Option<u8>,
     dst_zone: Option<u32>,
     datum: projection::Ellipsoid,
+    no_prefix: bool,
 ) -> Result<(), String> {
     for src in sources.iter_mut() {
         for pws in src.plots.iter_mut() {
             for coord in pws.plot.coords.iter_mut() {
-                let (nx, ny) = transform_xy(coord.0, coord.1, mode, src_band, src_zone, dst_band, dst_zone, datum);
-                // coord.0 = y_coord (lat/northing), coord.1 = x_coord (lon/easting)
+                let (nx, ny) = transform_xy(coord.0, coord.1, mode, src_band, src_zone, dst_band, dst_zone, datum, no_prefix);
                 coord.0 = ny;
                 coord.1 = nx;
             }
@@ -464,7 +520,7 @@ fn sync_header_crs_fields(
     mode: &str,
     dst_band: Option<u8>,
     dst_zone: Option<u32>,
-    src_band: Option<u8>,
+    _src_band: Option<u8>,
     src_zone: Option<u32>,
     datum_name: &str,
 ) {
@@ -536,7 +592,7 @@ pub fn convert_shp_to_txt(
     )?;
 
     // Task 6 完整化：动态投影（mutates sources + returns updated header）
-    let header_for_convert = apply_dynamic_projection_to_sources(&mut sources, header_cfg, options);
+    let header_for_convert = apply_dynamic_projection_to_sources(&mut sources, header_cfg, options)?;
 
     match options.output_mode.as_str() {
         "split_by_plot" => convert_split_by_plot(sources, &header_for_convert, options, output_dir),

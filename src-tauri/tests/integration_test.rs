@@ -140,9 +140,8 @@ fn test_shp_to_txt_one_to_one() {
     let options = convert::ShpToTxtOptions {
         proj_mode: "keep".to_string(),
         proj_zone: None,
-        proj_qc: false,
         ox: false, oj: true, on: false, oo: true, oc: false,
-        output_mode: "one_to_one".into(), filename_field: String::new(), og: false, zone_type: 3,
+        output_mode: "one_to_one".into(), filename_field: String::new(), og: false, zone_type: 3, proj_no_prefix: false,
     };
 
     let result = convert::convert_shp_to_txt(
@@ -174,9 +173,8 @@ fn test_shp_to_txt_xy_swap() {
     let opts_off = convert::ShpToTxtOptions {
         proj_mode: "keep".to_string(),
         proj_zone: None,
-        proj_qc: false,
         ox: false, oj: true, on: false, oo: true, oc: false,
-        output_mode: "one_to_one".into(), filename_field: String::new(), og: false, zone_type: 3,
+        output_mode: "one_to_one".into(), filename_field: String::new(), og: false, zone_type: 3, proj_no_prefix: false,
     };
     let dir_off = tempfile::tempdir().expect("temp dir");
     let _ = convert::convert_shp_to_txt(
@@ -189,9 +187,8 @@ fn test_shp_to_txt_xy_swap() {
     let opts_on = convert::ShpToTxtOptions {
         proj_mode: "keep".to_string(),
         proj_zone: None,
-        proj_qc: false,
         ox: true, oj: true, on: false, oo: true, oc: false,
-        output_mode: "one_to_one".into(), filename_field: String::new(), og: false, zone_type: 3,
+        output_mode: "one_to_one".into(), filename_field: String::new(), og: false, zone_type: 3, proj_no_prefix: false,
     };
     let dir_on = tempfile::tempdir().expect("temp dir");
     let _ = convert::convert_shp_to_txt(
@@ -244,9 +241,8 @@ fn test_shp_to_txt_merge_all() {
     let options = convert::ShpToTxtOptions {
         proj_mode: "keep".to_string(),
         proj_zone: None,
-        proj_qc: false,
         ox: false, oj: true, on: false, oo: true, oc: false,
-        output_mode: "merge_all".into(), filename_field: String::new(), og: false, zone_type: 3,
+        output_mode: "merge_all".into(), filename_field: String::new(), og: false, zone_type: 3, proj_no_prefix: false,
     };
 
     let result = convert::convert_shp_to_txt(
@@ -279,9 +275,8 @@ fn test_shp_to_txt_split_by_plot() {
     let options = convert::ShpToTxtOptions {
         proj_mode: "keep".to_string(),
         proj_zone: None,
-        proj_qc: false,
         ox: false, oj: true, on: false, oo: true, oc: false,
-        output_mode: "split_by_plot".into(), filename_field: String::new(), og: false, zone_type: 3,
+        output_mode: "split_by_plot".into(), filename_field: String::new(), og: false, zone_type: 3, proj_no_prefix: false,
     };
 
     let result = convert::convert_shp_to_txt(
@@ -760,14 +755,13 @@ fn test_shp_to_txt_full() {
     let options = convert::ShpToTxtOptions {
         proj_mode: "keep".to_string(),
         proj_zone: None,
-        proj_qc: false,
         ox: false,
         oj: true,
         on: false,
         oo: false,
         oc: false,
         output_mode: "one_to_one".into(),
-        filename_field: String::new(), og: false, zone_type: 3,
+        filename_field: String::new(), og: false, zone_type: 3, proj_no_prefix: false,
     };
 
     let result = convert::convert_shp_to_txt(
@@ -851,14 +845,13 @@ fn test_shp_txt_roundtrip() {
     let options = convert::ShpToTxtOptions {
         proj_mode: "keep".to_string(),
         proj_zone: None,
-        proj_qc: false,
         ox: false,
         oj: true,
         on: false,
         oo: false,
         oc: false,
         output_mode: "one_to_one".into(),
-        filename_field: String::new(), og: false, zone_type: 3,
+        filename_field: String::new(), og: false, zone_type: 3, proj_no_prefix: false,
     };
 
     let r2 = convert::convert_shp_to_txt(
@@ -920,14 +913,13 @@ fn test_preview() {
     let options = convert::ShpToTxtOptions {
         proj_mode: "keep".to_string(),
         proj_zone: None,
-        proj_qc: false,
         ox: false,
         oj: true,
         on: false,
         oo: false,
         oc: false,
         output_mode: "one_to_one".into(),
-        filename_field: String::new(), og: false, zone_type: 3,
+        filename_field: String::new(), og: false, zone_type: 3, proj_no_prefix: false,
     };
 
     let preview = convert::shp_to_txt_preview(
@@ -1077,14 +1069,13 @@ J1,2,30.000,30.000";
     let shp_to_txt = convert::ShpToTxtOptions {
         proj_mode: "keep".to_string(),
         proj_zone: None,
-        proj_qc: false,
         ox: false,
         oj: true,
         on: false,
         oo: true,
         oc: false,
         output_mode: "one_to_one".into(),
-        filename_field: String::new(), og: false, zone_type: 3,
+        filename_field: String::new(), og: false, zone_type: 3, proj_no_prefix: false,
     };
 
     let txt_result = convert::convert_shp_to_txt(
@@ -1168,14 +1159,13 @@ J1,2,2.000,2.000";
     let shp_to_txt = convert::ShpToTxtOptions {
         proj_mode: "keep".to_string(),
         proj_zone: None,
-        proj_qc: false,
         ox: false,
         oj: true,
         on: true,
         oo: true,
         oc: false,
         output_mode: "one_to_one".into(),
-        filename_field: String::new(), og: false, zone_type: 3,
+        filename_field: String::new(), og: false, zone_type: 3, proj_no_prefix: false,
     };
 
     let txt_result = convert::convert_shp_to_txt(
@@ -1223,9 +1213,8 @@ fn test_field_mapping_sentinels_area() {
     let options = convert::ShpToTxtOptions {
         proj_mode: "keep".to_string(),
         proj_zone: None,
-        proj_qc: false,
         ox: false, oj: true, on: false, oo: false, oc: false,
-        output_mode: "one_to_one".into(), filename_field: String::new(), og: false, zone_type: 3,
+        output_mode: "one_to_one".into(), filename_field: String::new(), og: false, zone_type: 3, proj_no_prefix: false,
     };
 
     // 平方米（自动）：面积应为正数，2 位小数
@@ -1389,4 +1378,60 @@ fn test_read_dbf_gbk_no_cpg() {
     // 不应含 UTF-8 替换符（lossy 解码的标志）
     assert!(dkmc_values.iter().all(|v| !v.contains('\u{FFFD}')),
         "DKMC 不应含替换符 U+FFFD（说明编码识别错误），实际: {:?}", dkmc_values);
+}
+
+/// 端到端：地理坐标 SHP → proj_mode A（大地→3°带投影）→ 输出投影坐标 TXT
+#[test]
+fn test_shp_to_txt_proj_mode_a_forward() {
+    let test_shp = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("test_arcpy")
+        .join("std_shp")
+        .join("plot_000.shp");
+    if !test_shp.exists() {
+        eprintln!("跳过：测试数据不存在 {}", test_shp.display());
+        return;
+    }
+    let out_dir = tempfile::tempdir().expect("output temp dir");
+    // proj_mode A：大地（度）→ 投影 3°带。表头带号=38，分带=3°带。
+    let result = convert::convert_shp_to_txt(
+        &[test_shp],
+        None, None,
+        &make_header(),
+        &convert::FieldMapping {
+            name: String::new(), id: String::new(),
+            area: "__area_ha__".into(), use_field: String::new(),
+            tfh: String::new(), dlbm: String::new(),
+        },
+        &convert::ShpToTxtOptions {
+            ox: false, oj: false, on: false, oo: false, oc: false,
+            output_mode: "one_to_one".into(), filename_field: String::new(),
+            og: false, zone_type: 3,
+            proj_no_prefix: false,
+            proj_mode: "A".to_string(), proj_zone: Some(38),
+        },
+        out_dir.path(),
+        None,
+    ).expect("A 模式转换应成功");
+    assert!(result.success);
+    let txt_out = std::fs::read_to_string(&result.output_files[0]).expect("读 TXT");
+    // A 模式输出应为投影米坐标，X≈38500000, Y≈2580000
+    assert!(txt_out.contains("投影（米）") || txt_out.contains("高斯克吕格"),
+        "表头应含投影类型，got: {}", txt_out.lines().take(10).collect::<Vec<_>>().join("\\n"));
+    let mut coord_count = 0;
+    for line in txt_out.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('[') || line.starts_with('@') || line.starts_with(',') {
+            continue;
+        }
+        let parts: Vec<&str> = line.split(',').collect();
+        if parts.len() >= 4 {
+            if let (Ok(_y), Ok(x)) = (parts[2].parse::<f64>(), parts[3].parse::<f64>()) {
+                assert!(x > 1_000_000.0,
+                    "A 模式输出坐标应为投影米（X>1M），X={}", x);
+                coord_count += 1;
+            }
+        }
+    }
+    assert!(coord_count > 0, "应有坐标行");
 }

@@ -396,7 +396,7 @@ pub fn read_prj(path: &Path) -> Result<(String, HashMap<String, String>), String
         info.insert("c".into(), "1980西安坐标系".into());
     } else if icontains(&prj_text, "Beijing_1954") || icontains(&prj_text, "1954北京") {
         info.insert("c".into(), "1954北京坐标系".into());
-    } else if icontains(&prj_text, "WGS84") || icontains(&prj_text, "WGS_84") {
+    } else if icontains(&prj_text, "WGS84") || icontains(&prj_text, "WGS_84") || icontains(&prj_text, "WGS_1984") {
         info.insert("c".into(), "WGS84坐标系".into());
     }
 

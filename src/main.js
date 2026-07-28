@@ -1012,9 +1012,22 @@ function escAttr(s) {
 
 // 键名 → 固定候选值。这些键的值框渲染为 <select>（限选），其余键为自由 <input>
 const ATTR_SELECT_OPTIONS = {
-  "精度": ["1", "0.1", "0.01", "0.001", "0.0001"],
   "几度分带": ["3", "6"],
 };
+
+/// 精度字符串 → slider 指数: "0.001"→3, "1"→0, "0.00000001"→8
+function precisionToExponent(s) {
+  const v = parseFloat(s);
+  if (isNaN(v) || v <= 0 || v > 1) return 3;
+  const exp = Math.round(-Math.log10(v));
+  return Math.max(0, Math.min(8, exp));
+}
+/// slider 指数 → 精度十进制字符串: 3→"0.001", 0→"1"
+function exponentToPrecision(exp) {
+  // 不用 parseFloat，避免 1e-8 科学记数；toFixed 直接给 "0.00000001"
+  if (exp <= 0) return "1";
+  return Math.pow(10, -exp).toFixed(exp);
+}
 
 function renderAttrRows(attrs) {
   const box = $("attrRows");
@@ -1025,10 +1038,16 @@ function renderAttrRows(attrs) {
     const div = document.createElement("div");
     div.className = "attr-row";
     div.dataset.i = String(i);
-    // 值控件：键名命中候选表 → select；否则 input
+    // 值控件：精度行 → range 滑块；键名命中候选表 → select；否则 input
     const opts = ATTR_SELECT_OPTIONS[row.k];
     let valueCtrl;
-    if (opts) {
+    if (row.k === '精度') {
+      const exp = precisionToExponent(row.v);
+      valueCtrl = `<span class="prec-wrap">`
+        + `<input type="range" class="prec-slider av" data-i="${i}" data-f="v" min="0" max="8" value="${exp}" step="1">`
+        + `<span class="prec-val">${exponentToPrecision(exp)}</span>`
+        + `</span>`;
+    } else if (opts) {
       const inOpts = opts.includes(row.v);
       const std = opts.map((o) => `<option value="${o}"${o === row.v ? " selected" : ""}>${o}</option>`).join("");
       const extra = inOpts ? "" : `<option value="${escAttr(row.v)}" selected>${escAttr(row.v)}</option>`;
@@ -1055,7 +1074,15 @@ function collectAttrRows() {
   if (!box) return DEFAULT_ATTRS.map((r) => ({ ...r }));
   const rows = [];
   box.querySelectorAll(".attr-row").forEach((div) => {
-    rows.push({ k: div.querySelector(".ak")?.value ?? "", v: div.querySelector(".av")?.value ?? "" });
+    const k = div.querySelector(".ak")?.value ?? "";
+    let v;
+    const slider = div.querySelector(".prec-slider");
+    if (slider) {
+      v = String(exponentToPrecision(parseInt(slider.value, 10)));
+    } else {
+      v = div.querySelector(".av")?.value ?? "";
+    }
+    rows.push({ k, v });
   });
   return rows;
 }
@@ -1075,6 +1102,12 @@ function bindAttrRowEvents() {
   });
   // 输入实时更新预览 + headerManual 标记（input 和 select 都走 input 事件）
   box.addEventListener("input", (e) => {
+    const slider = e.target.closest(".prec-slider");
+    if (slider) {
+      const val = exponentToPrecision(parseInt(slider.value, 10));
+      const disp = slider.parentNode.querySelector(".prec-val");
+      if (disp) disp.textContent = val;
+    }
     const ctrl = e.target.closest(".ak, .av");
     if (ctrl) {
       const row = ctrl.closest(".attr-row");

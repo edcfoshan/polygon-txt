@@ -193,28 +193,20 @@ pub fn parse_txt(text: &str) -> TxtParseResult {
     }
 }
 
-/// 精度字符串 → 小数位数
+/// 精度字符串 → 小数位数（动态计算，支持任意精度如 0.00000001）
 fn precision_to_decimals(precision: &str) -> u32 {
-    match precision {
-        "1" => 0,
-        "0.1" => 1,
-        "0.01" => 2,
-        "0.001" => 3,
-        "0.0001" => 4,
-        _ => 3,
+    if let Some(dot_pos) = precision.find('.') {
+        let decimals = precision[dot_pos + 1..].len() as u32;
+        if decimals > 0 { decimals } else { 3 }
+    } else {
+        // 无小数点 → 0 位小数（如 "1"）
+        0
     }
 }
 
 /// 按指定小数位数格式化浮点数
 fn format_coord(val: f64, decimals: u32) -> String {
-    match decimals {
-        0 => format!("{:.0}", val),
-        1 => format!("{:.1}", val),
-        2 => format!("{:.2}", val),
-        3 => format!("{:.3}", val),
-        4 => format!("{:.4}", val),
-        _ => format!("{:.3}", val),
-    }
+    format!("{:.prec$}", val, prec = decimals as usize)
 }
 
 /// 生成 TXT 内容

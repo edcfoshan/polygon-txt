@@ -150,8 +150,24 @@ SHP 存储 (X, Y) = (东坐标, 北坐标)。TXT 存储 (Y, X) = (北坐标, 东
 支持匹配：`CGCS2000` / `Xian_1980` / `Beijing_1954` / `WGS84` / `WGS_84` / **`WGS_1984`**（最后一个是 v2.0 新增，之前遗漏导致 WGS84 PRJ 坐标系显示为空）。
 提取字段存入 `crs_info` HashMap：`c`（坐标系名）、`u`（单位 度/米）、`b`（分带 3/6）、`z`（带号）。
 
+### 精度设置
+
+属性表"精度"行不是普通 `<select>` 或 `<input>`，而是 **range 滑块**（`#attrRows` 内 `.prec-slider`）。滑块值 0-8 映射到 10 的负幂次：
+
+| 滑块值 | 精度 |
+|--------|------|
+| 0 | 1 |
+| 1 | 0.1 |
+| ... | ... |
+| 8 | 0.00000001 |
+
+- 前端：`precisionToExponent(s)` / `exponentToPrecision(exp)` 做精度字符串↔指数转换。**不要用 `parseFloat`**，否则小值变科学记数 `1e-8`；直接用 `toFixed` 返回字符串。
+- Rust：`txt.rs` 的 `precision_to_decimals` 动态统计小数点后位数，`format_coord` 用 `format!("{:.prec$}", val)` 支持任意精度。
+- `collectAttrRows` 对 `.prec-slider` 特殊处理，从 `slider.value`（0-8）转为精度字符串。
+- `bindAttrRowEvents` 的 `input` 事件中检测 `.prec-slider`，同步更新旁边 `.prec-val` 显示文本。
+
 ### 导入结果扩展
-`ShpFileItem` 和 `GdbImportResult` 含 `xmin`/`xmax` 字段（坐标范围），前端用于动态投影弹窗推荐文案。
+`ShpFileItem` 和 `GdbImportResult` 含 `xmin`/`xmax`/`ymin`/`ymax` 字段（坐标范围），前端用于动态投影弹窗推荐文案（投影数据时近似逆投影得经纬度范围）。
 
 ### TXT 格式
 - 坐标行：`J{序号},{界址线号},Y坐标,X坐标`（Y 在前）。第二列"界址线号"= `IndexedRing.part_index`（外环=1、洞=2、多部件下一 part=3…逐环递增），是反向解析 TXT→SHP 切环的唯一依据，**严禁删除或重算**

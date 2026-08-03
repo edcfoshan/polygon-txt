@@ -2,7 +2,7 @@
 // Verifies: keep is noop, A mode forward-projects, C mode inverse, header sync, F mode reband
 
 use jisig_bpoint_converter_lib::convert::*;
-use jisig_bpoint_converter_lib::projection::{gauss_kruger_forward, Ellipsoid};
+use jisig_bpoint_converter_lib::projection::{gauss_kruger_forward, gauss_kruger_inverse, Ellipsoid};
 use std::collections::HashMap;
 
 fn make_test_source(coords: Vec<(f64, f64)>) -> ImportSource {
@@ -57,7 +57,7 @@ fn dynamic_proj_mode_a_forward() {
     let header = header_with_test_attrs(vec![
         ("坐标系", "CGCS2000"),
         ("形式", "大地（度）"),
-        ("分带", "3°带"),
+        ("几度分带", "3°带"),
         ("带号", "38"),
         ("投影类型", "高斯克吕格"),
         ("计量单位", "米"),
@@ -68,7 +68,7 @@ fn dynamic_proj_mode_a_forward() {
     assert!(x > 38_000_000.0 && x < 39_000_000.0, "x should be 3°带 zone 38, got {}", x);
     assert!(y > 3_000_000.0 && y < 4_000_000.0, "y should be ~3.3M, got {}", y);
     assert_eq!(new_header.attrs.iter().find(|a| a.k == "形式").unwrap().v, "投影（米）");
-    assert_eq!(new_header.attrs.iter().find(|a| a.k == "分带").unwrap().v, "3°带");
+    assert_eq!(new_header.attrs.iter().find(|a| a.k == "几度分带").unwrap().v, "3°带");
     assert_eq!(new_header.attrs.iter().find(|a| a.k == "投影类型").unwrap().v, "高斯克吕格");
     assert_eq!(new_header.attrs.iter().find(|a| a.k == "计量单位").unwrap().v, "米");
 }
@@ -80,7 +80,7 @@ fn dynamic_proj_mode_c_add_prefix() {
     let header = header_with_test_attrs(vec![
         ("坐标系", "CGCS2000"),
         ("形式", "投影（米）"),
-        ("分带", "3°带"),
+        ("几度分带", "3°带"),
         ("带号", "38"),
         ("投影类型", "高斯克吕格"),
         ("计量单位", "米"),
@@ -91,7 +91,7 @@ fn dynamic_proj_mode_c_add_prefix() {
     assert_eq!(y, 3_381_842.0, "northing unchanged");
     assert_eq!(x, 38_537_123.0, "easting should have zone 38 prefix, got {}", x);
     assert_eq!(new_header.attrs.iter().find(|a| a.k == "形式").unwrap().v, "投影（米）");
-    assert_eq!(new_header.attrs.iter().find(|a| a.k == "分带").unwrap().v, "3°带");
+    assert_eq!(new_header.attrs.iter().find(|a| a.k == "几度分带").unwrap().v, "3°带");
 }
 
 #[test]
@@ -101,7 +101,7 @@ fn dynamic_proj_mode_c_strip_prefix() {
     let header = header_with_test_attrs(vec![
         ("坐标系", "CGCS2000"),
         ("形式", "投影（米）"),
-        ("分带", "3°带"),
+        ("几度分带", "3°带"),
         ("带号", "38"),
         ("投影类型", "高斯克吕格"),
         ("计量单位", "米"),
@@ -120,7 +120,7 @@ fn dynamic_proj_mode_f_reband() {
     let header = header_with_test_attrs(vec![
         ("坐标系", "CGCS2000"),
         ("形式", "投影（米）"),
-        ("分带", "3°带"),
+        ("几度分带", "3°带"),
         ("带号", "38"),
     ]);
     let options = ShpToTxtOptions { proj_mode: "F".to_string(), proj_zone: Some(38), ..shp_opts_test_default() };
@@ -128,7 +128,7 @@ fn dynamic_proj_mode_f_reband() {
     let (y, x) = sources[0].plots[0].plot.coords[0];
     assert!(x > 20_000_000.0 && x < 21_000_000.0, "x should be 6°带 zone ~20, got {}", x);
     assert!(y > 0.0 && y < 5_000_000.0, "y should be similar magnitude, got {}", y);
-    assert_eq!(new_header.attrs.iter().find(|a| a.k == "分带").unwrap().v, "6°带");
+    assert_eq!(new_header.attrs.iter().find(|a| a.k == "几度分带").unwrap().v, "6°带");
 }
 
 #[test]
@@ -137,7 +137,7 @@ fn dynamic_proj_mode_b_forward() {
     let header = header_with_test_attrs(vec![
         ("坐标系", "CGCS2000"),
         ("形式", "大地（度）"),
-        ("分带", "6°带"),
+        ("几度分带", "6°带"),
         ("带号", "20"),
     ]);
     let options = ShpToTxtOptions { proj_mode: "B".to_string(), proj_zone: Some(20), ..shp_opts_test_default() };
@@ -145,7 +145,7 @@ fn dynamic_proj_mode_b_forward() {
     let (y, x) = sources[0].plots[0].plot.coords[0];
     assert!(x > 20_000_000.0 && x < 21_000_000.0, "x should be 6°带 zone ~20, got {}", x);
     assert!(y > 3_000_000.0 && y < 4_000_000.0, "y should be ~3.3M, got {}", y);
-    assert_eq!(new_header.attrs.iter().find(|a| a.k == "分带").unwrap().v, "6°带");
+    assert_eq!(new_header.attrs.iter().find(|a| a.k == "几度分带").unwrap().v, "6°带");
     assert_eq!(new_header.attrs.iter().find(|a| a.k == "形式").unwrap().v, "投影（米）");
 }
 
@@ -160,7 +160,7 @@ fn dynamic_proj_mode_g_reband() {
     let header = header_with_test_attrs(vec![
         ("坐标系", "CGCS2000"),
         ("形式", "投影（米）"),
-        ("分带", "6°带"),
+        ("几度分带", "6°带"),
         ("带号", "19"),
     ]);
     let options = ShpToTxtOptions { proj_mode: "G".to_string(), proj_zone: None, ..shp_opts_test_default() };
@@ -168,7 +168,7 @@ fn dynamic_proj_mode_g_reband() {
     let (y_out, x_out) = sources[0].plots[0].plot.coords[0];
     assert!(x_out > 37_000_000.0 && x_out < 38_000_000.0, "x should be 3°带 zone ~37, got {}", x_out);
     assert!(y_out > 2_000_000.0 && y_out < 3_000_000.0, "y should be ~2.5M, got {}", y_out);
-    assert_eq!(new_header.attrs.iter().find(|a| a.k == "分带").unwrap().v, "3°带");
+    assert_eq!(new_header.attrs.iter().find(|a| a.k == "几度分带").unwrap().v, "3°带");
 }
 
 #[test]
@@ -182,7 +182,7 @@ fn preview_matches_source_path_for_mode_a() {
     let header = header_with_test_attrs(vec![
         ("坐标系", "CGCS2000"),
         ("形式", "大地（度）"),
-        ("分带", "3°带"),
+        ("几度分带", "3°带"),
         ("带号", "38"),
     ]);
     let options = ShpToTxtOptions { proj_mode: "A".to_string(), proj_zone: Some(38), ..shp_opts_test_default() };
@@ -196,5 +196,65 @@ fn preview_matches_source_path_for_mode_a() {
     assert!((y1 - y2).abs() < 0.001, "预览/转换 Y 不一致: {} vs {}", y1, y2);
     assert_eq!(h1.attrs.iter().find(|a| a.k == "形式").unwrap().v,
                h2.attrs.iter().find(|a| a.k == "形式").unwrap().v);
+}
+
+#[test]
+fn dynamic_proj_mode_h_reband_3deg_38_to_39() {
+    // H 模式：3°带 38→39 同分带不同带号换带
+    let (x38_np, y) = gauss_kruger_forward(114.5, 23.4, 114.0, Ellipsoid::CGCS2000);
+    let x38 = x38_np + 38_000_000.0;
+    let mut sources = vec![make_test_source(vec![(y, x38)])];
+    let header = header_with_test_attrs(vec![
+        ("坐标系", "CGCS2000"),
+        ("几度分带", "3"),
+        ("带号", "39"), // 模拟 apply 后 header 被改成目标
+    ]);
+    let options = ShpToTxtOptions { proj_mode: "H".to_string(), proj_zone: Some(39), ..shp_opts_test_default() };
+    let _ = apply_dynamic_projection_to_sources(&mut sources, &header, &options).unwrap();
+    let (y_out, x_out) = sources[0].plots[0].plot.coords[0];
+    let (lon_b, lat_b) = gauss_kruger_inverse(x_out - 39_000_000.0, y_out, 117.0, Ellipsoid::CGCS2000);
+    assert!((lon_b - 114.5).abs() < 0.001, "lon roundtrip (同基准换带可还原原始经度), got {}", lon_b);
+    assert!((lat_b - 23.4).abs() < 0.001, "lat roundtrip, got {}", lat_b);
+    assert!(x_out > 39_000_000.0 && x_out < 40_000_000.0, "x should be 3°带 zone 39, got {}", x_out);
+}
+
+#[test]
+fn dynamic_proj_mode_h_reband_3deg_38_to_37() {
+    // H 模式：3°带 38→37 相邻带换带（用户 bug 场景：同分带不同带号应正确换带）
+    let (x38_np, y) = gauss_kruger_forward(112.5, 23.0, 114.0, Ellipsoid::CGCS2000);
+    let x38 = x38_np + 38_000_000.0;
+    let mut sources = vec![make_test_source(vec![(y, x38)])];
+    let header = header_with_test_attrs(vec![
+        ("坐标系", "CGCS2000"),
+        ("几度分带", "3"),
+        ("带号", "37"), // apply 后 header=目标 37，但坐标是原始 38 带
+    ]);
+    let options = ShpToTxtOptions { proj_mode: "H".to_string(), proj_zone: Some(37), ..shp_opts_test_default() };
+    let _ = apply_dynamic_projection_to_sources(&mut sources, &header, &options).unwrap();
+    let (y_out, x_out) = sources[0].plots[0].plot.coords[0];
+    let (lon_b, lat_b) = gauss_kruger_inverse(x_out - 37_000_000.0, y_out, 111.0, Ellipsoid::CGCS2000);
+    assert!((lon_b - 112.5).abs() < 0.01, "lon roundtrip (38→37 换带可还原), got {}", lon_b);
+    assert!((lat_b - 23.0).abs() < 0.01, "lat roundtrip, got {}", lat_b);
+    assert!(x_out > 37_000_000.0 && x_out < 38_000_000.0, "x should be 3°带 zone 37, got {}", x_out);
+}
+
+#[test]
+fn dynamic_proj_mode_h_src_zone_inferred_from_coords() {
+    // 验证 src_zone 从坐标推断（不依赖 header.带号）：header 带号故意写错(37)，坐标是 38 带
+    let (x38_np, y) = gauss_kruger_forward(114.5, 23.4, 114.0, Ellipsoid::CGCS2000);
+    let x38 = x38_np + 38_000_000.0;
+    let mut sources = vec![make_test_source(vec![(y, x38)])];
+    let header = header_with_test_attrs(vec![
+        ("坐标系", "CGCS2000"),
+        ("几度分带", "3"),
+        ("带号", ""), // header 无带号
+    ]);
+    let options = ShpToTxtOptions { proj_mode: "H".to_string(), proj_zone: Some(39), ..shp_opts_test_default() };
+    let _ = apply_dynamic_projection_to_sources(&mut sources, &header, &options).unwrap();
+    let (y_out, x_out) = sources[0].plots[0].plot.coords[0];
+    let (lon_b, lat_b) = gauss_kruger_inverse(x_out - 39_000_000.0, y_out, 117.0, Ellipsoid::CGCS2000);
+    assert!((lon_b - 114.5).abs() < 0.001, "lon roundtrip (header 无带号也能推断 src), got {}", lon_b);
+    assert!((lat_b - 23.4).abs() < 0.001, "lat roundtrip, got {}", lat_b);
+    assert!(x_out > 39_000_000.0 && x_out < 40_000_000.0, "x should be zone 39 (inferred src 38), got {}", x_out);
 }
 

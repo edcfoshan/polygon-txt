@@ -530,7 +530,9 @@ body::before{
 
 /* Center */
 .ctr{display:flex;flex-direction:column;overflow:hidden;min-width:0;background:var(--bg)}
-.ctr-bd{flex:1;overflow:hidden;padding:12px;display:flex;flex-direction:column}
+.ctr-bd{flex:1;overflow:hidden;padding:12px;display:flex;flex-direction:column;position:relative}
+.pv-spin{position:absolute;bottom:10px;right:14px;width:16px;height:16px;border:2px solid var(--brd);border-top-color:var(--ac);border-radius:50%;animation:updateSpin .8s linear infinite;display:none;opacity:0;transition:opacity .2s;pointer-events:none;z-index:2}
+.pv-spin.on{display:block;opacity:.85}
 .ctr-ft{
   background:var(--srf);border-top:1px solid var(--brd);
   padding:9px 14px;display:flex;align-items:center;gap:12px;flex-shrink:0;
@@ -741,12 +743,17 @@ body::before{
 @keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
 
 /* Dynamic Projection Modal */
-.btn-proj{font-size:11px;padding:3px 10px;border-radius:4px;border:1px solid var(--brd);background:var(--srf2);color:var(--tx);cursor:pointer;transition:all .15s;display:inline-flex;align-items:center;gap:4px;line-height:1}
-.btn-proj:hover:not(:disabled){border-color:var(--ac);color:var(--ac);background:var(--acg)}
-.btn-proj:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
-.btn-proj:disabled{opacity:.45;cursor:not-allowed}
-.btn-proj.on{border-color:var(--ac);color:var(--ac);background:var(--acg)}
-.proj-mode-label{font-size:10.5px;color:var(--ok);margin-left:auto;font-weight:500}
+.proj-switch{display:inline-flex;align-items:center;gap:6px}
+.proj-switch-toggle{padding:0;border:none;background:none;cursor:pointer;display:inline-flex;align-items:center}
+.proj-switch-toggle:disabled{cursor:not-allowed;opacity:.45}
+.proj-switch-track{position:relative;width:30px;height:16px;background:var(--brd);border-radius:8px;transition:background .2s;flex-shrink:0}
+.proj-switch-toggle.on .proj-switch-track{background:var(--ok)}
+.proj-switch-thumb{position:absolute;top:2px;left:2px;width:12px;height:12px;background:#fff;border-radius:50%;transition:transform .2s;box-shadow:0 1px 2px rgba(0,0,0,.15)}
+.proj-switch-toggle.on .proj-switch-thumb{transform:translateX(14px)}
+.proj-switch-label{font-size:11px;color:var(--tx3);background:none;border:none;cursor:pointer;padding:2px 6px;border-radius:4px;transition:all .15s;margin-left:auto}
+.proj-switch-label:hover:not(:disabled){color:var(--ac);background:var(--acg)}
+.proj-switch-label:disabled{cursor:not-allowed;opacity:.45}
+.proj-switch-label.on{color:var(--ok);font-weight:500}
 .modal-card[data-modal="proj"]{width:400px;max-width:92vw;padding:0;text-align:left}
 .modal-card[data-modal="proj"] h3{padding:18px 22px 2px;margin:0;font-size:14px}
 .modal-card[data-modal="proj"] .modal-sub{padding:0 22px 14px;font-size:11px;margin:0}
@@ -776,10 +783,14 @@ body::before{
 .proj-input{padding:3px 8px;border:1px solid var(--brd);border-radius:3px;background:var(--srf);color:var(--tx);font-size:11.5px;font-family:inherit}
 .proj-input:focus{outline:none;border-color:var(--ac)}
 .proj-input:disabled{opacity:.35;pointer-events:none;background:var(--bg);cursor:not-allowed}
-.proj-radios{display:flex;flex-wrap:wrap;gap:6px 14px}
-.proj-radio{display:flex;align-items:center;gap:4px;font-size:11.5px;color:var(--tx);cursor:pointer;white-space:nowrap}
-.proj-radio input{accent-color:var(--ac);margin:0}
-.proj-recommend{font-size:10.5px;color:var(--tx3);line-height:1.5;padding:2px 0 0;min-height:1em}
+.proj-select{padding:3px 6px;border:1px solid var(--brd);border-radius:3px;background:var(--srf);color:var(--tx);font-size:11.5px;font-family:inherit;cursor:pointer}
+.proj-select:focus{outline:none;border-color:var(--ac)}
+.proj-select:disabled{opacity:.35;pointer-events:none;background:var(--bg);cursor:not-allowed}
+.proj-toggle-inline{margin-bottom:0}
+.proj-row .proj-zone{width:60px;text-align:center}
+.proj-row .proj-cm{width:52px;text-align:center}
+.proj-label-cm{min-width:auto;margin-left:4px}
+.proj-recommend{font-size:10.5px;color:var(--tx3);line-height:1.5;padding:2px 22px 0;min-height:1em;white-space:pre-line}
 .proj-foot{display:flex;justify-content:flex-end;gap:8px;padding:14px 22px 18px;border-top:1px solid var(--brd);margin-top:14px}
 .proj-foot .btn{padding:5px 16px;font-size:11.5px;border-radius:4px;border:1px solid var(--brd);background:var(--srf);color:var(--tx);cursor:pointer;transition:all .15s}
 .proj-foot .btn:hover{background:var(--srf2)}
@@ -989,8 +1000,10 @@ body::before{
           </select>
         </div>
         <div class="oc-row">
-          <button class="btn-proj" id="btnProj" disabled>+ 动态投影</button>
-          <span id="projModeLabel" class="proj-mode-label" style="display:none"></span>
+          <div class="proj-switch" id="projSwitch">
+            <button class="proj-switch-toggle" id="projSwitchToggle" type="button" aria-label="开关动态投影" disabled><span class="proj-switch-track"><span class="proj-switch-thumb"></span></span></button>
+            <button class="proj-switch-label" id="projSwitchLabel" type="button" disabled>动态投影</button>
+          </div>
         </div>
 
         <div class="div"></div>
@@ -1022,6 +1035,7 @@ body::before{
       <!-- 面→TXT mode -->
       <div class="mode-s ctr-inner">
         <div class="ctr-bd">
+          <div class="pv-spin" id="pvSpin"></div>
           <div class="pv" id="pv">请先导入 SHP 或 GDB 文件
 
 输出示例格式：
@@ -1141,26 +1155,21 @@ J2,1,Y500.000,X301.000
         <div class="proj-detect-grid" id="projDetectGrid"></div>
       </div>
       <div class="proj-section">
-        <label class="proj-toggle">
-          <input type="checkbox" id="projToggle" checked>
-          <span class="proj-toggle-track"><span class="proj-toggle-thumb"></span></span>
-          <span class="proj-toggle-label">保持原样（不转换）</span>
-        </label>
         <div class="proj-form" id="projForm">
           <div class="proj-row">
-            <span class="proj-label">目标分带</span>
-            <div class="proj-radios">
-              <label class="proj-radio"><input type="radio" name="projBand" value="3-yes" checked> 3°带 含带号</label>
-              <label class="proj-radio"><input type="radio" name="projBand" value="3-no"> 3°带 不含带号</label>
-              <label class="proj-radio"><input type="radio" name="projBand" value="6-yes"> 6°带 含带号</label>
-              <label class="proj-radio"><input type="radio" name="projBand" value="6-no"> 6°带 不含带号</label>
-              <label class="proj-radio"><input type="radio" name="projBand" value="to-deg"> 转为大地坐标（度）</label>
-            </div>
+            <span class="proj-label">目标形式</span>
+            <select class="proj-input proj-select" id="projFormSelect">
+              <option value="3">3°带</option>
+              <option value="6">6°带</option>
+              <option value="deg">转为大地坐标（度）</option>
+            </select>
           </div>
           <div class="proj-row">
             <span class="proj-label">带号</span>
-            <input class="proj-input" type="number" id="projZoneInput" min="1" max="60" placeholder="自动推算">
-            <span class="proj-hint" id="projCM"></span>
+            <input class="proj-input proj-zone" type="number" id="projZoneInput" min="1" max="60" placeholder="自动推算">
+            <span class="proj-label proj-label-cm">中央经线</span>
+            <input class="proj-input proj-cm" type="number" id="projCMInput" min="60" max="140" placeholder="—">
+            <span class="proj-hint">°E</span>
           </div>
         </div>
       </div>

@@ -425,34 +425,53 @@ function applyDemoSeed(type) {
   return true;
 }
 
+// 坐标系全称 → 简称（开关文字用）
+const CRS_SHORT = {
+  '2000国家大地坐标系': 'CGCS2000',
+  '1980西安坐标系': '西安80',
+  '1954北京坐标系': '北京54',
+  'WGS84坐标系': 'WGS84',
+};
+
 function updateProjButton() {
-  const btn = $('btnProj');
-  if (!btn) return;
+  const toggle = $('projSwitchToggle');
+  const label = $('projSwitchLabel');
+  if (!toggle || !label) return;
   const ok = loadedFiles.length === 1;
-  btn.disabled = !ok;
-  btn.title = ok ? '点击打开动态投影设置' : '请先导入单个 SHP 或 GDB';
-  const label = $('projModeLabel');
-  if (!label) return;
-  if (projMode === 'keep' || !ok) {
-    label.style.display = 'none';
-    btn.classList.remove('on');
+  toggle.disabled = !ok;
+  label.disabled = !ok;
+  const on = (projMode !== 'keep' && ok);
+  toggle.classList.toggle('on', on);
+  label.classList.toggle('on', on);
+  if (!on) { label.textContent = '动态投影'; return; }
+  // 读属性表实时值（apply 后属性表已是目标投影态）
+  const rows = collectAttrRows();
+  const get = (k) => { const r = rows.find(a => a.k === k); return r ? r.v : ''; };
+  const c = CRS_SHORT[get('坐标系')] || get('坐标系') || '?';
+  if (get('计量单位') === '度') {
+    label.textContent = c + '（度）';
   } else {
-    label.style.display = '';
-    const tag = projMode === 'A' ? '大地→投影 3°带'
-            : projMode === 'B' ? '大地→投影 6°带'
-            : projMode === 'C' ? '同带调整'
-            : projMode === 'D' ? '投影→大地'
-            : projMode === 'F' ? '投影 3°→6°'
-            : projMode === 'G' ? '投影 6°→3°' : projMode;
-    label.textContent = tag;
-    btn.classList.add('on');
+    const b = get('几度分带');
+    const z = get('带号');
+    label.textContent = c + ' ' + (b === '6' ? '6°带' : '3°带') + (z || '?') + '带';
   }
 }
 
-/// 解析 radio value "3-yes"/"3-no"/"6-yes"/"6-no" → { band, noPrefix }
-function parseProjBand(value) {
-  const parts = (value || '3-yes').split('-');
-  return { band: parseInt(parts[0], 10) || 3, noPrefix: parts[1] === 'no' };
+/// 模式推断：输入形式 + 用户选的目标形式 → A/B/C/D/F/G
+/// inputIsDegree: 输入是否大地(度)；inputBand: 输入分带 '3'|'6'|''；targetVal: '3'|'6'|'deg'
+function inferProjMode(inputIsDegree, inputBand, targetVal, srcZone, dstZone) {
+  if (targetVal === 'deg') return 'D';
+  const tBand = parseInt(targetVal, 10) || 3;
+  if (inputIsDegree) return tBand === 6 ? 'B' : 'A';
+  if (inputBand === String(tBand)) {
+    const sz = srcZone ? String(srcZone) : '';
+    const dz = dstZone ? String(dstZone) : '';
+    if (sz && dz && sz !== dz) return 'H';  // 同分带不同带号 → 换带
+    return 'C';
+  }
+  if (inputBand === '3' && tBand === 6) return 'F';
+  if (inputBand === '6' && tBand === 3) return 'G';
+  return 'C';
 }
 
 /// 根据导入数据的经纬度范围，智能推荐最佳分带/带号/中央经线
@@ -466,10 +485,12 @@ function buildRecommendText(info) {
   } else if (info.b && info.z && info.xmin != null && info.ymin != null) {
     // 投影数据：近似逆投影得到经纬度范围
     const cm = info.b === '6' ? info.z * 6 - 3 : info.z * 3;
+    // 含带号前缀时剥离（X 量级 ≥ 1e6 → 减去 zone×1e6），避免经度算成几百上千度
+    const zoneF = Math.abs(info.xmin) >= 1000000 ? info.z * 1000000 : 0;
     const latMid = ((info.ymin + info.ymax) / 2) / 111320; // 近似纬度
     const mPerDeg = 111320 * Math.cos(latMid * Math.PI / 180);
-    lonMin = cm + ((info.xmin - 500000) / mPerDeg);
-    lonMax = cm + ((info.xmax - 500000) / mPerDeg);
+    lonMin = cm + ((info.xmin - zoneF - 500000) / mPerDeg);
+    lonMax = cm + ((info.xmax - zoneF - 500000) / mPerDeg);
   } else {
     return '导入数据后可显示坐标范围建议';
   }
@@ -479,12 +500,12 @@ function buildRecommendText(info) {
   const z6 = Math.round((midLon + 3) / 6);
   const cm3 = z3 * 3;
   const cm6 = z6 * 6 - 3;
-  const span = lonMax - lonMin;
-  const rangeText = `经纬度范围: ${lonMin.toFixed(2)}° ~ ${lonMax.toFixed(2)}°E`;
-  if (span <= 3) {
-    return `${rangeText}。建议 3°分带，中央经线 ${cm3}°，带号 ${z3}`;
-  }
-  return `${rangeText}。3°带：CM ${cm3}° 带号 ${z3}；6°带：CM ${cm6}° 带号 ${z6}`;
+  return [
+    `经纬度范围：${lonMin.toFixed(2)}° ~ ${lonMax.toFixed(2)}°E`,
+    `中央经线（经度中点）：${midLon.toFixed(1)}°`,
+    `3°带推荐中央经线：${cm3}°（带号 ${z3}）`,
+    `6°带推荐中央经线：${cm6}°（带号 ${z6}）`,
+  ].join('\n');
 }
 
 /// 简化：根据 info + band 返回推荐 zone/cm
@@ -495,9 +516,10 @@ function computeRecommendedZone(info, band) {
     midLon = (info.xmin + info.xmax) / 2;
   } else if (info.b && info.z && info.xmin != null && info.ymin != null) {
     const cm = info.b === '6' ? info.z * 6 - 3 : info.z * 3;
+    const zoneF = Math.abs(info.xmin) >= 1000000 ? info.z * 1000000 : 0;
     const latMid = ((info.ymin + info.ymax) / 2) / 111320;
     const mPerDeg = 111320 * Math.cos(latMid * Math.PI / 180);
-    midLon = cm + (((info.xmin + info.xmax) / 2 - 500000) / mPerDeg);
+    midLon = cm + (((info.xmin + info.xmax) / 2 - zoneF - 500000) / mPerDeg);
   } else {
     return { zone: null, cm: null };
   }
@@ -509,11 +531,8 @@ function computeRecommendedZone(info, band) {
 function renderProjModal(info) {
   const u = info && info.u || '';
   const c = info && info.c || '';
-  const b = info && info.b;
+  const b = info && info.b || '';
   const z = info && info.z;
-
-  // 保存原始头表快照，供 applyProjMode 切换"保持原样"时恢复
-  window._origAttrs = collectAttrRows().map(r => ({ ...r }));
 
   // 导入识别
   const det = $('projDetectGrid');
@@ -523,7 +542,8 @@ function renderProjModal(info) {
     if (b === '3') band = '3°带';
     else if (b === '6') band = '6°带';
     let zone = '<span class="na">—</span>';
-    if (typeof z === 'number' && z > 0) zone = z + ' <span class="ok">✓</span>';
+    const zn = typeof z === 'number' ? z : parseInt(z, 10);
+    if (zn > 0) zone = zn + ' <span class="ok">✓</span>';
     det.innerHTML = [
       '<span class="k">坐标系</span><span class="v">' + (c || '<span class="na">—</span>') + '</span>',
       '<span class="k">形式</span><span class="v">' + form + '</span>',
@@ -532,86 +552,110 @@ function renderProjModal(info) {
     ].join('');
   }
 
-  // 设置初始推荐文案
+  // 推荐文案
   const rm = $('projRecommend');
   if (rm) rm.textContent = buildRecommendText(info);
 
-  // 目标分带 radio：优先恢复上次设置，否则根据检测结果默认选中
-  const defaultBand = (b === '6') ? '6-yes' : '3-yes';
-  const restoreValue = (projMode !== 'keep') ? window._projBandValue : null;
-  const selValue = restoreValue || defaultBand;
-  const selRadio = document.querySelector(`input[name="projBand"][value="${selValue}"]`);
-  if (selRadio) selRadio.checked = true;
-
-  /// 根据当前 radio 选中状态刷新 zone / CM / disabled
-  function refreshRecommend() {
-    const checked = document.querySelector('input[name="projBand"]:checked');
-    const val = checked ? checked.value : '3-yes';
-    const isToDeg = (val === 'to-deg');
-    const p = parseProjBand(val);
-    const rec = isToDeg ? { zone: null, cm: null } : computeRecommendedZone(info, p.band);
-    const zi = $('projZoneInput');
-    const cm = $('projCM');
-    // 转大地模式：置灰带号
-    if (isToDeg) {
-      if (zi) { zi.disabled = true; zi.value = ''; zi.placeholder = '逆投影无需带号'; }
-      if (cm) cm.textContent = '';
-    } else if (p.noPrefix) {
-      if (zi) { zi.disabled = true; zi.value = ''; zi.placeholder = '不含带号无需填写'; }
-      if (cm) cm.textContent = '';
-    } else {
-      if (zi) { zi.disabled = false; zi.placeholder = rec.zone ? '推荐: ' + rec.zone : '自动推算'; if (rec.zone) zi.value = String(rec.zone); else zi.value = ''; }
-      if (cm) cm.textContent = rec.cm ? '中央经线 ' + rec.cm + '°' : '';
-    }
-  }
-  refreshRecommend();
-
-  // 恢复上次填写的带号（优先级高于推荐值）
-  if (projZone != null) {
-    const zi = $('projZoneInput');
-    if (zi && !zi.disabled) zi.value = String(projZone);
-  }
-
-  // 带号输入实时联动中央经线
+  const inputIsDegree = u === '度';
+  const sel = $('projFormSelect');
   const zi = $('projZoneInput');
-  if (zi && !zi._cmBound) {
-    zi.addEventListener('input', () => {
-      const checked = document.querySelector('input[name="projBand"]:checked');
-      const val = checked ? checked.value : '3-yes';
-      if (val === 'to-deg') return;
-      const p = parseProjBand(val);
+  const cmInput = $('projCMInput');
+
+  // 目标形式下拉默认：已 apply 过→恢复上次；否则 输入投影→同带，输入大地→3°带
+  const restoreVal = (projMode !== 'keep' && window._projFormValue) ? window._projFormValue
+    : inputIsDegree ? '3' : (b === '6' ? '6' : '3');
+  if (sel) {
+    Array.from(sel.options).forEach(o => { o.selected = (o.value === restoreVal); });
+    // 边界：输入已是大地 → "转为大地坐标"禁选
+    const degOpt = Array.from(sel.options).find(o => o.value === 'deg');
+    if (degOpt) {
+      degOpt.disabled = inputIsDegree;
+      degOpt.textContent = inputIsDegree ? '转为大地坐标（输入已是大地）' : '转为大地坐标（度）';
+    }
+  }
+
+  /// 当前目标分带（deg 视为 3 占位，因 deg 模式下带号/CM 已置灰不参与计算）
+  function curBand() {
+    const v = sel ? sel.value : '3';
+    return v === 'deg' ? 3 : (parseInt(v, 10) || 3);
+  }
+
+  /// 带号 → CM，立即规整（CM 框回写标称值）
+  function syncCMFromZone() {
+    const band = curBand();
+    const min = band === 6 ? 13 : 24;
+    const max = band === 6 ? 23 : 45;
+    const v = zi && zi.value ? parseInt(zi.value, 10) : 0;
+    if (cmInput) cmInput.value = (v >= min && v <= max) ? (band === 6 ? v * 6 - 3 : v * 3) : '';
+  }
+
+  /// CM → 带号，立即规整（CM 跳到最近标称值，带号同步）
+  function syncZoneFromCM() {
+    const band = curBand();
+    const min = band === 6 ? 13 : 24;
+    const max = band === 6 ? 23 : 45;
+    const cm = cmInput && cmInput.value ? parseFloat(cmInput.value) : 0;
+    if (!zi) return;
+    if (cm > 0) {
+      let zone = band === 6 ? Math.round((cm + 3) / 6) : Math.round(cm / 3);
+      zone = Math.max(min, Math.min(max, zone));
+      zi.value = zone > 0 ? zone : '';
+      if (cmInput && zone > 0) cmInput.value = band === 6 ? zone * 6 - 3 : zone * 3;
+    } else {
+      zi.value = '';
+    }
+  }
+
+  /// 失焦时 clamp 带号到合法范围（3°带 24-45 / 6°带 13-23）
+  function clampZone() {
+    const band = curBand();
+    const min = band === 6 ? 13 : 24;
+    const max = band === 6 ? 23 : 45;
+    if (zi && zi.value) {
       const v = parseInt(zi.value, 10);
-      const cmEl = $('projCM');
-      if (cmEl && v > 0) {
-        const cmVal = p.band === 6 ? v * 6 - 3 : v * 3;
-        cmEl.textContent = '中央经线 ' + cmVal + '°';
+      if (!isNaN(v)) {
+        if (v < min) zi.value = String(min);
+        else if (v > max) zi.value = String(max);
+        syncCMFromZone();
       }
-    });
-    zi._cmBound = true;
-  }
-
-  // 分带切换时联动刷新
-  document.querySelectorAll('input[name="projBand"]').forEach(r => {
-    if (!r._projBound) {
-      r.addEventListener('change', refreshRecommend);
-      r._projBound = true;
-    }
-  });
-
-  // Toggle 切换表单 dimmed 状态
-  const toggle = $('projToggle');
-  const form = $('projForm');
-  if (toggle && form) {
-    toggle.checked = (projMode === 'keep');
-    form.classList.toggle('dimmed', toggle.checked);
-    if (!toggle._bound) {
-      toggle.addEventListener('change', () => {
-        form.classList.toggle('dimmed', toggle.checked);
-        if (!toggle.checked) refreshRecommend(); // 切到动态投影时刷新带号输入 disabled 状态
-      });
-      toggle._bound = true;
     }
   }
+
+  /// 根据下拉值刷新带号/CM/置灰
+  function refreshForm() {
+    const val = sel ? sel.value : '3';
+    const isDeg = (val === 'deg');
+    const band = curBand();
+    if (zi) zi.disabled = isDeg;
+    if (cmInput) cmInput.disabled = isDeg;
+    if (isDeg) {
+      if (zi) { zi.value = ''; zi.placeholder = '逆投影用源带号'; }
+      if (cmInput) { cmInput.value = ''; cmInput.placeholder = '—'; }
+      return;
+    }
+    const rec = computeRecommendedZone(info, band);
+    if (zi) {
+      zi.min = band === 6 ? 13 : 24;
+      zi.max = band === 6 ? 23 : 45;
+      zi.placeholder = rec.zone ? '推荐 ' + rec.zone : '自动推算';
+      zi.value = rec.zone ? String(rec.zone) : '';
+    }
+    syncCMFromZone();
+  }
+
+  refreshForm();
+
+  // 恢复上次填的带号（优先级高于推荐）
+  if (projZone != null && zi && !zi.disabled) {
+    zi.value = String(projZone);
+    syncCMFromZone();
+  }
+
+  // 事件绑定（_projBound 守卫防重复）
+  if (sel && !sel._projBound) { sel.addEventListener('change', refreshForm); sel._projBound = true; }
+  if (zi && !zi._projBound) { zi.addEventListener('input', syncCMFromZone); zi._projBound = true; }
+  if (zi && !zi._clampBound) { zi.addEventListener('change', clampZone); zi._clampBound = true; }
+  if (cmInput && !cmInput._projBound) { cmInput.addEventListener('input', syncZoneFromCM); cmInput._projBound = true; }
 }
 
 window.openProjModal = function () {
@@ -628,69 +672,51 @@ window.closeProjModal = function () {
 };
 
 window.applyProjMode = function () {
-  const toggle = $('projToggle');
-  const isKeep = toggle ? toggle.checked : true;
-  if (isKeep) {
-    projMode = 'keep';
+  const sel = $('projFormSelect');
+  const val = sel ? sel.value : '3';
+  const zi = $('projZoneInput');
+
+  window._projFormValue = val; // 记忆下次恢复
+
+  if (val === 'deg') {
+    projMode = 'D';
     projZone = null;
+    window._projNoPrefix = false;
   } else {
-    const checked = document.querySelector('input[name="projBand"]:checked');
-    const val = checked ? checked.value : '3-yes';
-    // 转为大地坐标 → mode D
-    if (val === 'to-deg') {
-      projMode = 'D';
-      projZone = null;
-      window._projNoPrefix = false;
-    } else {
-      const p = parseProjBand(val);
-      const zRaw = $('projZoneInput') ? $('projZoneInput').value.trim() : '';
-      projZone = zRaw ? parseInt(zRaw, 10) : null;
-      window._projNoPrefix = p.noPrefix;
-      const inputBand = currentCrsInfo && currentCrsInfo.b;
-      const inputIsDegree = currentCrsInfo && currentCrsInfo.u === '度';
-      if (inputIsDegree) {
-        projMode = p.band === 6 ? 'B' : 'A';
-      } else {
-        if (inputBand === String(p.band)) {
-          projMode = 'C';
-        } else if (inputBand === '3' && p.band === 6) {
-          projMode = 'F';
-        } else if (inputBand === '6' && p.band === 3) {
-          projMode = 'G';
-        } else {
-          projMode = 'C';
-        }
-      }
-    }
+    const inputIsDegree = currentCrsInfo && currentCrsInfo.u === '度';
+    const inputBand = (currentCrsInfo && currentCrsInfo.b) || '';
+    const zRaw = zi ? zi.value.trim() : '';
+    projZone = zRaw ? parseInt(zRaw, 10) : null;
+    projMode = inferProjMode(inputIsDegree, inputBand, val, currentCrsInfo && currentCrsInfo.z, projZone);
+    window._projNoPrefix = false;
   }
-  const checked = document.querySelector('input[name="projBand"]:checked');
-  const p = parseProjBand(checked ? checked.value : '3-yes');
-  window._projBandValue = checked ? checked.value : '3-yes'; // 记忆 radio 选择，下次打开恢复
-  const bStr = String(p.band);
-  const zStr = projZone ? String(projZone) : '?';
+
+  // toast 文案
+  const bStr = val === 'deg' ? '' : (parseInt(val, 10) + '°带');
+  const zStr = projZone ? String(projZone) : (val === 'deg' ? '源带号' : '?');
   const noPre = window._projNoPrefix ? ' 自然值' : '';
-  const label = projMode === 'keep' ? '保持原样'
-    : projMode === 'D' ? '投影→大地'
-    : (projMode + ' ' + bStr + '°带' + noPre + ' ' + zStr);
+  const label = projMode === 'D' ? '投影→大地'
+    : (projMode + ' ' + bStr + noPre + ' ' + zStr).trim();
   // og 与动态投影互斥
   syncOgGate(currentCrsInfo);
   toast('动态投影: ' + label);
 
-  // 同步头表 CRS 字段
+  // 同步头表 CRS 字段（键名对齐属性表真实 key：几度分带/计量单位/带号/投影类型）
   const rows = collectAttrRows();
-  const setRow = (key, val) => { const r = rows.find(a => a.k === key); if (r) r.v = val; };
-  if (projMode === 'keep') {
-    if (window._origAttrs) {
-      window._origAttrs.forEach((orig, i) => { if (i < rows.length) rows[i].v = orig.v; });
-    }
+  const setRow = (key, v) => { const r = rows.find(a => a.k === key); if (r) r.v = v; };
+  if (projMode === 'D') {
+    // 投影→大地：大地坐标无分带/带号/投影类型
+    setRow('计量单位', '度');
+    setRow('几度分带', '');
+    setRow('带号', '');
+    setRow('投影类型', '无');
   } else {
-    const bw = p.band;
+    const bw = parseInt(val, 10) || 3;
     const srcZone = currentCrsInfo && currentCrsInfo.z ? parseInt(currentCrsInfo.z, 10) : null;
     const zone = projZone || srcZone;
-    setRow('形式', '投影（米）');
-    setRow('分带', bw === 6 ? '6°带' : '3°带');
-    setRow('投影类型', '高斯克吕格');
     setRow('计量单位', '米');
+    setRow('几度分带', String(bw));
+    setRow('投影类型', '高斯克吕格');
     if (zone) setRow('带号', String(zone));
   }
   renderAttrRows(rows);
@@ -698,6 +724,28 @@ window.applyProjMode = function () {
   updateProjButton();
   updatePreview();
   window.closeProjModal();
+};
+
+window.resetProjMode = function () {
+  projMode = 'keep';
+  projZone = null;
+  window._projNoPrefix = false;
+  window._projFormValue = null;
+  // 恢复属性表到导入态（currentCrsInfo）
+  if (currentCrsInfo) {
+    const rows = collectAttrRows();
+    const setRow = (k, v) => { const r = rows.find(a => a.k === k); if (r) r.v = v; };
+    setRow('坐标系', currentCrsInfo.c || '');
+    setRow('计量单位', currentCrsInfo.u || '米');
+    setRow('几度分带', currentCrsInfo.b || '');
+    setRow('带号', currentCrsInfo.z ? String(currentCrsInfo.z) : '');
+    setRow('投影类型', currentCrsInfo.u === '度' ? '无' : '高斯克吕格');
+    renderAttrRows(rows);
+  }
+  syncOgGate(currentCrsInfo);
+  updateProjButton();
+  updatePreview();
+  toast('动态投影已关闭');
 };
 
 // 当前导入源的 CRS 信息（og 门禁 / 软提示用）
@@ -892,10 +940,13 @@ window.up = async function () {
   const shpPaths = loadedFiles.map((f) => f.shp_path).filter(Boolean);
 
   if (shpPaths.length > 0 || sourcePath) {
+    const spin = $('pvSpin');
     try {
+      if (spin) spin.classList.add('on');
       const txt = await tauriInvoke("read_shp_to_txt_preview", { shpPaths, sourceType, sourcePath, headerCfg: cfg.h, fieldMapping: cfg.f, options: opt, selectedLayers: sourceType === "gdb" ? selectedLayers : [] });
       if (txt) { const pv = $("pv"); if (pv) pv.textContent = txt; return; }
     } catch (e) { console.error("Preview error:", e); toast("预览失败: " + (e?.message || e)); }
+    finally { if (spin) spin.classList.remove('on'); }
   }
   const pv = $("pv");
   if (pv) pv.textContent = out || "请先导入 SHP 或 GDB 文件";
@@ -1115,6 +1166,7 @@ function bindAttrRowEvents() {
       if (k) headerManual[k] = true;
     }
     updatePreview();
+    updateProjButton();
   });
   // 键名失焦：若值控件类型需要切换（input↔select）才重渲染，避免无谓重建
   box.addEventListener("change", (e) => {
@@ -1677,7 +1729,8 @@ async function init() {
   bind("hdrTabProj", () => switchHdrTab("proj"));
   bind("btnPrefill", () => prefillProject());
   bind("btnResetDefaults", () => resetDefaults());
-  bind("btnProj", () => openProjModal());
+  bind("projSwitchToggle", () => { projMode === 'keep' ? openProjModal() : resetProjMode(); });
+  bind("projSwitchLabel", () => openProjModal());
   bind("btnProjClose", () => closeProjModal());
   bind("btnProjCancel", () => closeProjModal());
   bind("btnProjApply", () => applyProjMode());

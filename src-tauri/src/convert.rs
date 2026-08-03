@@ -359,11 +359,18 @@ pub fn apply_dynamic_projection_to_sources(
         return Ok(header.clone());
     }
     let mode = options.proj_mode.clone();
-    let (src_band, src_zone) = extract_band_zone(header);
+    let (src_band, header_zone) = extract_band_zone(header);
+    let band_for_infer = src_band.unwrap_or(3);
+    let src_zone = sources.first()
+        .and_then(|s| s.plots.first())
+        .and_then(|pws| pws.plot.coords.first())
+        .and_then(|c| projection::infer_zone_from_x(c.1, band_for_infer))
+        .or(header_zone);
     let datum = parse_datum_for_proj(&header.attr("坐标系"));
     let dst_band: Option<u8> = match mode.as_str() {
         "A" | "G" => Some(3),
         "B" | "F" => Some(6),
+        "H" => src_band,
         _ => None,
     };
     // F/G 模式：从源带号自动推算目标带号（3°zone↔6°zone 映射）；A/B/C：用户指定或沿用源带号
@@ -400,11 +407,17 @@ pub fn apply_dynamic_projection_to_plots(
         return Ok(header.clone());
     }
     let mode = options.proj_mode.clone();
-    let (src_band, src_zone) = extract_band_zone(header);
+    let (src_band, header_zone) = extract_band_zone(header);
+    let band_for_infer = src_band.unwrap_or(3);
+    let src_zone = plots.first()
+        .and_then(|p| p.coords.first())
+        .and_then(|c| projection::infer_zone_from_x(c.1, band_for_infer))
+        .or(header_zone);
     let datum = parse_datum_for_proj(&header.attr("坐标系"));
     let dst_band: Option<u8> = match mode.as_str() {
         "A" | "G" => Some(3),
         "B" | "F" => Some(6),
+        "H" => src_band,
         _ => None,
     };
     let dst_zone = match mode.as_str() {
@@ -466,7 +479,7 @@ fn parse_datum_for_proj(s: &str) -> projection::Ellipsoid {
 }
 
 fn extract_band_zone(header: &HeaderConfig) -> (Option<u8>, Option<u32>) {
-    let band_s = header.attr("分带");
+    let band_s = header.attr("几度分带");
     let zone_s = header.attr("带号");
     let band = match band_s.as_str() {
         "3" | "3°带" => Some(3),
@@ -515,7 +528,7 @@ fn transform_xy(
             let cm = if bw == 6 { zone as f64 * 6.0 - 3.0 } else { zone as f64 * 3.0 };
             projection::gauss_kruger_inverse(y, x, cm, datum)
         }
-        "F" | "G" => {
+        "F" | "G" | "H" => {
             let sb = src_band.unwrap_or(3);
             let sz = src_zone.unwrap_or(38);
             let db = dst_band.unwrap_or(6);
@@ -569,10 +582,10 @@ fn sync_header_crs_fields(
     };
     set_val(attrs, "坐标系", datum_name.to_string());
     match mode {
-        "A" | "B" | "F" | "G" => {
+        "A" | "B" | "F" | "G" | "H" => {
             set_val(attrs, "形式", "投影（米）".to_string());
             let bw = dst_band.unwrap_or(3);
-            set_val(attrs, "分带", match bw { 3 => "3°带".to_string(), 6 => "6°带".to_string(), _ => "—".to_string() });
+            set_val(attrs, "几度分带", match bw { 3 => "3°带".to_string(), 6 => "6°带".to_string(), _ => "—".to_string() });
             set_val(attrs, "投影类型", "高斯克吕格".to_string());
             set_val(attrs, "计量单位", "米".to_string());
             if let Some(z) = dst_zone {
@@ -585,7 +598,7 @@ fn sync_header_crs_fields(
             // 同带仅更新前缀：输出仍为投影坐标
             set_val(attrs, "形式", "投影（米）".to_string());
             let bw = src_band.unwrap_or(3);
-            set_val(attrs, "分带", match bw { 3 => "3°带".to_string(), 6 => "6°带".to_string(), _ => "—".to_string() });
+            set_val(attrs, "几度分带", match bw { 3 => "3°带".to_string(), 6 => "6°带".to_string(), _ => "—".to_string() });
             set_val(attrs, "投影类型", "高斯克吕格".to_string());
             set_val(attrs, "计量单位", "米".to_string());
             if let Some(z) = dst_zone.or(src_zone) {
@@ -595,7 +608,7 @@ fn sync_header_crs_fields(
         "D" => {
             // 投影→大地：逆投影输出为度
             set_val(attrs, "形式", "大地（度）".to_string());
-            set_val(attrs, "分带", "—".to_string());
+            set_val(attrs, "几度分带", "—".to_string());
             set_val(attrs, "投影类型", "—".to_string());
             set_val(attrs, "计量单位", "—".to_string());
             set_val(attrs, "带号", "".to_string());

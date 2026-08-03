@@ -51,7 +51,7 @@ index.html (CSS 内联, Google Fonts CDN)
 - Markdown 弹窗：`content/about.md` 和 `content/sponsor.md` 通过 `?raw` 导入，`renderMarkdown()` 渲染
 - 双模式：`data-mode="s"`（面→TXT，3 列 260+260+360）/ `data-mode="t"`（TXT→面，2 列 300+flex）
 - 预设配置 `PP` 数组包含三种模式（基础地块/规划审批/自定义），字段自动匹配规则在 `FIELD_MATCH_RULES`
-- **动态投影弹窗**（`#projModal`）：推荐区（顶部，基于经纬度范围智能推荐分带/带号/CM）+ 导入识别网格 + toggle 开关 + 5 选 1 radio（3°/6° × 含/不含带号 + 转为大地坐标）+ 带号输入 → CM 实时联动。选中「转为大地坐标」时含/不含带号和带号输入置灰。模式自动推断表：
+- **动态投影弹窗**（`#projModal`）：推荐区（顶部，基于经纬度范围智能推荐分带/带号/CM）+ 导入识别网格 + 目标形式下拉（`#projFormSelect`：3°带/6°带/转为大地坐标）+ 含带号开关（`#projPrefixToggle`，智能默认跟随导入数据 X 量级 >1e6 则开）+ 带号输入（`#projZoneInput`）↔ 中央经线输入（`#projCMInput`，双向联动，CM 立即规整到最近标称值）。三个维度（分带/含带号/转大地）解耦为独立控件——「不含带号」只控制 X 坐标前缀，不再禁用带号输入。输入是大地时「转为大地坐标」选项禁选；选中「转为大地坐标」时含带号开关+带号/CM 输入置灰。模式推断函数 `inferProjMode(inputIsDegree, inputBand, targetVal)`。模式自动推断表：
 
 | 输入形式 | 目标分带 | mode |
 |---------|---------|------|
@@ -182,6 +182,9 @@ SHP 存储 (X, Y) = (东坐标, 北坐标)。TXT 存储 (Y, X) = (北坐标, 东
 ### 动态投影 `proj_no_prefix`
 `ShpToTxtOptions.proj_no_prefix = true` 时，`transform_xy` 在 A/B/F/G 模式中不添加 `zone × 1,000,000` 前缀。对 C 模式（前缀调整）：`true`=剥离前缀取自然值，`false`=自然值加前缀。对 D 模式（逆投影）：无影响（输出经纬度无前缀概念）。
 
+### 属性表字段 key 命名（applyProjMode 同步陷阱）
+属性表（`#attrRows`，`DEFAULT_ATTRS` in main.js）的真实 key：`坐标系`/`几度分带`/`投影类型`/`计量单位`/`带号`/`精度`/`转换参数`。**没有** `形式` 或 `分带` key——弹窗"导入识别"区的 label（形式/分带）只是显示文案，不对应属性表行。`applyProjMode` 点"应用"后用 `setRow(key,v)` 同步属性表，必须用真实 key（如 `setRow('几度分带', String(bw))`、`setRow('计量单位','米')`），写成 `setRow('形式'/'分带',…)` 是 **no-op**（`rows.find` 找不到匹配行静默跳过）。「几度分带」值是 `"3"`/`"6"` 字符串（对齐 `ATTR_SELECT_OPTIONS["几度分带"]=["3","6"]`），不是 `"3°带"`。`currentCrsInfo`（弹窗导入识别数据源）只在导入时经 `syncOgGate` 设一次，用户改属性表**不回写**——两者独立；若要让弹窗反映属性表实时值，需在 `openProjModal` 从 `collectAttrRows()` 读。
+
 ### 发布打包
 `npm run tauri build` → 产物复制到 `其他相关tbx放进去release/`（便携版 + NSIS 安装包）。签名需 `TAURI_SIGNING_PRIVATE_KEY` 环境变量或 `scripts/build-signed.ps1`。
 
@@ -193,6 +196,12 @@ SHP 存储 (X, Y) = (东坐标, 北坐标)。TXT 存储 (Y, X) = (北坐标, 东
 
 ### 前端构建特殊行为
 `@tauri-apps/api` 在 Vite 生产构建中不会被包含在输出 JS 内。ES module `import` 由 Vite 在构建时解析，运行时通过 `window.__TAURI__` 调用。
+
+### 构建陷阱：vite html-inline-proxy 间歇失败
+`npm run build`（vite + vite-plugin-singlefile）在改过 `index.html`（含内联 `<style>`）后偶发报 `No matching HTML proxy module found`（"2 modules transformed"，正常 15）。**Windows 文件系统时序竞态，非源码 bug**——清缓存前后 JS hash 一致。
+- 单独 `npm run build` 稳定；用 **bash** `rm -rf node_modules/.vite dist` 清缓存（PowerShell `Remove-Item` 大目录后立即 build 反而易触发竞态）
+- **`npm run tauri build` 的 `beforeBuildCommand` 会确定性失败**（4/4），但单独 build 5/5 成功；TAURI_* env 不是元凶，疑为 tauri 子进程 cwd/shell 差异
+- **绕过方案**（已验证）：① 单独 `npm run build` 生成 dist → ② 临时清空 `tauri.conf.json` 的 `beforeBuildCommand`（改 `""`）→ ③ `npm run tauri build`（用现成 dist，cargo+NSIS 正常）→ ④ **务必恢复** `beforeBuildCommand: "npm run build"`
 
 ### 权限（capabilities/default.json）
 需要：`core:default`、`dialog:default/open/save`、`fs:default/read/write/exists/mkdir/remove/rename/stat`、`shell:allow-open`、`updater:default`、`process:allow-restart/exit`

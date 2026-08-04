@@ -130,7 +130,7 @@ function toast(m) {
   t.textContent = m;
   t.classList.add("on");
   clearTimeout(t._h);
-  t._h = setTimeout(() => t.classList.remove("on"), 1500);
+  t._h = setTimeout(() => t.classList.remove("on"), 20000);
 }
 
 // ═══ Theme ═══
@@ -229,7 +229,9 @@ window.importGdb = async function () {
     // 合并 extent 信息
     const crsWithExtent = result.crs_info || {};
     if (result.xmin != null) crsWithExtent.xmin = result.xmin;
+    if (result.ymin != null) crsWithExtent.ymin = result.ymin;
     if (result.xmax != null) crsWithExtent.xmax = result.xmax;
+    if (result.ymax != null) crsWithExtent.ymax = result.ymax;
     syncOgGate(crsWithExtent);
     autoSetOutputDirS(result.path);
     toast(`已读取 GDB: ${result.name}（${result.layers.length} 个面状要素类），请在弹窗中勾选`);
@@ -556,7 +558,8 @@ function renderProjModal(info) {
   const rm = $('projRecommend');
   if (rm) rm.textContent = buildRecommendText(info);
 
-  const inputIsDegree = u === '度';
+  // u='度' 但坐标量级>360 → PRJ 错标地理，实际投影（米）
+  const inputIsDegree = u === '度' && !(info && info.xmax != null && Math.abs(info.xmax) > 360);
   const sel = $('projFormSelect');
   const zi = $('projZoneInput');
   const cmInput = $('projCMInput');
@@ -683,11 +686,22 @@ window.applyProjMode = function () {
     projZone = null;
     window._projNoPrefix = false;
   } else {
-    const inputIsDegree = currentCrsInfo && currentCrsInfo.u === '度';
-    const inputBand = (currentCrsInfo && currentCrsInfo.b) || '';
+    const xmax = currentCrsInfo && currentCrsInfo.xmax;
+    // u='度' 但坐标量级>360 → PRJ 错标地理，实际是投影（米）
+    const inputIsDegree = currentCrsInfo && currentCrsInfo.u === '度' && !(xmax != null && Math.abs(xmax) > 360);
     const zRaw = zi ? zi.value.trim() : '';
     projZone = zRaw ? parseInt(zRaw, 10) : null;
-    projMode = inferProjMode(inputIsDegree, inputBand, val, currentCrsInfo && currentCrsInfo.z, projZone);
+    // srcZone 优先 currentCrsInfo.z，空则从坐标范围推断（含带号前缀时）——避免 PRJ 无带号时误判 C
+    let srcZone = currentCrsInfo && currentCrsInfo.z;
+    if (!srcZone && currentCrsInfo && currentCrsInfo.xmax != null && currentCrsInfo.xmax > 1000000) {
+      srcZone = Math.round((currentCrsInfo.xmax - 500000) / 1000000);
+    }
+    // inputBand 优先 currentCrsInfo.b，空则从 srcZone 推断（3°带 24-45 / 6°带 13-23）
+    let inputBand = (currentCrsInfo && currentCrsInfo.b) || '';
+    if (!inputBand && srcZone) {
+      inputBand = (srcZone >= 24 && srcZone <= 45) ? '3' : (srcZone >= 13 && srcZone <= 23) ? '6' : '';
+    }
+    projMode = inferProjMode(inputIsDegree, inputBand, val, srcZone, projZone);
     window._projNoPrefix = false;
   }
 
@@ -783,7 +797,9 @@ function processImport() {
   if (first.crs_info) {
     // 合并 extent 信息到 crs_info
     if (first.xmin != null) first.crs_info.xmin = first.xmin;
+    if (first.ymin != null) first.crs_info.ymin = first.ymin;
     if (first.xmax != null) first.crs_info.xmax = first.xmax;
+    if (first.ymax != null) first.crs_info.ymax = first.ymax;
     autoFillHeader(first.crs_info);
   }
   syncOgGate(first.crs_info);

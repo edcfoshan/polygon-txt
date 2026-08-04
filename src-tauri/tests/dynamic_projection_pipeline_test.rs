@@ -258,3 +258,76 @@ fn dynamic_proj_mode_h_src_zone_inferred_from_coords() {
     assert!(x_out > 39_000_000.0 && x_out < 40_000_000.0, "x should be zone 39 (inferred src 38), got {}", x_out);
 }
 
+#[test]
+fn dynamic_proj_mode_h_reband_3deg_36_to_35_wgs84() {
+    // city.shp 场景：WGS84 3°带 36→35（用户报告换带失败）
+    let (x36_np, y) = gauss_kruger_forward(107.5, 40.7, 108.0, Ellipsoid::WGS84);
+    let x36 = x36_np + 36_000_000.0;
+    let mut sources = vec![make_test_source(vec![(y, x36)])];
+    let header = header_with_test_attrs(vec![
+        ("坐标系", "WGS84"),
+        ("几度分带", "3"),
+        ("带号", "35"), // apply 后 header=目标 35
+    ]);
+    let options = ShpToTxtOptions { proj_mode: "H".to_string(), proj_zone: Some(35), ..shp_opts_test_default() };
+    let _ = apply_dynamic_projection_to_sources(&mut sources, &header, &options).unwrap();
+    let (y_out, x_out) = sources[0].plots[0].plot.coords[0];
+    eprintln!("36→35: in ({}, {}), out ({}, {})", y, x36, y_out, x_out);
+    let (lon_b, lat_b) = gauss_kruger_inverse(x_out - 35_000_000.0, y_out, 105.0, Ellipsoid::WGS84);
+    assert!((lon_b - 107.5).abs() < 0.01, "lon roundtrip (36→35), got {}", lon_b);
+    assert!((lat_b - 40.7).abs() < 0.01, "lat roundtrip, got {}", lat_b);
+    assert!(x_out > 35_000_000.0 && x_out < 36_000_000.0, "x should be zone 35, got {}", x_out);
+}
+
+#[test]
+fn city_shp_actual_36_to_35() {
+    // city.shp 实际坐标 + 坐标系="WGS84坐标系"（parse_datum_for_proj 默认 CGCS2000）
+    let mut sources = vec![make_test_source(vec![(4511093.231, 36427516.023)])];
+    let header = header_with_test_attrs(vec![
+        ("坐标系", "WGS84坐标系"),
+        ("几度分带", "3"),
+        ("带号", "35"),
+    ]);
+    let options = ShpToTxtOptions { proj_mode: "H".to_string(), proj_zone: Some(35), ..shp_opts_test_default() };
+    let _ = apply_dynamic_projection_to_sources(&mut sources, &header, &options).unwrap();
+    let (y_out, x_out) = sources[0].plots[0].plot.coords[0];
+    eprintln!("city actual: out ({}, {})", y_out, x_out);
+    assert!(x_out < 36_000_000.0, "x should be zone 35 (<36M), got {}", x_out);
+}
+
+#[test]
+fn diag_39_to_34_actual() {
+    // 面多部件加内切.shp 实际坐标（39 带）→ 选 34 带
+    let mut sources = vec![make_test_source(vec![(2552207.0, 39325334.0)])];
+    let header = header_with_test_attrs(vec![
+        ("坐标系", "2000国家大地坐标系"),
+        ("几度分带", "3"),
+        ("带号", "34"),
+    ]);
+    let options = ShpToTxtOptions { proj_mode: "H".to_string(), proj_zone: Some(34), ..shp_opts_test_default() };
+    let _ = apply_dynamic_projection_to_sources(&mut sources, &header, &options).unwrap();
+    let (y_out, x_out) = sources[0].plots[0].plot.coords[0];
+    eprintln!("39→34: in (2552207, 39325334) out ({}, {})", y_out, x_out);
+    // 反算验证：无论带外变形多大，reband 应能还原原始经纬度
+    let (lon_b, lat_b) = gauss_kruger_inverse(x_out - 34_000_000.0, y_out, 102.0, Ellipsoid::CGCS2000);
+    eprintln!("39→34 反算: lon={}, lat={}", lon_b, lat_b);
+}
+
+#[test]
+fn diag_39_to_40_both_paths() {
+    // 面多部件 39→40（相邻带），对比预览(_to_plots) vs 导出(_to_sources)
+    let coords = vec![(2552207.0, 39325334.0)];
+    let header = header_with_test_attrs(vec![
+        ("坐标系", "2000国家大地坐标系"), ("几度分带", "3"), ("带号", "40"),
+    ]);
+    let options = ShpToTxtOptions { proj_mode: "H".to_string(), proj_zone: Some(40), ..shp_opts_test_default() };
+    let mut sources = vec![make_test_source(coords.clone())];
+    let _ = apply_dynamic_projection_to_sources(&mut sources, &header, &options).unwrap();
+    let (ys, xs) = sources[0].plots[0].plot.coords[0];
+    let mut plots = vec![__plot_with_coords(coords.clone())];
+    let _ = apply_dynamic_projection_to_plots(&mut plots, &header, &options).unwrap();
+    let (yp, xp) = plots[0].coords[0];
+    eprintln!("39→40: sources out ({}, {}) | plots out ({}, {})", ys, xs, yp, xp);
+    eprintln!("39→40: sources 带号前缀={} | plots 带号前缀={}", (xs/1e7).floor(), (xp/1e7).floor());
+}
+

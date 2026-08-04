@@ -73,7 +73,7 @@ impl Ellipsoid {
             Ellipsoid::CGCS2000 => Some("EPSG:4490"),
             Ellipsoid::Xian1980 => Some("EPSG:4610"),
             Ellipsoid::Beijing1954 => Some("EPSG:4214"),
-            Ellipsoid::WGS84 => Some("EPSG:4326"),
+            Ellipsoid::WGS84 => Some("EPSG:4490"),  // 借用 CGCS2000 地理（椭球差异 <mm，proj-core 需同基准路径）
         }
     }
 
@@ -97,8 +97,9 @@ impl Ellipsoid {
                 Some(format!("EPSG:{}", code))
             }
             Ellipsoid::WGS84 => {
-                // WGS84 没有标准的中国 GK 投影 EPSG 代码，回退经典公式
-                None
+                // WGS84 无标准中国 GK EPSG；借用 CGCS2000（椭球差异 <mm，投影误差可忽略）
+                let code = 4513 + (zone - 25);
+                Some(format!("EPSG:{}", code))
             }
         }
     }

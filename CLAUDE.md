@@ -144,7 +144,17 @@ SHP 存储 (X, Y) = (东坐标, 北坐标)。TXT 存储 (Y, X) = (北坐标, 东
 
 `shp_to_txt_preview` → `shp_files_to_plots` / `gdb_features_to_plots`（og 投影）→ `apply_dynamic_projection_to_plots`（动态投影）→ `txt::generate_txt`
 
-**陷阱**：`PlotData` 同时有 `coords`（扁平坐标列表）和 `rings`（结构化环坐标）。`generate_txt` 优先使用 `rings`（非空时）。`apply_dynamic_projection_to_plots` 必须**同时更新 `coords` 和 `rings`**，否则预览显示原始坐标而非投影后坐标。
+**陷阱**：`PlotData` 同时有 `coords`（扁平坐标列表）和 `rings`（结构化环坐标）。`generate_txt` 优先使用 `rings`（非空时）。**两个投影函数都必须同时更新 `coords` 和 `rings`**：
+- `apply_dynamic_projection_to_plots`（预览路径）
+- `transform_sources_dynamic`（导出路径，`apply_dynamic_projection_to_sources` 调用）
+
+漏更 `rings` 会导致：预览正确（_to_plots 更新了 rings）但**导出用原始坐标**（transform_sources_dynamic 漏 rings，generate_txt 用原始 rings）——这种"预览对导出错"的 bug 极难发现，曾导致 39→40 换带导出仍 39 带的问题。
+
+**src_zone 从坐标推断**：`apply_dynamic_projection_to_sources`/`_to_plots` 用 `infer_zone_from_x(plots[0].coords[0].1)` 从**原始坐标**推断源带号（X 含带号前缀时），**不依赖 `header.带号`**（apply 后 header 被改成目标值，用它当 src 会 no-op 或算错）。前端 `applyProjMode` 的 `srcZone`/`inputBand` 同理：优先 `currentCrsInfo.z/.b`，空则从 `xmax` 推断。
+
+**WGS84 EPSG 借用**：`Ellipsoid::WGS84` 无标准中国 GK EPSG，`proj_epsg_3degree` 返回 CGCS2000 的 EPSG（4513+），`geo_epsg` 返回 4490（非 4326）——因 proj-core 跨基准（4326→4524）无转换路径；椭球差异 <mm 可忽略。
+
+**inputIsDegree 交叉验证**：前端 `inputIsDegree` 不能只信 `currentCrsInfo.u==='度'`（PRJ 可能错标地理），要交叉验证坐标量级：`u==='度' && !(xmax > 360)`——坐标量级 >360 说明实际是投影（米），PRJ 错标。
 
 ### PRJ 坐标系识别（shp.rs `read_prj`）
 支持匹配：`CGCS2000` / `Xian_1980` / `Beijing_1954` / `WGS84` / `WGS_84` / **`WGS_1984`**（最后一个是 v2.0 新增，之前遗漏导致 WGS84 PRJ 坐标系显示为空）。

@@ -35,7 +35,9 @@ struct ShpFileItem {
     prj_text: Option<String>,
     crs_info: HashMap<String, String>,
     xmin: Option<f64>,
+    ymin: Option<f64>,
     xmax: Option<f64>,
+    ymax: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -49,7 +51,9 @@ struct GdbImportResult {
     zone: Option<String>,
     crs_info: HashMap<String, String>,
     xmin: Option<f64>,
+    ymin: Option<f64>,
     xmax: Option<f64>,
+    ymax: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -262,7 +266,7 @@ fn pick_shp_files(app: tauri::AppHandle) -> Result<ShpImportResult, String> {
             Ok(info) => {
                 // 仅接收面状 SHP；非面状（点/线等）拒收并记录
                 if is_polygon_geometry_type(&info.shape_type) {
-                    let (xmin, xmax) = compute_extent_from_shp(&shp_path);
+                    let (xmin, ymin, xmax, ymax) = compute_extent_from_shp(&shp_path);
                     items.push(ShpFileItem {
                         shp_path: info.shp_path,
                         dbf_path: info.dbf_path,
@@ -274,7 +278,9 @@ fn pick_shp_files(app: tauri::AppHandle) -> Result<ShpImportResult, String> {
                         prj_text: info.prj_text,
                         crs_info: info.crs_info,
                         xmin,
+                        ymin,
                         xmax,
+                        ymax,
                     });
                 } else {
                     skipped.push(format!(
@@ -296,20 +302,24 @@ fn pick_shp_files(app: tauri::AppHandle) -> Result<ShpImportResult, String> {
 }
 
 /// 从 SHP 采样计算坐标范围（东坐标/经度）
-fn compute_extent_from_shp(shp_path: &PathBuf) -> (Option<f64>, Option<f64>) {
+fn compute_extent_from_shp(shp_path: &PathBuf) -> (Option<f64>, Option<f64>, Option<f64>, Option<f64>) {
     match shp::read_shp(shp_path) {
         Ok(features) => {
-            let mut xs: Vec<f64> = features.iter()
-                .flat_map(|f| f.surface.parts.iter())
-                .flat_map(|p| p.exterior.iter())
-                .map(|(x, _)| *x)
-                .collect();
+            let mut xs: Vec<f64> = Vec::new();
+            let mut ys: Vec<f64> = Vec::new();
+            for f in features.iter() {
+                for p in f.surface.parts.iter() {
+                    for (x, y) in p.exterior.iter() {
+                        xs.push(*x);
+                        ys.push(*y);
+                    }
+                }
+            }
             xs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-            let xmin = xs.first().copied();
-            let xmax = xs.last().copied();
-            (xmin, xmax)
+            ys.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+            (xs.first().copied(), ys.first().copied(), xs.last().copied(), ys.last().copied())
         }
-        Err(_) => (None, None),
+        Err(_) => (None, None, None, None),
     }
 }
 
@@ -406,9 +416,16 @@ fn import_gdb(app: tauri::AppHandle) -> Result<GdbImportResult, String> {
         .flat_map(|f| f.points.iter())
         .map(|(easting, _)| *easting)
         .collect();
+    let ys: Vec<f64> = all_features.iter()
+        .flat_map(|feats| feats.iter())
+        .flat_map(|f| f.points.iter())
+        .map(|(_, northing)| *northing)
+        .collect();
     let xmin = xs.iter().cloned().fold(f64::INFINITY, f64::min);
     let xmax = xs.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
-    let (xmin, xmax) = if xs.is_empty() { (None, None) } else { (Some(xmin), Some(xmax)) };
+    let ymin = ys.iter().cloned().fold(f64::INFINITY, f64::min);
+    let ymax = ys.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+    let (xmin, ymin, xmax, ymax) = if xs.is_empty() { (None, None, None, None) } else { (Some(xmin), Some(ymin), Some(xmax), Some(ymax)) };
 
     Ok(GdbImportResult {
         path: gdb_path.to_string_lossy().to_string(),
@@ -420,7 +437,9 @@ fn import_gdb(app: tauri::AppHandle) -> Result<GdbImportResult, String> {
         zone,
         crs_info,
         xmin,
+        ymin,
         xmax,
+        ymax,
     })
 }
 
@@ -593,7 +612,7 @@ fn pick_shp_files_from_paths(paths: Vec<String>) -> Result<ShpImportResult, Stri
         match shp::read_shp_file_group(&shp_path) {
             Ok(info) => {
                 if is_polygon_geometry_type(&info.shape_type) {
-                    let (xmin, xmax) = compute_extent_from_shp(&shp_path);
+                    let (xmin, ymin, xmax, ymax) = compute_extent_from_shp(&shp_path);
                     items.push(ShpFileItem {
                         shp_path: info.shp_path,
                         dbf_path: info.dbf_path,
@@ -605,7 +624,9 @@ fn pick_shp_files_from_paths(paths: Vec<String>) -> Result<ShpImportResult, Stri
                         prj_text: info.prj_text,
                         crs_info: info.crs_info,
                         xmin,
+                        ymin,
                         xmax,
+                        ymax,
                     });
                 } else {
                     skipped.push(format!("{}.shp（{}）", info.name, info.shape_type));

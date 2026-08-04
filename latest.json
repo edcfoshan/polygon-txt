@@ -1,11 +1,11 @@
 {
-  "version": "1.6.1",
-  "notes": "修复 v1.6 界面版本号显示为 V1.5、并误报“可更新到 1.6”的问题（版本号改为单一来源，避免发版漏改）。",
-  "pub_date": "2026-07-09T03:00:18.282Z",
+  "version": "2.0.0",
+  "notes": "v2.0 正式版：动态投影弹窗重构（下拉+带号↔CM联动）、同分带换带(H模式)、预览导出一致(rings修复)、WGS84投影支持、投影数据推荐、加载动画+带号限位。感谢 @alan 的 PR 贡献。",
+  "pub_date": "2026-08-04T09:08:33.074Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUd3RYL0ovejhtb0Fvd0x2SGRXU2wyam9vOFNCSWVWQ3lTYTRsYXp1WXFRQ09kYTFWRWlXNTM4YlJHRWFMZUs5TXlHblY1N1lUR3EvdnM2NDZyRFZKSTRwWkc4MWJOUncwPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzgzNTY1ODI3CWZpbGU65p6B5oCdR+eVjOWdgOeCueS6kui9rOW3peWFt18xLjYuMV94NjQtc2V0dXAuZXhlClpPYzFKUTM2dnJ2VFRqOG5FdU0vVWlQb1dLYVBIbG5IU3hmZEtuamhtYkp6M3U2bUV4V0orU1pxeUxCUTc3bWExRVhHZFZCVjBtcjJpM1oyRlB3M0RnPT0K",
-      "url": "https://github.com/edcfoshan/polygon-txt/releases/download/v1.6.1/polygon-txt_1.6_x64-setup.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUd3RYL0ovejhtb0dMTTdnMk1STlk4RkN2QVNOTFdOVUlISXZvVHNFdWhDOFYrTnpobnF1V2hObkdZRlRDRElMSGtWNWFSNmpQUWg2TFFyQWtRODJ4azYyZUNlcHI1VkFzPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1ODM0NDY0CWZpbGU65p6B5oCdR+eVjOWdgOeCueS6kui9rOW3peWFt18yLjAuMF94NjQtc2V0dXAuZXhlCkRXWTJqdUNPczlYQS84dlhwV1cweHArU2tINEFQUVZ5V2I3V3ZlVFFNcVU3cWFFZnFLV3BMN3h2WU13b1IyRXZid3NnaXR3eFN6VENRMlRKLzdLNUF3PT0K",
+      "url": "https://github.com/edcfoshan/polygon-txt/releases/download/v2.0.0/polygon-txt_2.0_x64-setup.exe"
     }
   }
 }

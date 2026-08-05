@@ -4,7 +4,7 @@
 
 [English](./README.en.md) | 中文
 
-![界面预览](./docs/screenshots/webview_screenshot.png)
+![界面预览](./docs/screenshots/app-s-to-txt.png)
 
 ## 简介
 

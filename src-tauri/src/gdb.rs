@@ -383,14 +383,17 @@ fn read_layer_manual(
 
 // ─── Z/M 标志剥离（ArcGIS Pro 兼容） ───
 
-/// 从 shape buffer 的第一个 varuint（几何类型字段）中剥离 Z / M 标志位。
+/// 从 shape buffer 的第一个 varuint（几何类型字段）中剥离 Z / M。
 ///
-/// ArcGIS Pro 默认导出的 GDB 会附加 Z 通道（type |= 0x8000_0000），
-/// 而 geonative-filegdb v0.2 一旦看到 Z/M 位就整层报错、跳过所有要素。
-/// 对我们（2D 界址点）而言 Z/M 无意义，坐标本体仍是 XY delta 编码，
-/// 所以这里直接清掉高位的 Z/M 标志再交给解码器即可正常读取。
+/// 处理两种 Z/M 编码约定：
+/// 1. **高位标志**（type |= 0x8000_0000 / 0x4000_0000）：清掉高位标志位
+/// 2. **Shapefile 风格类型码**（如 15=PolygonZM, 19=PolygonZ）：映射回 2D 等价类型码
 ///
-/// 保留 curve 标志位（0x2000_0000），库已支持 General* 曲面（线性采样）。
+/// ArcGIS Pro 可能使用任一约定。geonative-filegdb v0.2 对两种都返回
+/// Unsupported，所以我们统一剥离后交给解码器。
+///
+/// 不需要裁剪尾部 Z/M 坐标数据——FileGDB 中 Z/M 数据在 XY 坐标之后，
+/// 2D 解码器恰好读 nPoints 对 XY delta 后停止，尾部 Z/M 字节被安全忽略。
 fn strip_shape_zm_flags(blob: &[u8]) -> std::borrow::Cow<'_, [u8]> {
     // 解出第一个 varuint（几何类型）
     let mut n = 0u64;
@@ -404,16 +407,26 @@ fn strip_shape_zm_flags(blob: &[u8]) -> std::borrow::Cow<'_, [u8]> {
         }
         shift += 7;
         if shift >= 64 {
-            // 异常 varuint，原样返回避免误判
-            return std::borrow::Cow::Borrowed(blob);
+            return std::borrow::Cow::Borrowed(blob); // 异常 varuint
         }
     }
 
+    // 1) 高位 Z/M 标志剥离
     const Z_FLAG: u64 = 0x8000_0000;
     const M_FLAG: u64 = 0x4000_0000;
-    let stripped = n & !(Z_FLAG | M_FLAG);
+    let mut stripped = n & !(Z_FLAG | M_FLAG);
+
+    // 2) Shapefile 风格 Z/M 类型码映射
+    stripped = match stripped {
+        9 | 11 | 21 => 1,    // PointZ/PointZM/PointM → Point
+        10 | 13 | 23 => 3,   // ArcZ/ArcZM/ArcM → Polyline
+        15 | 19 | 25 => 5,   // PolygonZM/PolygonZ/PolygonM → Polygon
+        20 | 28 => 8,        // MultiPointZ/MultiPointM → MultiPoint
+        other => other,       // 非 Z/M 类型，保持原值
+    };
+
     if stripped == n {
-        return std::borrow::Cow::Borrowed(blob); // 无 Z/M，原样返回
+        return std::borrow::Cow::Borrowed(blob); // 无需修改
     }
 
     // 重编码 stripped varuint，拼接剩余字节

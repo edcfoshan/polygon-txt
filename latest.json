@@ -1,11 +1,11 @@
 {
-  "version": "2.0.0",
-  "notes": "v2.0 正式版：动态投影弹窗重构（下拉+带号↔CM联动）、同分带换带(H模式)、预览导出一致(rings修复)、WGS84投影支持、投影数据推荐、加载动画+带号限位。感谢 @alan 的 PR 贡献。",
-  "pub_date": "2026-08-04T09:08:33.074Z",
+  "version": "2.1.0",
+  "notes": "修复 ArcGIS Pro Z+M GDB 无法导入的问题",
+  "pub_date": "2026-08-13T02:08:22.770Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUd3RYL0ovejhtb0dMTTdnMk1STlk4RkN2QVNOTFdOVUlISXZvVHNFdWhDOFYrTnpobnF1V2hObkdZRlRDRElMSGtWNWFSNmpQUWg2TFFyQWtRODJ4azYyZUNlcHI1VkFzPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1ODM0NDY0CWZpbGU65p6B5oCdR+eVjOWdgOeCueS6kui9rOW3peWFt18yLjAuMF94NjQtc2V0dXAuZXhlCkRXWTJqdUNPczlYQS84dlhwV1cweHArU2tINEFQUVZ5V2I3V3ZlVFFNcVU3cWFFZnFLV3BMN3h2WU13b1IyRXZid3NnaXR3eFN6VENRMlRKLzdLNUF3PT0K",
-      "url": "https://github.com/edcfoshan/polygon-txt/releases/download/v2.0.0/polygon-txt_2.0_x64-setup.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUd3RYL0ovejhtb0dzTTlsNjNoYVpvcG9aRlRkdlFpN0d1MmVldGp6cm01T1ZoWmdNVTV5dENJdWhKbzdvU2t6SkgrTmxDOS9DZzVFRUc5RE9vMHhRZWRyMTFmc21PN0FVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg2NTg2ODc1CWZpbGU65p6B5oCdR+eVjOWdgOeCueS6kui9rOW3peWFt18yLjEuMF94NjQtc2V0dXAuZXhlCmxkdlZldHQ1WDlQMUlTUW8vMDJvMFdmWktqU0E5dmFINGh3M3JtRzg5VTVLVm1lQUtKUnZlM2dWMm4vYVNtbjFoWUpJQlZwNFBLZHdMRkRPY1ZmakRBPT0K",
+      "url": "https://github.com/edcfoshan/polygon-txt/releases/download/v2.1.0/polygon-txt_2.1_x64-setup.exe"
     }
   }
 }

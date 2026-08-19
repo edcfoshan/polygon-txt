@@ -1,0 +1,162 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 1060">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&amp;family=Noto+Sans+SC:wght@400;500;600;700&amp;display=swap');
+    text { font-family: 'JetBrains Mono', 'Noto Sans SC', 'PingFang SC', sans-serif; }
+  </style>
+  <defs>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/>
+    </pattern>
+    <marker id="arrow-emerald" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#34d399"/>
+    </marker>
+    <marker id="arrow-cyan" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#22d3ee"/>
+    </marker>
+    <marker id="arrow-amber" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#fbbf24"/>
+    </marker>
+  </defs>
+
+  <!-- 背景 + 网格 -->
+  <rect width="100%" height="100%" fill="#0f172a"/>
+  <rect width="100%" height="100%" fill="url(#grid)"/>
+
+  <!-- 标题 -->
+  <text x="30" y="36" fill="white" font-size="15" font-weight="700">极思G界址点互转 · 双向转换流程</text>
+  <text x="30" y="54" fill="#94a3b8" font-size="9">纯几何处理管线 · 无损往返（round-trip）</text>
+
+  <!-- 列标题 -->
+  <text x="60" y="86" fill="#34d399" font-size="11" font-weight="600">▼ 面 → TXT</text>
+  <text x="420" y="86" fill="#22d3ee" font-size="11" font-weight="600">▼ TXT → 面</text>
+
+  <!-- ═══ 左列（面→TXT）x=40 宽 280，8 节点，起 y=100，节距 104 ═══ -->
+  <!-- L1 起点 -->
+  <rect x="40" y="100" width="280" height="58" rx="20" fill="#0f172a"/>
+  <rect x="40" y="100" width="280" height="58" rx="20" fill="rgba(59,130,246,0.3)" stroke="#60a5fa" stroke-width="1.5"/>
+  <text x="180" y="124" fill="white" font-size="11" font-weight="600" text-anchor="middle">SHP / GDB 导入</text>
+  <text x="180" y="142" fill="#94a3b8" font-size="8" text-anchor="middle">多选 · 拖拽 · GDB 图层勾选</text>
+
+  <!-- L2 -->
+  <rect x="40" y="204" width="280" height="58" rx="6" fill="#0f172a"/>
+  <rect x="40" y="204" width="280" height="58" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
+  <text x="180" y="228" fill="white" font-size="11" font-weight="600" text-anchor="middle">环向归一化</text>
+  <text x="180" y="246" fill="#94a3b8" font-size="8" text-anchor="middle">外环逆时针 · 洞顺时针</text>
+
+  <!-- L3 -->
+  <rect x="40" y="308" width="280" height="58" rx="6" fill="#0f172a"/>
+  <rect x="40" y="308" width="280" height="58" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
+  <text x="180" y="332" fill="white" font-size="11" font-weight="600" text-anchor="middle">洞 · 多部件识别</text>
+  <text x="180" y="350" fill="#94a3b8" font-size="8" text-anchor="middle">界址线号逐环递增</text>
+
+  <!-- L4 -->
+  <rect x="40" y="412" width="280" height="58" rx="6" fill="#0f172a"/>
+  <rect x="40" y="412" width="280" height="58" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
+  <text x="180" y="436" fill="white" font-size="11" font-weight="600" text-anchor="middle">坐标系识别</text>
+  <text x="180" y="454" fill="#94a3b8" font-size="8" text-anchor="middle">PRJ 解析 · 带号提取</text>
+
+  <!-- L5 可选 -->
+  <rect x="40" y="516" width="280" height="58" rx="6" fill="#0f172a"/>
+  <rect x="40" y="516" width="280" height="58" rx="6" fill="rgba(120,53,15,0.3)" stroke="#fbbf24" stroke-width="1.5" stroke-dasharray="6,3"/>
+  <text x="64" y="534" fill="#fbbf24" font-size="8" font-weight="600">可选</text>
+  <text x="180" y="540" fill="white" font-size="11" font-weight="600" text-anchor="middle">动态投影</text>
+  <text x="180" y="558" fill="#94a3b8" font-size="8" text-anchor="middle">3°/6° 换带 · 转大地坐标</text>
+
+  <!-- L6 -->
+  <rect x="40" y="620" width="280" height="58" rx="6" fill="#0f172a"/>
+  <rect x="40" y="620" width="280" height="58" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
+  <text x="180" y="644" fill="white" font-size="11" font-weight="600" text-anchor="middle">字段映射</text>
+  <text x="180" y="662" fill="#94a3b8" font-size="8" text-anchor="middle">简单 6 槽 · 高级 14 项清单</text>
+
+  <!-- L7 -->
+  <rect x="40" y="724" width="280" height="58" rx="6" fill="#0f172a"/>
+  <rect x="40" y="724" width="280" height="58" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
+  <text x="180" y="748" fill="white" font-size="11" font-weight="600" text-anchor="middle">输出模式</text>
+  <text x="180" y="766" fill="#94a3b8" font-size="8" text-anchor="middle">一对一 · 按地块拆分 · 全合并</text>
+
+  <!-- L8 终点 -->
+  <rect x="40" y="828" width="280" height="58" rx="20" fill="#0f172a"/>
+  <rect x="40" y="828" width="280" height="58" rx="20" fill="rgba(76,29,149,0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+  <text x="180" y="852" fill="white" font-size="11" font-weight="600" text-anchor="middle">界址点 TXT</text>
+  <text x="180" y="870" fill="#94a3b8" font-size="8" text-anchor="middle">J 序号连续 · ,@ 三段式格式</text>
+
+  <!-- 左列箭头 -->
+  <line x1="180" y1="158" x2="180" y2="200" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrow-emerald)"/>
+  <line x1="180" y1="262" x2="180" y2="304" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrow-emerald)"/>
+  <line x1="180" y1="366" x2="180" y2="408" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrow-emerald)"/>
+  <line x1="180" y1="470" x2="180" y2="512" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrow-emerald)"/>
+  <line x1="180" y1="574" x2="180" y2="616" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrow-emerald)"/>
+  <line x1="180" y1="678" x2="180" y2="720" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrow-emerald)"/>
+  <line x1="180" y1="782" x2="180" y2="824" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrow-emerald)"/>
+
+  <!-- ═══ 右列（TXT→面）x=400 宽 280，6 节点，起 y=100，节距 152 ═══ -->
+  <!-- R1 起点 -->
+  <rect x="400" y="100" width="280" height="58" rx="20" fill="#0f172a"/>
+  <rect x="400" y="100" width="280" height="58" rx="20" fill="rgba(76,29,149,0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+  <text x="540" y="124" fill="white" font-size="11" font-weight="600" text-anchor="middle">界址点 TXT</text>
+  <text x="540" y="142" fill="#94a3b8" font-size="8" text-anchor="middle">属性描述 · 地块坐标 · 说明块跳过</text>
+
+  <!-- R2 -->
+  <rect x="400" y="252" width="280" height="58" rx="6" fill="#0f172a"/>
+  <rect x="400" y="252" width="280" height="58" rx="6" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+  <text x="540" y="276" fill="white" font-size="11" font-weight="600" text-anchor="middle">界址线号切环</text>
+  <text x="540" y="294" fill="#94a3b8" font-size="8" text-anchor="middle">外环 · 洞 · 多部件重建</text>
+
+  <!-- R3 -->
+  <rect x="400" y="404" width="280" height="58" rx="6" fill="#0f172a"/>
+  <rect x="400" y="404" width="280" height="58" rx="6" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+  <text x="540" y="428" fill="white" font-size="11" font-weight="600" text-anchor="middle">闭合校验</text>
+  <text x="540" y="446" fill="#94a3b8" font-size="8" text-anchor="middle">首末点重合检查 · 漏点暴露</text>
+
+  <!-- R4 -->
+  <rect x="400" y="556" width="280" height="58" rx="6" fill="#0f172a"/>
+  <rect x="400" y="556" width="280" height="58" rx="6" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+  <text x="540" y="580" fill="white" font-size="11" font-weight="600" text-anchor="middle">带号提取</text>
+  <text x="540" y="598" fill="#94a3b8" font-size="8" text-anchor="middle">坐标前缀 · 38/39 带</text>
+
+  <!-- R5 -->
+  <rect x="400" y="708" width="280" height="58" rx="6" fill="#0f172a"/>
+  <rect x="400" y="708" width="280" height="58" rx="6" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+  <text x="540" y="732" fill="white" font-size="11" font-weight="600" text-anchor="middle">属性回填</text>
+  <text x="540" y="750" fill="#94a3b8" font-size="8" text-anchor="middle">DBF · 6 拼音 / FIELDn</text>
+
+  <!-- R6 终点 -->
+  <rect x="400" y="860" width="280" height="58" rx="20" fill="#0f172a"/>
+  <rect x="400" y="860" width="280" height="58" rx="20" fill="rgba(59,130,246,0.3)" stroke="#60a5fa" stroke-width="1.5"/>
+  <text x="540" y="884" fill="white" font-size="11" font-weight="600" text-anchor="middle">SHP 写出</text>
+  <text x="540" y="902" fill="#94a3b8" font-size="8" text-anchor="middle">SHP · DBF · PRJ · CPG</text>
+
+  <!-- 右列箭头 -->
+  <line x1="540" y1="158" x2="540" y2="248" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arrow-cyan)"/>
+  <line x1="540" y1="310" x2="540" y2="400" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arrow-cyan)"/>
+  <line x1="540" y1="462" x2="540" y2="552" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arrow-cyan)"/>
+  <line x1="540" y1="614" x2="540" y2="704" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arrow-cyan)"/>
+  <line x1="540" y1="766" x2="540" y2="856" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arrow-cyan)"/>
+
+  <!-- ═══ 中缝闭环（琥珀虚线）：左列终点 TXT → 右列起点；右列终点 SHP → 左列起点 ═══ -->
+  <path d="M 320,857 C 356,857 364,129 396,129" fill="none" stroke="#fbbf24" stroke-width="1.5" stroke-dasharray="7,4" marker-end="url(#arrow-amber)"/>
+  <path d="M 400,889 C 364,889 356,171 324,171" fill="none" stroke="#fbbf24" stroke-width="1.5" stroke-dasharray="7,4" marker-end="url(#arrow-amber)"/>
+
+  <!-- 中央徽章：无损往返（中缝 y≈500） -->
+  <g transform="translate(360,500)">
+    <rect x="-46" y="-70" width="92" height="140" rx="16" fill="#0f172a"/>
+    <rect x="-46" y="-70" width="92" height="140" rx="16" fill="rgba(120,53,15,0.3)" stroke="#fbbf24" stroke-width="1.5"/>
+    <text y="-38" fill="#fbbf24" font-size="14" font-weight="700" text-anchor="middle">⟲</text>
+    <text y="-8" fill="#fbbf24" font-size="11" font-weight="700" text-anchor="middle">无 损</text>
+    <text y="14" fill="#fbbf24" font-size="11" font-weight="700" text-anchor="middle">往 返</text>
+    <text y="40" fill="#94a3b8" font-size="7" text-anchor="middle">坐标一根不差</text>
+    <text y="54" fill="#94a3b8" font-size="7" text-anchor="middle">round-trip</text>
+  </g>
+
+  <!-- 图例 -->
+  <g transform="translate(40,1000)">
+    <rect x="0" y="-9" width="12" height="8" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1"/>
+    <text x="18" y="-2" fill="#94a3b8" font-size="8">面→TXT 处理</text>
+    <rect x="96" y="-9" width="12" height="8" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1"/>
+    <text x="114" y="-2" fill="#94a3b8" font-size="8">TXT→面 处理</text>
+    <rect x="192" y="-9" width="12" height="8" fill="rgba(76,29,149,0.4)" stroke="#a78bfa" stroke-width="1"/>
+    <text x="210" y="-2" fill="#94a3b8" font-size="8">数据文件</text>
+    <line x1="268" y1="-5" x2="292" y2="-5" stroke="#fbbf24" stroke-width="1.5" stroke-dasharray="6,3"/>
+    <text x="298" y="-2" fill="#94a3b8" font-size="8">可选步骤 / 闭环</text>
+  </g>
+</svg>

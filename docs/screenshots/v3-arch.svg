@@ -1,0 +1,147 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 660">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&amp;family=Noto+Sans+SC:wght@400;500;600;700&amp;display=swap');
+    text { font-family: 'JetBrains Mono', 'Noto Sans SC', 'PingFang SC', sans-serif; }
+  </style>
+  <defs>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/>
+    </pattern>
+    <marker id="arrow-slate" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#64748b"/>
+    </marker>
+    <marker id="arrow-orange" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#fb923c"/>
+    </marker>
+  </defs>
+
+  <!-- 背景 + 网格 -->
+  <rect width="100%" height="100%" fill="#0f172a"/>
+  <rect width="100%" height="100%" fill="url(#grid)"/>
+
+  <!-- 标题 -->
+  <text x="30" y="34" fill="white" font-size="16" font-weight="700">应用架构 · Tauri v2</text>
+  <text x="30" y="52" fill="#94a3b8" font-size="9">WebView 前端 + Rust 后端 · 单进程桌面应用</text>
+
+  <!-- ═══ Row 1：表现层（前端界面） ═══ -->
+  <rect x="40" y="72" width="860" height="118" rx="12" fill="none" stroke="#22d3ee" stroke-width="1" stroke-dasharray="8,4"/>
+  <text x="56" y="92" fill="#22d3ee" font-size="9" font-weight="600">Tauri WebView 前端 · 三栏折叠收纳式界面</text>
+  <!-- 左栏 -->
+  <rect x="60" y="102" width="256" height="72" rx="6" fill="#0f172a"/>
+  <rect x="60" y="102" width="256" height="72" rx="6" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+  <text x="188" y="126" fill="white" font-size="11" font-weight="600" text-anchor="middle">左栏 · 输入配置</text>
+  <text x="188" y="144" fill="#94a3b8" font-size="8" text-anchor="middle">① 导入数据 · ② 字段映射</text>
+  <text x="188" y="160" fill="#94a3b8" font-size="8" text-anchor="middle">简单 6 槽 / 高级 14 项清单</text>
+  <!-- 中栏 -->
+  <rect x="332" y="102" width="256" height="72" rx="6" fill="#0f172a"/>
+  <rect x="332" y="102" width="256" height="72" rx="6" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+  <text x="460" y="126" fill="white" font-size="11" font-weight="600" text-anchor="middle">中栏 · 参数与表头</text>
+  <text x="460" y="144" fill="#94a3b8" font-size="8" text-anchor="middle">③ 输出选项 · ④ 动态投影 · ⑤ 表头</text>
+  <text x="460" y="160" fill="#94a3b8" font-size="8" text-anchor="middle">属性描述 · 项目信息自定义</text>
+  <!-- 右栏 -->
+  <rect x="604" y="102" width="276" height="72" rx="6" fill="#0f172a"/>
+  <rect x="604" y="102" width="276" height="72" rx="6" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+  <text x="742" y="126" fill="white" font-size="11" font-weight="600" text-anchor="middle">右栏 · 实时预览</text>
+  <text x="742" y="144" fill="#94a3b8" font-size="8" text-anchor="middle">界址点 TXT 实时刷新 · 与导出逐字一致</text>
+  <text x="742" y="160" fill="#94a3b8" font-size="8" text-anchor="middle">16 主题组合 · 窗口状态记忆</text>
+
+  <!-- ═══ Row 2：IPC 层（总线） ═══ -->
+  <rect x="40" y="232" width="860" height="44" rx="8" fill="rgba(251,146,60,0.3)" stroke="#fb923c" stroke-width="1.5"/>
+  <text x="470" y="250" fill="white" font-size="11" font-weight="600" text-anchor="middle">Tauri v2 IPC 总线 · invoke 命令</text>
+  <text x="470" y="266" fill="#94a3b8" font-size="8" text-anchor="middle">导入选择 · 预览生成 · 执行转换 · 窗口控制 · 自动更新</text>
+
+  <!-- 层间箭头（前端 ↔ IPC ↔ 模块） -->
+  <line x1="260" y1="190" x2="260" y2="230" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow-slate)"/>
+  <line x1="470" y1="190" x2="470" y2="230" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow-slate)"/>
+  <line x1="680" y1="190" x2="680" y2="230" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow-slate)"/>
+  <line x1="260" y1="276" x2="260" y2="316" stroke="#fb923c" stroke-width="1.5" marker-end="url(#arrow-orange)"/>
+  <line x1="470" y1="276" x2="470" y2="316" stroke="#fb923c" stroke-width="1.5" marker-end="url(#arrow-orange)"/>
+  <line x1="680" y1="276" x2="680" y2="316" stroke="#fb923c" stroke-width="1.5" marker-end="url(#arrow-orange)"/>
+
+  <!-- ═══ Row 3：核心层（Rust 模块） ═══ -->
+  <rect x="40" y="318" width="860" height="124" rx="12" fill="none" stroke="#34d399" stroke-width="1" stroke-dasharray="8,4"/>
+  <text x="56" y="338" fill="#34d399" font-size="9" font-weight="600">Rust 后端核心模块 · 纯 Rust 实现</text>
+  <!-- txt.rs -->
+  <rect x="60" y="348" width="156" height="80" rx="6" fill="#0f172a"/>
+  <rect x="60" y="348" width="156" height="80" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
+  <text x="138" y="372" fill="white" font-size="11" font-weight="600" text-anchor="middle">txt.rs</text>
+  <text x="138" y="390" fill="#94a3b8" font-size="8" text-anchor="middle">界址点 TXT</text>
+  <text x="138" y="404" fill="#94a3b8" font-size="8" text-anchor="middle">解析 · 生成</text>
+  <text x="138" y="418" fill="#94a3b8" font-size="8" text-anchor="middle">三段式格式 · GBK/UTF-8</text>
+  <!-- shp.rs -->
+  <rect x="232" y="348" width="156" height="80" rx="6" fill="#0f172a"/>
+  <rect x="232" y="348" width="156" height="80" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
+  <text x="310" y="372" fill="white" font-size="11" font-weight="600" text-anchor="middle">shp.rs</text>
+  <text x="310" y="390" fill="#94a3b8" font-size="8" text-anchor="middle">SHP · DBF · PRJ</text>
+  <text x="310" y="404" fill="#94a3b8" font-size="8" text-anchor="middle">读写 · 编码探测</text>
+  <text x="310" y="418" fill="#94a3b8" font-size="8" text-anchor="middle">坐标系识别</text>
+  <!-- gdb.rs -->
+  <rect x="404" y="348" width="156" height="80" rx="6" fill="#0f172a"/>
+  <rect x="404" y="348" width="156" height="80" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
+  <text x="482" y="372" fill="white" font-size="11" font-weight="600" text-anchor="middle">gdb.rs</text>
+  <text x="482" y="390" fill="#94a3b8" font-size="8" text-anchor="middle">OpenFileGDB</text>
+  <text x="482" y="404" fill="#94a3b8" font-size="8" text-anchor="middle">图层读取</text>
+  <text x="482" y="418" fill="#94a3b8" font-size="8" text-anchor="middle">模板化写入</text>
+  <!-- convert.rs -->
+  <rect x="576" y="348" width="156" height="80" rx="6" fill="#0f172a"/>
+  <rect x="576" y="348" width="156" height="80" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
+  <text x="654" y="372" fill="white" font-size="11" font-weight="600" text-anchor="middle">convert.rs</text>
+  <text x="654" y="390" fill="#94a3b8" font-size="8" text-anchor="middle">转换编排</text>
+  <text x="654" y="404" fill="#94a3b8" font-size="8" text-anchor="middle">三种输出模式</text>
+  <text x="654" y="418" fill="#94a3b8" font-size="8" text-anchor="middle">字段映射 · 面积计算</text>
+  <!-- projection.rs -->
+  <rect x="748" y="348" width="132" height="80" rx="6" fill="#0f172a"/>
+  <rect x="748" y="348" width="132" height="80" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
+  <text x="814" y="372" fill="white" font-size="11" font-weight="600" text-anchor="middle">projection.rs</text>
+  <text x="814" y="390" fill="#94a3b8" font-size="8" text-anchor="middle">高斯-克吕格</text>
+  <text x="814" y="404" fill="#94a3b8" font-size="8" text-anchor="middle">正反算 · 换带</text>
+  <text x="814" y="418" fill="#94a3b8" font-size="8" text-anchor="middle">带号推断</text>
+
+  <!-- 模块层 → 存储层 箭头 -->
+  <line x1="200" y1="442" x2="200" y2="490" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow-slate)"/>
+  <line x1="470" y1="442" x2="470" y2="490" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow-slate)"/>
+  <line x1="740" y1="442" x2="740" y2="490" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow-slate)"/>
+
+  <!-- ═══ Row 4：存储层（原生文件系统） ═══ -->
+  <rect x="40" y="492" width="860" height="70" rx="6" fill="#0f172a"/>
+  <rect x="40" y="492" width="860" height="70" rx="6" fill="rgba(76,29,149,0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+  <text x="470" y="520" fill="white" font-size="11" font-weight="600" text-anchor="middle">原生文件系统 · 本地直读直写</text>
+  <text x="470" y="540" fill="#94a3b8" font-size="8" text-anchor="middle">.shp / .dbf / .prj / .cpg　·　.gdb 文件夹（OpenFileGDB）　·　.txt（GBK / UTF-8 自动探测）</text>
+
+  <!-- ═══ 右侧特性注记 ═══ -->
+  <rect x="930" y="72" width="140" height="490" rx="12" fill="none" stroke="#fbbf24" stroke-width="1" stroke-dasharray="4,4"/>
+  <text x="1000" y="98" fill="#fbbf24" font-size="10" font-weight="600" text-anchor="middle">为什么快</text>
+  <!-- 注记卡 1 -->
+  <rect x="944" y="116" width="112" height="118" rx="6" fill="rgba(120,53,15,0.3)"/>
+  <text x="1000" y="142" fill="white" font-size="10" font-weight="600" text-anchor="middle">纯 Rust 实现</text>
+  <text x="1000" y="162" fill="#94a3b8" font-size="8" text-anchor="middle">编译型原生代码</text>
+  <text x="1000" y="176" fill="#94a3b8" font-size="8" text-anchor="middle">无解释器开销</text>
+  <text x="1000" y="196" fill="#94a3b8" font-size="8" text-anchor="middle">万级地块</text>
+  <text x="1000" y="210" fill="#94a3b8" font-size="8" text-anchor="middle">分钟级完成</text>
+  <!-- 注记卡 2 -->
+  <rect x="944" y="248" width="112" height="118" rx="6" fill="rgba(120,53,15,0.3)"/>
+  <text x="1000" y="274" fill="white" font-size="10" font-weight="600" text-anchor="middle">零依赖</text>
+  <text x="1000" y="294" fill="#94a3b8" font-size="8" text-anchor="middle">无需安装</text>
+  <text x="1000" y="308" fill="#94a3b8" font-size="8" text-anchor="middle">ArcPy / ArcGIS</text>
+  <text x="1000" y="328" fill="#94a3b8" font-size="8" text-anchor="middle">绿色便携版</text>
+  <text x="1000" y="342" fill="#94a3b8" font-size="8" text-anchor="middle">解压即用</text>
+  <!-- 注记卡 3 -->
+  <rect x="944" y="380" width="112" height="118" rx="6" fill="rgba(120,53,15,0.3)"/>
+  <text x="1000" y="406" fill="white" font-size="10" font-weight="600" text-anchor="middle">轻量安静</text>
+  <text x="1000" y="426" fill="#94a3b8" font-size="8" text-anchor="middle">安装包 ~5MB</text>
+  <text x="1000" y="440" fill="#94a3b8" font-size="8" text-anchor="middle">秒级启动</text>
+  <text x="1000" y="460" fill="#94a3b8" font-size="8" text-anchor="middle">离线可用</text>
+  <text x="1000" y="474" fill="#94a3b8" font-size="8" text-anchor="middle">数据不出本机</text>
+
+  <!-- 图例 -->
+  <g transform="translate(30,628)">
+    <rect x="0" y="-9" width="12" height="8" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1"/>
+    <text x="18" y="-2" fill="#94a3b8" font-size="8">前端界面</text>
+    <rect x="80" y="-9" width="12" height="8" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1"/>
+    <text x="98" y="-2" fill="#94a3b8" font-size="8">Rust 模块</text>
+    <rect x="160" y="-9" width="12" height="8" fill="rgba(76,29,149,0.4)" stroke="#a78bfa" stroke-width="1"/>
+    <text x="178" y="-2" fill="#94a3b8" font-size="8">文件系统</text>
+    <rect x="244" y="-9" width="12" height="8" fill="rgba(251,146,60,0.3)" stroke="#fb923c" stroke-width="1"/>
+    <text x="262" y="-2" fill="#94a3b8" font-size="8">IPC 通信</text>
+  </g>
+</svg>

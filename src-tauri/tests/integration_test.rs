@@ -136,6 +136,7 @@ fn test_shp_to_txt_one_to_one() {
     let field_mapping = convert::FieldMapping {
         name: "DKMC".into(), id: "DKBH".into(), area: "MJ".into(),
         use_field: "DKYT".into(), tfh: "TFH".into(), dlbm: "DLBM".into(),
+        columns: Vec::new(),
     };
     let options = convert::ShpToTxtOptions {
         proj_mode: "keep".to_string(),
@@ -167,6 +168,7 @@ fn test_shp_to_txt_xy_swap() {
     let field_mapping = convert::FieldMapping {
         name: "DKMC".into(), id: "DKBH".into(), area: "MJ".into(),
         use_field: "DKYT".into(), tfh: "TFH".into(), dlbm: "DLBM".into(),
+        columns: Vec::new(),
     };
 
     // ox=false（默认，输出标准 Y,X 顺序：北坐标在前）
@@ -237,6 +239,7 @@ fn test_shp_to_txt_merge_all() {
     let field_mapping = convert::FieldMapping {
         name: "DKMC".into(), id: "DKBH".into(), area: "MJ".into(),
         use_field: "DKYT".into(), tfh: "TFH".into(), dlbm: "DLBM".into(),
+        columns: Vec::new(),
     };
     let options = convert::ShpToTxtOptions {
         proj_mode: "keep".to_string(),
@@ -270,6 +273,7 @@ fn test_shp_to_txt_split_by_plot() {
     let field_mapping = convert::FieldMapping {
         name: "DKMC".into(), id: "DKBH".into(), area: "MJ".into(),
         use_field: "DKYT".into(), tfh: "TFH".into(), dlbm: "DLBM".into(),
+        columns: Vec::new(),
     };
     // 用序号命名（filename_field 为空）
     let options = convert::ShpToTxtOptions {
@@ -747,7 +751,7 @@ fn test_shp_to_txt_full() {
         area: "MJ".into(),
         use_field: "DKYT".into(),
         tfh: "TFH".into(),
-        dlbm: "DLBM".into(),
+        dlbm: "DLBM".into(), columns: Vec::new(),
     };
 
     let header = make_header();
@@ -839,7 +843,7 @@ fn test_shp_txt_roundtrip() {
         area: "MJ".into(),
         use_field: "DKYT".into(),
         tfh: "TFH".into(),
-        dlbm: "DLBM".into(),
+        dlbm: "DLBM".into(), columns: Vec::new(),
     };
 
     let options = convert::ShpToTxtOptions {
@@ -901,7 +905,7 @@ fn test_preview() {
         area: "MJ".into(),
         use_field: "DKYT".into(),
         tfh: "TFH".into(),
-        dlbm: "DLBM".into(),
+        dlbm: "DLBM".into(), columns: Vec::new(),
     };
 
     let header = make_header();
@@ -1064,7 +1068,7 @@ J1,2,30.000,30.000";
         area: "MJ".into(),
         use_field: "DKYT".into(),
         tfh: "TFH".into(),
-        dlbm: "DLBM".into(),
+        dlbm: "DLBM".into(), columns: Vec::new(),
     };
     let shp_to_txt = convert::ShpToTxtOptions {
         proj_mode: "keep".to_string(),
@@ -1154,7 +1158,7 @@ J1,2,2.000,2.000";
         area: "MJ".into(),
         use_field: "DKYT".into(),
         tfh: "TFH".into(),
-        dlbm: "DLBM".into(),
+        dlbm: "DLBM".into(), columns: Vec::new(),
     };
     let shp_to_txt = convert::ShpToTxtOptions {
         proj_mode: "keep".to_string(),
@@ -1220,7 +1224,7 @@ fn test_field_mapping_sentinels_area() {
     // 平方米（自动）：面积应为正数，2 位小数
     let mk = |area: &str| convert::FieldMapping {
         name: "__placeholder__".into(), id: "__placeholder__".into(), area: area.into(),
-        use_field: "__placeholder__".into(), tfh: "__placeholder__".into(), dlbm: "__placeholder__".into(),
+        use_field: "__placeholder__".into(), tfh: "__placeholder__".into(), dlbm: "__placeholder__".into(), columns: Vec::new(),
     };
 
     let d = tempfile::tempdir().unwrap();
@@ -1402,7 +1406,7 @@ fn test_shp_to_txt_proj_mode_a_forward() {
         &convert::FieldMapping {
             name: String::new(), id: String::new(),
             area: "__area_ha__".into(), use_field: String::new(),
-            tfh: String::new(), dlbm: String::new(),
+            tfh: String::new(), dlbm: String::new(), columns: Vec::new(),
         },
         &convert::ShpToTxtOptions {
             ox: false, oj: false, on: false, oo: false, oc: false,

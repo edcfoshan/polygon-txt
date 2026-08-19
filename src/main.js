@@ -1,4 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
+import { getCurrentWindow } from '@tauri-apps/api/window';
+import { LogicalSize, LogicalPosition } from '@tauri-apps/api/dpi';
 import { open as shellOpen } from '@tauri-apps/plugin-shell';
 import { check as checkForUpdater } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
@@ -133,12 +135,38 @@ function toast(m) {
   t._h = setTimeout(() => t.classList.remove("on"), 20000);
 }
 
-// ═══ Theme ═══
-window.togTheme = function () {
-  theme = theme === "light" ? "dark" : "light";
+// ═══ Theme（主题下拉：浅/暗 + 8 色系，v3.0） ═══
+window.togTheme = function () { pickTheme(theme === "light" ? "dark" : "light"); };
+const THEME_COLORS = ["normal", "brass", "green", "blue", "cyan", "purple", "orange", "rose"];
+let themeColor = localStorage.getItem("tg_color") || "normal";
+
+function pickTheme(t) {
+  theme = t === "dark" ? "dark" : "light";
   document.documentElement.setAttribute("data-t", theme);
   localStorage.setItem("tg_theme", theme);
-};
+  syncThemeUI();
+}
+function pickColor(c) {
+  if (!THEME_COLORS.includes(c)) return;
+  themeColor = c;
+  document.documentElement.setAttribute("data-c", c);
+  localStorage.setItem("tg_color", c);
+  syncThemeUI();
+}
+function togThemeMenu(e) {
+  if (e) e.stopPropagation();
+  const m = $("thMenu");
+  if (m) m.classList.toggle("on");
+}
+function syncThemeUI() {
+  const m = $("thMenu");
+  if (!m) return;
+  m.querySelectorAll(".thopt").forEach((b) => b.classList.toggle("on", b.dataset.t === theme));
+  m.querySelectorAll(".copt").forEach((b) => b.classList.toggle("on", b.dataset.c === themeColor));
+}
+
+// ═══ 手风琴分组折叠（v3.0 方案A） ═══
+window.togAcc = function (h) { h.parentElement.classList.toggle("open"); };
 
 // ═══ 弹窗内容渲染（Markdown → HTML） ═══
 function renderMarkdown(md) {
@@ -391,6 +419,8 @@ function renderFileList() {
   loadedFiles.forEach((g, i) => {
     fl.innerHTML += `<div class="fitem"><span class="fn">◈ ${g.name}.shp</span><span class="fs">${g.num_features}个</span><button class="fitem-close" data-remove-file="${i}">×</button></div>`;
   });
+  const tag = $("impTag");
+  if (tag) tag.textContent = loadedFiles.length ? `${loadedFiles.length} 个文件` : "未导入";
 }
 
 window.removeFile = function (i) {
@@ -834,6 +864,7 @@ function autoMatchFields(fieldNames) {
   // 统一三段式下拉：① 不填 ② 占位文字 ③ 数据字段名
   // SHP/GDB 来源不同但结构一致；面积(fa)额外支持自动计算。
   // 默认：fa=公顷(自动)，其余=不填
+  lastFieldNames = fieldNames || [];
   for (const key of Object.keys(FIELD_PLACEHOLDER)) {
     const sel = $(key);
     if (!sel) continue;
@@ -850,6 +881,246 @@ function autoMatchFields(fieldNames) {
     sel.innerHTML = html;
     if (!isArea) sel.value = ""; // 非面积字段默认不填
   }
+  // 高级模式开启时同步重建行内映射源下拉（保留仍存在的选中值）
+  if ($("advMode")?.checked && advInitialized) {
+    renderFieldRows(collectFieldRows());
+  }
+}
+
+// ═══ 字段映射高级模式 ═══
+// 固定清单 14 项；与后端 adv_placeholder / STANDARD_META_FIELDS 联动，增删需双端同步
+const ADV_FIELD_NAMES = ["坐标点个数","地块面积","图斑面积","地块编号","图斑编号","地块名称","补充耕地实施年份","耕地坡度级别","图形属性","图幅号","地块用途","备注","地类","耕地质量等级"];
+// 锁定字段：映射源固定，不可改不可删（行本身参与排序）
+const ADV_LOCKED = { "坐标点个数": "__count__", "图形属性": "__geom__" };
+// 高级字段名 → 占位文字（与 Rust convert.rs adv_placeholder 镜像）
+const ADV_PLACEHOLDER = { "地块名称": "DKMC", "地块编号": "DKBH", "图斑编号": "DKBH", "地块面积": "MJ", "图斑面积": "MJ", "地块用途": "DKYT", "图幅号": "TFH", "地类": "DLBM" };
+const ADV_AREA_FIELDS = ["地块面积", "图斑面积"];
+// 8 字段标准预设（默认，与后端 STANDARD_META_FIELDS 一致）
+const STD_ADV_ROWS = [
+  { name: "坐标点个数", source: "__count__" },
+  { name: "地块面积", source: "__area_ha__" },
+  { name: "地块编号", source: "" },
+  { name: "地块名称", source: "" },
+  { name: "图形属性", source: "__geom__" },
+  { name: "图幅号", source: "" },
+  { name: "地块用途", source: "" },
+  { name: "地类", source: "" },
+];
+// 12 字段补充耕地预设（20260818 模板）
+const BCG_ADV_ROWS = [
+  { name: "坐标点个数", source: "__count__" },
+  { name: "图斑面积", source: "__area_ha__" },
+  { name: "图斑编号", source: "" },
+  { name: "地块名称", source: "" },
+  { name: "补充耕地实施年份", source: "" },
+  { name: "耕地坡度级别", source: "" },
+  { name: "图形属性", source: "__geom__" },
+  { name: "图幅号", source: "" },
+  { name: "地块用途", source: "" },
+  { name: "备注", source: "" },
+  { name: "地类", source: "" },
+  { name: "耕地质量等级", source: "" },
+];
+let advInitialized = false; // 首次开启高级模式时从简单模式 6 下拉继承
+let advPreset = "std";      // "std" | "bcg" | "custom"（补充耕地开关的三态）
+let lastFieldNames = [];    // 最近一次导入的源字段表（供行内映射源下拉重建）
+
+// 生成某字段名的映射源下拉选项（锁定字段返回单一锁定选项）
+function buildAdvSourceOptions(name, cur) {
+  const locked = ADV_LOCKED[name];
+  if (locked) {
+    return `<option value="${locked}" selected>${locked === "__count__" ? "自动统计点数" : "固定「面」"}</option>`;
+  }
+  // 首项文案：空字段名行引导「选字段」，已选字段行显示「不填」（该列输出空值）
+  let html = `<option value="">${name ? "不填" : "选字段"}</option>`;
+  if (ADV_PLACEHOLDER[name]) {
+    html += `<option value="__placeholder__"${cur === "__placeholder__" ? " selected" : ""}>${ADV_PLACEHOLDER[name]} (占位)</option>`;
+  }
+  if (ADV_AREA_FIELDS.includes(name)) {
+    html += `<option value="__area_sqm__"${cur === "__area_sqm__" ? " selected" : ""}>平方米(自动)</option>`;
+    html += `<option value="__area_ha__"${cur === "__area_ha__" ? " selected" : ""}>公顷(自动)</option>`;
+  }
+  lastFieldNames.forEach((fn) => {
+    html += `<option value="${escAttr(fn)}"${cur === fn ? " selected" : ""}>${escAttr(fn)}</option>`;
+  });
+  // 当前值不在候选（如源字段已移除）→ 置顶保留，避免静默丢配置
+  if (cur && cur !== "__placeholder__" && cur !== "__area_sqm__" && cur !== "__area_ha__"
+      && !lastFieldNames.includes(cur)) {
+    html = `<option value="${escAttr(cur)}" selected>${escAttr(cur)}</option>` + html;
+  }
+  return html;
+}
+
+function renderFieldRows(rows) {
+  const box = $("fieldRows");
+  if (!box) return;
+  box.innerHTML = "";
+  let emptySeq = 0; // 空字段名行的占位序号（新行1、新行2…删行/重排后自动重编）
+  rows.forEach((row, i) => {
+    const locked = ADV_LOCKED[row.name];
+    const div = document.createElement("div");
+    div.className = "attr-row field-row";
+    div.dataset.i = String(i);
+    // 空字段名 → 顶部占位选项「新行N」（value 空串；导出时该列被忽略）
+    const emptyOpt = row.name
+      ? `<option value="">新行</option>`
+      : `<option value="" selected>新行${++emptySeq}</option>`;
+    const nameOpts = ADV_FIELD_NAMES
+      .map((n) => `<option value="${escAttr(n)}"${n === row.name ? " selected" : ""}>${escAttr(n)}</option>`)
+      .join("");
+    // 字段名非空且不在清单（异常旧配置）→ 追加保留显示。
+    // 空名不能进此分支——会追加一个空文本 selected option 抢占「叫什么」的选中（显示空白的 bug）
+    const extraName = row.name && !ADV_FIELD_NAMES.includes(row.name)
+      ? `<option value="${escAttr(row.name)}" selected>${escAttr(row.name)}</option>`
+      : "";
+    const btnHtml = locked ? "" : `<button class="abtn del" data-act="del" data-i="${i}" title="删除此行">✕</button>`;
+    div.innerHTML =
+      `<span class="grip" title="拖动排序">⠿</span>` +
+      `<select class="fk" data-i="${i}" data-f="name"${locked ? " disabled" : ""}>${emptyOpt}${nameOpts}${extraName}</select>` +
+      `<span class="feq">←</span>` +
+      `<select class="fmap" data-i="${i}" data-f="source"${locked ? " disabled" : ""}>${buildAdvSourceOptions(row.name, row.source)}</select>` +
+      btnHtml;
+    box.appendChild(div);
+  });
+}
+
+function collectFieldRows() {
+  const box = $("fieldRows");
+  if (!box || !box.children.length) return STD_ADV_ROWS.map((r) => ({ ...r }));
+  const rows = [];
+  box.querySelectorAll(".field-row").forEach((div) => {
+    rows.push({
+      name: div.querySelector(".fk")?.value ?? "",
+      source: div.querySelector(".fmap")?.value ?? "",
+    });
+  });
+  return rows;
+}
+
+function advRowsMatchPreset(rows, preset) {
+  const p = preset === "bcg" ? BCG_ADV_ROWS : STD_ADV_ROWS;
+  return rows.length === p.length && rows.every((r, i) => r.name === p[i].name && r.source === p[i].source);
+}
+
+// 行改动后判定当前命中哪个预设（完全一致才亮预设态，否则自定义）
+function syncAdvPresetState() {
+  const rows = collectFieldRows();
+  advPreset = advRowsMatchPreset(rows, "std") ? "std" : advRowsMatchPreset(rows, "bcg") ? "bcg" : "custom";
+  renderBcgSel();
+}
+
+// 预设下拉（v3.0）：8 字段标准 / 补充耕地模式 / 自定义（手改后自动变「自定义」）
+function renderBcgSel() {
+  const sel = $("bcgSel");
+  if (sel) sel.value = advPreset;
+}
+
+// 补充耕地开关三态视觉（v2.2 旧 checkbox 版）→ v3.0 已由预设下拉 bcgSel 取代
+function renderBcgToggle() { renderBcgSel(); }
+
+function bindFieldRowEvents() {
+  const box = $("fieldRows");
+  if (!box) return;
+  box.addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-act='del']");
+    if (!btn) return;
+    const rows = collectFieldRows();
+    rows.splice(parseInt(btn.dataset.i, 10), 1);
+    renderFieldRows(rows);
+    syncAdvPresetState();
+    updatePreview();
+  });
+  box.addEventListener("change", (e) => {
+    if (e.target.closest("select.fk")) {
+      // 字段名变更 → 重建整行（映射源选项随字段名变；锁定字段自动锁定源）
+      const rows = collectFieldRows();
+      renderFieldRows(rows);
+      syncAdvPresetState();
+      updatePreview();
+      return;
+    }
+    if (e.target.closest("select.fmap")) {
+      syncAdvPresetState();
+      updatePreview();
+    }
+  });
+  // 拖拽排序（同 attr 行手动 mouse 实现，避免 WebView2 HTML5 DnD 兼容问题）
+  box.addEventListener("mousedown", (e) => {
+    const grip = e.target.closest(".grip");
+    if (!grip || e.button !== 0) return;
+    const row = grip.closest(".field-row");
+    if (!row) return;
+    e.preventDefault();
+    row.classList.add("dragging");
+    const onMove = (ev) => {
+      const el = document.elementFromPoint(ev.clientX, ev.clientY);
+      const targetRow = el && el.closest(".field-row");
+      if (!targetRow || targetRow === row) return;
+      const rect = targetRow.getBoundingClientRect();
+      if (ev.clientY - rect.top > rect.height / 2) targetRow.after(row);
+      else targetRow.before(row);
+    };
+    const onUp = () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      row.classList.remove("dragging");
+      renderFieldRows(collectFieldRows());
+      syncAdvPresetState();
+      updatePreview();
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  });
+}
+
+// 首次开启高级模式：继承简单模式 6 下拉已选的源字段（输出与现状等价，仅多列表行）
+function inheritAdvFromSimple() {
+  const byName = {
+    "地块名称": $("fn")?.value || "",
+    "地块编号": $("fi")?.value || "",
+    "地块面积": $("fa")?.value || "__area_ha__",
+    "地块用途": $("fu")?.value || "",
+    "图幅号": $("fm")?.value || "",
+    "地类": $("fd")?.value || "",
+  };
+  return STD_ADV_ROWS.map((r) => ({ ...r, source: byName[r.name] !== undefined ? byName[r.name] : r.source }));
+}
+
+function setAdvModeOn(on) {
+  if (on && !advInitialized) {
+    advInitialized = true;
+    renderFieldRows(inheritAdvFromSimple());
+    syncAdvPresetState();
+  }
+  const simple = $("fieldSimple");
+  const advBox = $("fieldAdv");
+  if (simple) simple.style.display = on ? "none" : "";
+  if (advBox) advBox.style.display = on ? "" : "none";
+  lastPreviewKey = "";
+  updatePreview();
+}
+
+// 恢复配置（ld 用）：adv = { on, preset, rows } 或 null（旧配置 → 关闭态）
+function applyAdvConfig(adv) {
+  const on = !!(adv && adv.on);
+  if (on) {
+    advInitialized = true;
+    const rows = Array.isArray(adv.rows) && adv.rows.length
+      ? adv.rows.map((r) => ({ name: r?.name || "", source: r?.source || "" }))
+      : inheritAdvFromSimple();
+    renderFieldRows(rows);
+    advPreset = adv.preset || "std";
+    syncAdvPresetState();
+  } else {
+    advInitialized = false;
+    advPreset = "std";
+  }
+  const cb = $("advMode");
+  if (cb) cb.checked = on;
+  const simple = $("fieldSimple");
+  const advBox = $("fieldAdv");
+  if (simple) simple.style.display = on ? "none" : "";
+  if (advBox) advBox.style.display = on ? "" : "none";
 }
 
 // 简写 → 中文键名（autoFillHeader 的 info 可能用简写或中文键）
@@ -898,6 +1169,8 @@ function renderTxtFileList() {
   txtFiles.forEach((f, i) => {
     fl.innerHTML += `<div class="fitem"><span class="fn">◈ ${f.name}</span><span class="fs">${(f.size / 1024).toFixed(0)}KB</span><button class="fitem-close" data-remove-txt="${i}">×</button></div>`;
   });
+  const tag = $("impTTag");
+  if (tag) tag.textContent = txtFiles.length ? `${txtFiles.length} 个文件` : "未导入";
 }
 
 window.removeTxtFile = function (i) {
@@ -1025,9 +1298,18 @@ window.runTxtToShp = async function () {
 
 // ═══ Config ═══
 function getConfig() {
+  const advOn = $("advMode")?.checked || false;
   return {
     h: { attrs: collectAttrRows(), project_info: $("hpi")?.value || "" },
-    f: { name: $("fn")?.value || "", id: $("fi")?.value || "", area: $("fa")?.value || "", use_field: $("fu")?.value || "", tfh: $("fm")?.value || "", dlbm: $("fd")?.value || "" },
+    f: {
+      name: $("fn")?.value || "", id: $("fi")?.value || "", area: $("fa")?.value || "", use_field: $("fu")?.value || "", tfh: $("fm")?.value || "", dlbm: $("fd")?.value || "",
+      // 高级模式：on=开关态 / preset=预设态 / rows=行状态（持久化用）
+      adv: { on: advOn, preset: advPreset, rows: advInitialized ? collectFieldRows() : null },
+      // 发给 Rust FieldMapping.columns（高级模式开启才非空；空字段名行 = 占位「新行N」，输出空值列）
+      columns: advOn && advInitialized
+        ? collectFieldRows().map((r) => ({ name: r.name, source: r.source }))
+        : [],
+    },
   };
 }
 
@@ -1311,7 +1593,12 @@ window.ld = function (id) {
     refreshOgWarn();
     if ($("om")) $("om").checked = !!c.p.om;
   }
-  if (c.f) Object.keys(c.f).forEach((k) => { const e = $(k); if (e) e.value = c.f[k]; });
+  if (c.f) {
+    // 6 槽位按元素 ID 恢复（f 键名为 DOM id：fn/fi/fa/fu/fm/fd）
+    ["fn", "fi", "fa", "fu", "fm", "fd"].forEach((k) => { const e = $(k); if (e && typeof c.f[k] === "string") e.value = c.f[k]; });
+    // 高级模式配置恢复（旧配置无 adv → 关闭态）
+    applyAdvConfig(c.f.adv || null);
+  }
   const cn = $("cn");
   if (cn) cn.textContent = c.n || "自定义";
   document.querySelectorAll(".chip").forEach((e) => e.classList.remove("on"));
@@ -1569,10 +1856,10 @@ document.addEventListener("keydown", function (e) {
 
 // ═══ Display ratio (s-mode three-column) ═══
 const RATIO_PRESETS = [
-  { id: "compact", label: "紧凑输入", c1: "220fr", c2: "220fr", c3: "440fr" },
-  { id: "default", label: "默认",     c1: "260fr", c2: "260fr", c3: "360fr" },
-  { id: "wide",    label: "宽主区",   c1: "200fr", c2: "200fr", c3: "560fr" },
-  { id: "xwide",   label: "极宽主区", c1: "160fr", c2: "160fr", c3: "640fr" },
+  { id: "even",    label: "三栏等宽", c1: "100fr", c2: "100fr", c3: "100fr" },
+  { id: "default", label: "默认",     c1: "100fr", c2: "100fr", c3: "130fr" },
+  { id: "wide",    label: "宽预览",   c1: "100fr", c2: "100fr", c3: "180fr" },
+  { id: "input",   label: "宽输入",   c1: "150fr", c2: "100fr", c3: "130fr" },
 ];
 function applyRatio(preset) {
   document.documentElement.style.setProperty("--col1", preset.c1);
@@ -1604,6 +1891,49 @@ function renderRatioChips() {
 
 // ═══ Init ═══
 async function init() {
+  // ─── 窗口长宽+位置记忆（v3.0）：恢复上次状态；同步快存（防快速关闭丢失）+ 异步精修（含 x/y） ───
+  try {
+    const appWin = getCurrentWindow();
+    // 恢复：尺寸必恢复；位置做屏幕内 clamp（防换小屏/拔显示器后窗口跑到屏幕外）
+    const savedWin = JSON.parse(localStorage.getItem("tg_win") || "null");
+    if (savedWin && savedWin.w >= 800 && savedWin.h >= 540) {
+      appWin.setSize(new LogicalSize(savedWin.w, savedWin.h)).then(() => {
+        if (Number.isFinite(savedWin.x) && Number.isFinite(savedWin.y)) {
+          const sw = window.screen.availWidth || window.screen.width;
+          const sh = window.screen.availHeight || window.screen.height;
+          const x = Math.min(Math.max(savedWin.x, -savedWin.w + 200), sw - 200);
+          const y = Math.min(Math.max(savedWin.y, 0), sh - 100);
+          return appWin.setPosition(new LogicalPosition(x, y));
+        }
+      }).catch(() => {});
+    }
+    // 同步快存：仅尺寸（window.innerWidth 同步可读，防拖完立即关闭丢失）
+    const quickSave = () => {
+      try {
+        const w = window.innerWidth, h = window.innerHeight;
+        if (w >= 800 && h >= 540) {
+          const old = JSON.parse(localStorage.getItem("tg_win") || "{}");
+          localStorage.setItem("tg_win", JSON.stringify({ ...old, w, h }));
+        }
+      } catch (e) {}
+    };
+    // 异步精修：尺寸 + 位置 + 最大化过滤
+    const fullSave = async () => {
+      try {
+        if (await appWin.isMaximized()) return;
+        const [s, p, scale] = await Promise.all([appWin.innerSize(), appWin.outerPosition(), appWin.scaleFactor()]);
+        const rec = {
+          w: Math.round(s.width / scale), h: Math.round(s.height / scale),
+          x: Math.round(p.x / scale), y: Math.round(p.y / scale),
+        };
+        if (rec.w >= 800 && rec.h >= 540) localStorage.setItem("tg_win", JSON.stringify(rec));
+      } catch (e) {}
+    };
+    appWin.onResized(() => { quickSave(); fullSave(); }).catch(() => {});
+    appWin.onMoved(() => fullSave()).catch(() => {});
+    window.addEventListener("beforeunload", quickSave);
+  } catch (e) { /* 浏览器 dev 环境无窗口 API，跳过 */ }
+
   const savedTheme = localStorage.getItem("tg_theme") || "light";
   // prototype: URL hash demo seeding (#demo=geodetic|projected-3|projected-6|unknown)
   const demoType = (location.hash.match(/demo=([\w-]+)/) || [])[1];
@@ -1616,6 +1946,8 @@ async function init() {
   }
   theme = savedTheme;
   document.documentElement.setAttribute("data-t", theme);
+  document.documentElement.setAttribute("data-c", themeColor); // v3.0 色系恢复
+  syncThemeUI();
 
   // 应用保存的显示比例（s 模式三栏）
   const ratioId = getCurrentRatioId();
@@ -1651,7 +1983,19 @@ async function init() {
   const bind = (id, fn) => { const el = $(id); if (el) el.addEventListener("click", fn); };
   bind("btnGitHub", () => openGitHub());
   bind("btnSponsor", () => openSponsor());
-  bind("btnTheme", () => togTheme());
+  // 主题下拉面板（v3.0）：按钮开面板，面板内选浅/暗 + 8 色系；外点/ESC 关闭
+  bind("btnTheme", (e) => togThemeMenu(e));
+  const thMenuEl = $("thMenu");
+  if (thMenuEl) {
+    thMenuEl.addEventListener("click", (e) => e.stopPropagation());
+    thMenuEl.querySelectorAll(".thopt").forEach((b) => b.addEventListener("click", () => pickTheme(b.dataset.t)));
+    thMenuEl.querySelectorAll(".copt").forEach((b) => b.addEventListener("click", () => pickColor(b.dataset.c)));
+  }
+  document.addEventListener("click", (e) => {
+    const m = $("thMenu");
+    if (m && m.classList.contains("on") && !e.target.closest(".thwrap")) m.classList.remove("on");
+  });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") { const m = $("thMenu"); if (m) m.classList.remove("on"); } });
   bind("btnAbout", () => openAbout());
   bind("btnRatio", () => openRatio());
   bind("btnSave", () => saveOnly());
@@ -1717,6 +2061,41 @@ async function init() {
     const el = $(id);
     if (el) el.addEventListener("change", () => { lastPreviewKey = ""; updatePreview(); });
   });
+
+  // 字段映射高级模式：开关 / 补充耕地预设开关 / 添加 / 恢复默认 / 动态行事件
+  const advModeEl = $("advMode");
+  if (advModeEl) advModeEl.addEventListener("change", () => setAdvModeOn(advModeEl.checked));
+  // 预设下拉（v3.0 取代补充耕地 checkbox）：选预设即重填列表；「自定义」仅是状态不主动载入
+  const bcgSelEl = $("bcgSel");
+  if (bcgSelEl) {
+    bcgSelEl.addEventListener("change", () => {
+      const v = bcgSelEl.value;
+      if (v === "std" || v === "bcg") {
+        const preset = v === "bcg" ? BCG_ADV_ROWS : STD_ADV_ROWS;
+        renderFieldRows(preset.map((r) => ({ ...r })));
+        advPreset = v;
+      }
+      syncAdvPresetState();
+      updatePreview();
+    });
+  }
+  bind("btnAddField", () => {
+    const rows = collectFieldRows();
+    rows.push({ name: "", source: "" });
+    renderFieldRows(rows);
+    syncAdvPresetState();
+    const box = $("fieldRows");
+    if (box) box.scrollTop = box.scrollHeight;
+    updatePreview();
+  });
+  bind("btnResetFields", () => {
+    // 恢复默认 = 列表 + 映射源全重置到 8 字段标准，补充耕地开关回关
+    renderFieldRows(STD_ADV_ROWS.map((r) => ({ ...r })));
+    advPreset = "std";
+    syncAdvPresetState();
+    updatePreview();
+  });
+  bindFieldRowEvents();
 
   // TXT→面 输出模式切换：控制地块拆分文件名下拉框显示
   const tOutputModeRadios = document.querySelectorAll('input[name="t_output_mode"]');

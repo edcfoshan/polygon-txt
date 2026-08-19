@@ -32,7 +32,7 @@ fn field_mapping() -> convert::FieldMapping {
         area: "MJ".into(),
         use_field: "DKYT".into(),
         tfh: "TFH".into(),
-        dlbm: "DLBM".into(),
+        dlbm: "DLBM".into(), columns: Vec::new(),
     }
 }
 

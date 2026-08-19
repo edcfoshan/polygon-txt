@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-t="light">
+<head>
+<meta charset="UTF-8">
+<title>方案C · 工作台式 — UI重构原型</title>
+<style>
+/* ═══ 主题变量（C · 科技锐利风：高对比+青强调+等宽点缀，近直角） ═══ */
+:root{
+  --bg:#f2f4f7; --srf:#ffffff; --srf2:#f6f8fa; --srf3:#e9edf2;
+  --brd:#d7dde5; --brd2:#c2cad6;
+  --tx:#101418; --tx2:#4a545f; --tx3:#8892a0;
+  --ac:#0891b2; --ach:#0aa2c7; --acg:rgba(8,145,178,.10);
+  --ok:#0e9f6e; --er:#df1c37;
+  --pv-bg:#0d1117; --pv-fg:#a8d4e4; --pv-ln:#33415a;
+  --shadow:0 1px 2px rgba(16,20,24,.06),0 6px 20px rgba(16,20,24,.07);
+  --mono:"JetBrains Mono","Cascadia Code",Consolas,monospace;
+}
+html[data-t="dark"]{
+  --bg:#0b0e13; --srf:#141922; --srf2:#1a2029; --srf3:#20262f;
+  --brd:#2a323e; --brd2:#3a4452;
+  --tx:#e8edf2; --tx2:#a4aeb9; --tx3:#5f6a76;
+  --ac:#22b8d4; --ach:#44c8de; --acg:rgba(34,184,212,.13);
+  --ok:#34d399; --er:#f87171;
+  --pv-bg:#0a0e14; --pv-fg:#8fc6d8; --pv-ln:#26303c;
+  --shadow:0 1px 3px rgba(0,0,0,.5),0 10px 30px rgba(0,0,0,.45);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{
+  font-family:"Segoe UI","Microsoft YaHei",sans-serif;font-size:13px;color:var(--tx);
+  background:var(--bg);min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:28px 16px 70px;gap:14px;
+  background-image:linear-gradient(var(--brd) 1px,transparent 1px),linear-gradient(90deg,var(--brd) 1px,transparent 1px);
+  background-size:34px 34px;
+}
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-thumb{background:var(--brd2);border-radius:0}
+
+/* ═══ 原型工具条 ═══ */
+.proto-bar{display:flex;gap:8px;align-items:center;font-size:12px;color:var(--tx2);flex-wrap:wrap;justify-content:center;background:var(--srf);border:1px solid var(--brd);padding:5px 12px;border-radius:3px}
+.proto-bar a{color:var(--ac);text-decoration:none;font-weight:700}
+.proto-bar a:hover{text-decoration:underline}
+.proto-bar .seg{display:flex;border:1px solid var(--brd2);border-radius:2px;overflow:hidden;background:var(--srf)}
+.proto-bar .seg button{border:none;background:none;padding:4px 12px;font-size:11.5px;cursor:pointer;color:var(--tx2);font-family:inherit}
+.proto-bar .seg button.on{background:var(--ac);color:#fff}
+
+/* ═══ 模拟窗口 ═══ */
+.win{width:1100px;height:720px;background:var(--srf);border:1px solid var(--brd2);border-radius:6px;box-shadow:var(--shadow);display:flex;flex-direction:column;overflow:hidden;transition:width .25s,height .25s;max-width:100%}
+.win.sz880{width:880px;height:600px}
+.win.sz1280{width:1280px;height:860px}
+
+/* ═══ 标题栏 ═══ */
+.tbar{height:36px;display:flex;align-items:center;gap:9px;padding:0 12px;background:var(--srf);border-bottom:1px solid var(--brd);flex-shrink:0;-webkit-user-select:none}
+.bmark{width:20px;height:20px;background:var(--ac);color:#fff;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;border-radius:2px}
+.bname{font-size:12px;font-weight:700;letter-spacing:.3px}
+.bname b{color:var(--ac)}
+.bver{font-family:var(--mono);font-size:9.5px;color:var(--ac);border:1px solid var(--ac);padding:0 5px;border-radius:2px;letter-spacing:1px}
+.tico{width:25px;height:25px;border:none;background:none;cursor:pointer;color:var(--tx2);font-size:12px;border-radius:2px}
+.tico:hover{background:var(--srf3);color:var(--ac)}
+.tspace{flex:1}
+.wbtn{width:34px;height:26px;border:none;background:none;cursor:pointer;color:var(--tx2);font-size:11px}
+.wbtn:hover{background:var(--srf3)}
+.wbtn.x:hover{background:#e81123;color:#fff}
+
+/* ═══ 主工作区：图标栏 + 配置面板 + 预览 ═══ */
+.body{flex:1;display:flex;min-height:0;overflow:hidden}
+
+/* 图标导航栏 */
+.rail{width:46px;background:var(--srf2);border-right:1px solid var(--brd);display:flex;flex-direction:column;padding:7px 0;gap:2px;flex-shrink:0}
+.rail .rgap{height:4px}
+.railbtn{width:34px;height:34px;margin:0 auto;border:none;background:none;cursor:pointer;border-radius:3px;font-size:15px;color:var(--tx3);position:relative;display:flex;align-items:center;justify-content:center;transition:.12s}
+.railbtn:hover{background:var(--srf3);color:var(--tx)}
+.railbtn.on{background:var(--ac);color:#fff;box-shadow:0 2px 8px var(--acg)}
+.railbtn .tip{position:absolute;left:42px;top:50%;transform:translateY(-50%);background:var(--tx);color:var(--srf);font-size:10.5px;padding:3.5px 9px;border-radius:3px;white-space:nowrap;opacity:0;pointer-events:none;transition:.12s;z-index:10;font-family:inherit}
+.railbtn:hover .tip{opacity:1}
+.rail .sp{flex:1}
+
+/* 配置面板 */
+.panel{width:272px;background:var(--srf);border-right:1px solid var(--brd);display:flex;flex-direction:column;min-height:0;flex-shrink:0;overflow:hidden}
+.ph{padding:11px 13px 9px;border-bottom:1px solid var(--brd);flex-shrink:0}
+.ph .pt{font-family:var(--mono);font-size:9.5px;letter-spacing:2.5px;color:var(--ac);font-weight:700;text-transform:uppercase}
+.ph .pd{font-size:10px;color:var(--tx3);margin-top:3px}
+.pb{flex:1;overflow-y:auto;padding:11px 13px 14px;min-height:0}
+.sec{margin-bottom:15px}
+.sec .st{font-size:10px;font-family:var(--mono);letter-spacing:1.5px;color:var(--tx3);text-transform:uppercase;margin-bottom:7px;padding-bottom:4px;border-bottom:1px solid var(--brd)}
+
+/* 控件（锐利紧凑） */
+.drop{border:1.5px dashed var(--brd2);border-radius:2px;padding:20px 10px;text-align:center;color:var(--tx3);cursor:pointer;font-size:11px;transition:.12s;background:var(--srf2)}
+.drop:hover{border-color:var(--ac);color:var(--ac);background:var(--acg)}
+.drop .plus{display:block;font-size:19px;line-height:1;margin-bottom:6px;font-weight:400}
+.grow{border:1.5px dashed var(--brd2);border-radius:2px;padding:5px 8px;text-align:center;color:var(--tx3);font-size:10.5px;cursor:pointer;margin-top:6px}
+.grow:hover{border-color:var(--ac);color:var(--ac)}
+.flist{margin-top:7px;display:flex;flex-direction:column;gap:4px}
+.fitem{display:flex;align-items:center;gap:7px;font-size:10.5px;padding:5px 8px;background:var(--srf2);border:1px solid var(--brd);border-left:2px solid var(--ac);font-family:var(--mono)}
+.fitem .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fitem .sz{color:var(--tx3);font-size:9px}
+.fitem .x{cursor:pointer;color:var(--tx3);border:none;background:none;font-size:10px}
+.fitem .x:hover{color:var(--er)}
+label.fl{display:block;font-size:9.5px;font-family:var(--mono);letter-spacing:1px;color:var(--tx3);text-transform:uppercase;margin:8px 0 3px}
+select,input[type=text]{width:100%;font-size:11.5px;padding:5.5px 8px;border:1px solid var(--brd2);border-radius:2px;background:var(--srf);color:var(--tx);outline:none;font-family:inherit}
+select:focus,input:focus{border-color:var(--ac);box-shadow:0 0 0 2px var(--acg)}
+.mini{font-size:10px;padding:3.5px 10px;border:1px solid var(--brd2);background:var(--srf);border-radius:2px;cursor:pointer;color:var(--tx2);font-family:inherit}
+.mini:hover{border-color:var(--ac);color:var(--ac)}
+.sw{display:flex;align-items:center;gap:6px;cursor:pointer;font-size:10.5px;color:var(--tx2)}
+.sw input{accent-color:var(--ac);cursor:pointer}
+.cks{display:grid;grid-template-columns:1fr;gap:5px;font-size:10.5px}
+.ck{display:flex;gap:6px;align-items:center;cursor:pointer}
+.ck input{accent-color:var(--ac)}
+.arow{display:flex;align-items:center;gap:4px;margin-bottom:4px}
+.arow .grip{color:var(--tx3);cursor:grab;font-size:10px}
+.arow select.a{flex:1;min-width:0;font-size:10px;padding:3.5px 5px}
+.arow .eq{color:var(--tx3);font-size:9.5px}
+.arow .del{border:none;background:none;color:var(--tx3);cursor:pointer;font-size:10px}
+.arow .del:hover{color:var(--er)}
+.hrow{display:flex;align-items:center;gap:4px;font-size:10px;margin-bottom:4px}
+.hrow .grip{color:var(--tx3);cursor:grab;font-size:9.5px}
+.hrow input.k{width:78px;padding:3.5px 6px;font-size:10px;border:1px solid var(--brd2);border-radius:2px;background:var(--srf);color:var(--tx)}
+.hrow input.v{flex:1;min-width:0;padding:3.5px 6px;font-size:10px;border:1px solid var(--brd2);border-radius:2px;background:var(--srf);color:var(--tx)}
+.hrow .eq{color:var(--tx3);font-size:9.5px}
+.dirrow{display:flex;gap:5px;margin-top:9px}
+.kv{display:flex;justify-content:space-between;font-size:10px;font-family:var(--mono);padding:4px 0;border-bottom:1px dashed var(--brd)}
+.kv b{color:var(--ac);font-weight:600}
+
+/* 面板切换 */
+.pane{display:none;flex-direction:column;flex:1;min-height:0}
+.pane.on{display:flex}
+.mode-t{display:none!important}
+.app[data-m="t"] .mode-s{display:none!important}
+.app[data-m="t"] .mode-t{display:flex!important}
+
+/* ═══ 主区：预览工作台 ═══ */
+.stage{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0}
+.stg-h{height:38px;display:flex;align-items:center;gap:10px;padding:0 13px;border-bottom:1px solid var(--brd);background:var(--srf2);flex-shrink:0}
+.mtabs{display:flex;gap:0;background:var(--srf);border:1px solid var(--brd2);border-radius:2px;overflow:hidden}
+.mtab{padding:4px 14px;font-size:11px;cursor:pointer;color:var(--tx2);font-weight:500}
+.mtab.on{background:var(--ac);color:#fff;font-weight:700}
+.stg-h .meta{font-family:var(--mono);font-size:9.5px;color:var(--tx3);letter-spacing:.5px}
+.stg-h .sp{flex:1}
+.gobtn{border:none;background:var(--ac);color:#fff;font-size:11.5px;font-weight:700;padding:6px 22px;border-radius:2px;cursor:pointer;font-family:inherit;letter-spacing:1px}
+.gobtn:hover{background:var(--ach)}
+.pvwrap{flex:1;display:flex;min-height:0;overflow:hidden}
+.pv{flex:1;overflow:auto;padding:14px 0 0 0;font-family:var(--mono);font-size:10.5px;line-height:1.75;white-space:pre;background:var(--pv-bg);color:var(--pv-fg)}
+.pv .ln{display:block;padding:0 16px 0 52px;position:relative;min-height:1em}
+.pv .ln::before{content:attr(data-n);position:absolute;left:0;width:40px;text-align:right;color:var(--pv-ln);font-size:9px;user-select:none}
+.stg-f{height:26px;display:flex;align-items:center;gap:12px;padding:0 13px;border-top:1px solid var(--brd);background:var(--srf2);flex-shrink:0;font-family:var(--mono);font-size:9.5px;color:var(--tx3)}
+.stg-f .prog{height:3px;flex:1;background:var(--srf3);overflow:hidden;border-radius:0}
+.stg-f .prog i{display:block;height:100%;width:0%;background:var(--ac);transition:width .3s}
+.stg-f .ok{color:var(--ok)}
+</style>
+</head>
+<body>
+
+<div class="proto-bar">
+  <a href="index.html">← 原型索引</a>
+  <span>·</span><b style="color:var(--tx)">方案C 工作台式</b><span>（科技锐利风）</span>
+  <span>·</span><span>模拟窗口：</span>
+  <div class="seg" id="szSeg">
+    <button data-sz="880">880×600</button>
+    <button data-sz="" class="on">1100×720</button>
+    <button data-sz="1280">1280×860</button>
+  </div>
+  <span>·</span><button class="mini" onclick="togTheme()">切换主题</button>
+</div>
+
+<div class="win" id="win">
+<div class="app" id="app" data-m="s" style="display:flex;flex-direction:column;height:100%">
+
+  <div class="tbar">
+    <div class="bmark">G</div>
+    <div class="bname">极思<b>G</b>界址点互转工具</div>
+    <div class="bver">V2.2</div>
+    <button class="tico" title="检查更新">⟳</button>
+    <button class="tico" title="GitHub">!</button>
+    <button class="tico" title="赞赏">♥</button>
+    <button class="tico" id="thBtn" title="主题" onclick="togTheme()">☾</button>
+    <button class="tico" title="关于">i</button>
+    <div class="tspace"></div>
+    <button class="wbtn">─</button><button class="wbtn">□</button><button class="wbtn x">✕</button>
+  </div>
+
+  <div class="body">
+
+    <!-- ═══ 图标导航栏 ═══ -->
+    <div class="rail mode-s">
+      <button class="railbtn on" data-p="imp" onclick="goP('imp',this)">📥<span class="tip">导入数据</span></button>
+      <button class="railbtn" data-p="map" onclick="goP('map',this)">🔗<span class="tip">字段映射</span></button>
+      <button class="railbtn" data-p="out" onclick="goP('out',this)">⚙<span class="tip">输出与选项</span></button>
+      <button class="railbtn" data-p="adv" onclick="goP('adv',this)">🧩<span class="tip">高级配置</span></button>
+      <div class="sp"></div>
+      <button class="railbtn" onclick="togTheme()"><span id="railTh">☾</span><span class="tip">切换主题</span></button>
+    </div>
+    <div class="rail mode-t">
+      <button class="railbtn on" onclick="goP('timp',this)">📥<span class="tip">导入 TXT</span></button>
+      <button class="railbtn" onclick="goP('tout',this)">⚙<span class="tip">输出设置</span></button>
+      <div class="sp"></div>
+      <button class="railbtn" onclick="togTheme()"><span>☾</span><span class="tip">切换主题</span></button>
+    </div>
+
+    <!-- ═══ 配置面板 ═══ -->
+    <div class="panel mode-s">
+
+      <div class="pane on" id="imp">
+        <div class="ph"><div class="pt">SOURCE / 导入数据</div><div class="pd">2 个 SHP · 4 个要素</div></div>
+        <div class="pb">
+          <div class="drop"><span class="plus">＋</span>选择 .shp 文件（可多选）</div>
+          <div class="grow">📁 导入 .gdb 文件夹</div>
+          <div class="flist">
+            <div class="fitem"><span class="nm">试验数据0626.shp</span><span class="sz">24KB</span><span class="x">×</span></div>
+            <div class="fitem"><span class="nm">面多部件加内切.shp</span><span class="sz">51KB</span><span class="x">×</span></div>
+          </div>
+          <div class="sec" style="margin-top:13px">
+            <div class="st">识别 / DETECTED</div>
+            <div class="kv"><span>坐标系</span><b>CGCS2000</b></div>
+            <div class="kv"><span>单位 / 分带</span><b>米 · 3°</b></div>
+            <div class="kv"><span>带号</span><b>38</b></div>
+            <div class="kv"><span>要素数</span><b>4</b></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="pane" id="map">
+        <div class="ph"><div class="pt">MAPPING / 字段映射</div><div class="pd">简单模式 · 6 个槽位</div></div>
+        <div class="pb">
+          <label class="fl">Output Fields</label>
+          <div class="sw" style="margin-bottom:8px"><input type="checkbox" id="advChk" onchange="togAdv(this.checked)"><span>高级模式（14 字段 · 排序）</span></div>
+          <div id="fmSimple">
+            <label class="fl">地块名称</label><select><option>不填</option><option selected>DKMC</option></select>
+            <label class="fl">地块编号</label><select><option>不填</option><option selected>DKBH</option></select>
+            <label class="fl">面积</label><select><option>不填</option><option>平方米(自动)</option><option selected>公顷(自动)</option></select>
+            <label class="fl">用途</label><select><option selected>不填</option><option>DKYT</option></select>
+            <label class="fl">图幅号</label><select><option selected>不填</option><option>TFH</option></select>
+            <label class="fl">地类</label><select><option selected>不填</option><option>DLBM</option></select>
+          </div>
+          <div id="fmAdv" style="display:none">
+            <div class="arow"><span class="grip">⠿</span><select class="a" disabled><option>坐标点个数</option></select><span class="eq">←</span><select class="a" disabled><option>自动统计</option></select></div>
+            <div class="arow"><span class="grip">⠿</span><select class="a"><option selected>图斑面积</option></select><span class="eq">←</span><select class="a"><option selected>公顷(自动)</option></select><button class="del">✕</button></div>
+            <div class="arow"><span class="grip">⠿</span><select class="a"><option selected>图斑编号</option></select><span class="eq">←</span><select class="a"><option selected>DKBH</option></select><button class="del">✕</button></div>
+            <div class="arow"><span class="grip">⠿</span><select class="a"><option selected>地块名称</option></select><span class="eq">←</span><select class="a"><option selected>DKMC</option></select><button class="del">✕</button></div>
+            <div class="arow"><span class="grip">⠿</span><select class="a"><option selected>图形属性</option></select><span class="eq">←</span><select class="a" disabled><option>固定「面」</option></select></div>
+            <div style="display:flex;gap:6px;margin-top:8px"><button class="mini">＋ 添加字段</button><button class="mini">恢复默认</button><label class="sw"><input type="checkbox">补充耕地</label></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="pane" id="out">
+        <div class="ph"><div class="pt">OUTPUT / 输出与选项</div><div class="pd">一对一模式</div></div>
+        <div class="pb">
+          <div class="sec"><div class="st">输出模式 / MODE</div>
+            <div class="cks">
+              <label class="ck"><input type="radio" name="om" checked>一对一（每源一个 TXT）</label>
+              <label class="ck"><input type="radio" name="om">按地块拆分（文件名 DKMC）</label>
+              <label class="ck"><input type="radio" name="om">全部合并为一个 TXT</label>
+            </div>
+          </div>
+          <div class="sec"><div class="st">坐标选项 / COORD</div>
+            <div class="cks">
+              <label class="ck"><input type="checkbox">XY 坐标标反</label>
+              <label class="ck"><input type="checkbox" checked>点号前加 "J"</label>
+              <label class="ck"><input type="checkbox">起始点西北角</label>
+              <label class="ck"><input type="checkbox" checked>首末点重合</label>
+            </div>
+          </div>
+          <div class="sec"><div class="st">输出目录 / DIR</div>
+            <div class="dirrow" style="margin-top:0"><input type="text" readonly value="…\Documents\临时数据\"><button class="mini" style="flex-shrink:0">浏览</button></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="pane" id="adv">
+        <div class="ph"><div class="pt">ADVANCED / 高级配置</div><div class="pd">投影 · 表头 · 低频</div></div>
+        <div class="pb">
+          <div class="sec"><div class="st">动态投影 / PROJECTION</div>
+            <div class="kv"><span>当前状态</span><b>关闭</b></div>
+            <div class="kv"><span>推荐</span><b>3°带 · 39 · 117°E</b></div>
+            <div style="margin-top:8px"><button class="mini">打开投影设置 →</button></div>
+          </div>
+          <div class="sec"><div class="st">自定义表头 / HEADER</div>
+            <div class="hrow"><span class="grip">⠿</span><input class="k" value="坐标系"><span class="eq">=</span><input class="v" value="2000国家大地坐标系"></div>
+            <div class="hrow"><span class="grip">⠿</span><input class="k" value="几度分带"><span class="eq">=</span><input class="v" value="3"></div>
+            <div class="hrow"><span class="grip">⠿</span><input class="k" value="投影类型"><span class="eq">=</span><input class="v" value="高斯克吕格"></div>
+            <div class="hrow"><span class="grip">⠿</span><input class="k" value="计量单位"><span class="eq">=</span><input class="v" value="米"></div>
+            <div class="hrow"><span class="grip">⠿</span><input class="k" value="带号"><span class="eq">=</span><input class="v" value="38"></div>
+            <div class="hrow"><span class="grip">⠿</span><input class="k" value="精度"><span class="eq">=</span><input class="v" value="0.001"></div>
+            <div class="hrow"><span class="grip">⠿</span><input class="k" value="转换参数"><span class="eq">=</span><input class="v" value=",,,,,,"></div>
+            <div style="display:flex;gap:6px;margin-top:8px"><button class="mini">＋ 添加行</button><button class="mini">恢复默认</button></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ T 模式面板 ═══ -->
+    <div class="panel mode-t">
+      <div class="pane on" id="timp">
+        <div class="ph"><div class="pt">SOURCE / 导入 TXT</div><div class="pd">1 个文件</div></div>
+        <div class="pb">
+          <div class="drop"><span class="plus">＋</span>导入 TXT 文件（可多选）</div>
+          <div class="flist">
+            <div class="fitem"><span class="nm">44120000072.txt</span><span class="sz">2KB</span><span class="x">×</span></div>
+          </div>
+          <div class="sec" style="margin-top:13px"><div class="st">解析 / PARSED</div>
+            <div class="kv"><span>地块数</span><b>1</b></div>
+            <div class="kv"><span>界址点</span><b>6</b></div>
+            <div class="kv"><span>带号</span><b>38</b></div>
+          </div>
+        </div>
+      </div>
+      <div class="pane" id="tout">
+        <div class="ph"><div class="pt">OUTPUT / 输出设置</div><div class="pd">一对一模式</div></div>
+        <div class="pb">
+          <div class="sec"><div class="st">输出模式 / MODE</div>
+            <div class="cks">
+              <label class="ck"><input type="radio" name="omt" checked>一对一（每 TXT 一个 SHP）</label>
+              <label class="ck"><input type="radio" name="omt">按地块拆分</label>
+              <label class="ck"><input type="radio" name="omt">全部合并为一个 SHP</label>
+            </div>
+          </div>
+          <div class="sec"><div class="st">附加属性 / EXTRA</div>
+            <div class="cks">
+              <label class="ck"><input type="checkbox">保留输出路径（LUJIN）</label>
+              <label class="ck"><input type="checkbox">保留 txt 名称（MINGC）</label>
+            </div>
+          </div>
+          <div class="sec"><div class="st">输出目录 / DIR</div>
+            <div class="dirrow" style="margin-top:0"><input type="text" readonly value="…\Documents\临时数据\"><button class="mini" style="flex-shrink:0">浏览</button></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ 主区：预览工作台 ═══ -->
+    <div class="stage">
+      <div class="stg-h">
+        <div class="mtabs">
+          <div class="mtab on" data-m="s" onclick="swM('s')">面 → TXT</div>
+          <div class="mtab" data-m="t" onclick="swM('t')">TXT → 面</div>
+        </div>
+        <span class="meta">PREVIEW · 2 FILES · 24 PTS</span>
+        <div class="sp"></div>
+        <button class="gobtn" onclick="fakeRun()">开始转换 ▸</button>
+      </div>
+      <div class="pvwrap">
+        <div class="pv" id="pvS"></div>
+        <div class="pv" id="pvT" style="display:none"></div>
+      </div>
+      <div class="stg-f">
+        <span>SHAPEFILE → TXT</span>
+        <span class="ok">● READY</span>
+        <div class="prog"><i id="pgb"></i></div>
+        <span id="pstat">IDLE</span>
+      </div>
+    </div>
+
+  </div>
+</div>
+</div>
+
+<script>
+const TXT_S=`[属性描述]
+坐标系=2000国家大地坐标系
+几度分带=3
+投影类型=高斯克吕格
+计量单位=米
+带号=38
+精度=0.001
+转换参数=,,,,,,
+[地块坐标]
+24,1.9679,1,试验地块A,面,J50G017037,占补平衡,011,
+J1,1,4354593.864,39437282.247
+J2,1,4354602.789,39437280.015
+J3,1,4354601.519,39437273.718
+J4,1,4354594.498,39437274.668
+J5,1,4354594.777,39437271.331
+J6,1,4354599.989,39437257.753
+J7,1,4354601.643,39437237.762
+J8,1,4354650.676,39437241.194
+J9,1,4354646.219,39437253.504
+J10,1,4354647.030,39437263.688
+J11,1,4354668.683,39437274.503
+J12,1,4354679.391,39437276.208
+J13,1,4354688.075,39437270.264
+J14,1,4354691.773,39437254.796
+J15,1,4354692.857,39437244.147
+J16,1,4354784.008,39437250.528
+J17,1,4354784.940,39437243.693
+J18,1,4354785.872,39437236.859
+J19,1,4354691.859,39437229.744
+J20,1,4354638.410,39437225.699
+J21,1,4354638.635,39437222.777
+J22,1,4354627.310,39437221.719
+J23,1,4354602.863,39437223.009
+J24,1,4354593.864,39437282.247`;
+const TXT_T=`[属性描述]
+坐标系=2000国家大地坐标系
+几度分带=3
+投影类型=高斯克吕格
+计量单位=米
+带号=38
+精度=0.001
+[地块坐标]
+6,1.2247,FID_0,DKMC,面,TFH,DKYT,DLBM,@
+J1,1,2582988.976,38383243.971
+J2,1,2582983.339,38383261.067
+J3,1,2582359.231,38383048.719
+J4,1,2582340.199,38383058.089
+J5,1,2582350.828,38383026.848
+J1,1,2582988.976,38383243.971
+
+── PARSE OK ──────────────────
+地块: 1   界址点: 6   带号: 38
+输出 DBF: DKMC DKBH MJ DKYT TFH DLBM`;
+function fillPv(){
+  const mk=(txt)=>txt.split('\n').map((l,i)=>`<span class="ln" data-n="${i+1}">${l||' '}</span>`).join('');
+  document.getElementById('pvS').innerHTML=mk(TXT_S);
+  document.getElementById('pvT').innerHTML=mk(TXT_T);
+}
+fillPv();
+function togTheme(){
+  const h=document.documentElement;
+  h.setAttribute('data-t',h.getAttribute('data-t')==='light'?'dark':'light');
+  const t=h.getAttribute('data-t')==='light'?'☾':'☀';
+  const b=document.getElementById('thBtn');if(b)b.textContent=t;
+  const r=document.getElementById('railTh');if(r)r.textContent=t;
+}
+if(new URLSearchParams(location.search).get('mode')==='dark'){document.documentElement.setAttribute('data-t','dark');}
+function goP(id,btn){
+  document.querySelectorAll('.pane.on').forEach(p=>p.classList.remove('on'));
+  const el=document.getElementById(id);if(el)el.classList.add('on');
+  btn.closest('.rail').querySelectorAll('.railbtn').forEach(b=>b.classList.remove('on'));
+  btn.classList.add('on');
+}
+function swM(m){
+  document.getElementById('app').setAttribute('data-m',m);
+  document.querySelectorAll('.mtab').forEach(t=>t.classList.toggle('on',t.dataset.m===m));
+  document.getElementById('pvS').style.display=m==='s'?'':'none';
+  document.getElementById('pvT').style.display=m==='t'?'':'none';
+}
+function togAdv(on){
+  document.getElementById('fmSimple').style.display=on?'none':'';
+  document.getElementById('fmAdv').style.display=on?'':'none';
+}
+function fakeRun(){
+  const b=document.getElementById('pgb'),s=document.getElementById('pstat');
+  let p=0;const t=setInterval(()=>{p+=12;b.style.width=Math.min(p,100)+'%';s.textContent=p<100?Math.min(p,100)+'%':'DONE';
+  if(p>=100){clearInterval(t);setTimeout(()=>{b.style.width='0%';s.textContent='IDLE'},1500)}},90);
+}
+document.querySelectorAll('#szSeg button').forEach(b=>{
+  b.onclick=()=>{
+    document.querySelectorAll('#szSeg button').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on');
+    document.getElementById('win').className='win'+(b.dataset.sz?' sz'+b.dataset.sz:'');
+  };
+});
+</script>
+</body>
+</html>

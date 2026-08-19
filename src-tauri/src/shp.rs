@@ -670,20 +670,61 @@ fn write_dbf_manual(
     path: &Path,
     attributes: &[std::collections::HashMap<String, String>],
 ) -> Result<(), String> {
-    // 基础 6 字段始终存在；LUJIN/MINGC 仅在任一属性行含对应 key 时附加（勾选才有）
-    let mut field_defs: Vec<(&str, u8, u8, u8)> = vec![
-        ("DKMC", b'C', 50, 0),
-        ("DKBH", b'C', 30, 0),
-        ("MJ", b'N', 14, 3),
-        ("DKYT", b'C', 50, 0),
-        ("TFH", b'C', 20, 0),
-        ("DLBM", b'C', 10, 0),
-    ];
+    // 字段定义：出现 FIELD\d+ 键 → 动态模式（高级格式按元数据行顺序编号）；
+    // 否则基础 6 字段。LUJIN/MINGC 仅在任一属性行含对应 key 时附加（勾选才有）
+    let mut field_defs: Vec<(String, u8, u8, u8)> =
+        if attributes.iter().any(|a| a.keys().any(|k| k.starts_with("FIELD"))) {
+            // 动态模式：FIELD1~FIELDn（n = 所有记录中出现过的最大序号）
+            let max_n = attributes
+                .iter()
+                .flat_map(|a| a.keys())
+                .filter_map(|k| k.strip_prefix("FIELD").and_then(|s| s.parse::<u32>().ok()))
+                .max()
+                .unwrap_or(0);
+            (1..=max_n)
+                .map(|i| {
+                    let name = format!("FIELD{}", i);
+                    let vals: Vec<&str> = attributes
+                        .iter()
+                        .filter_map(|a| a.get(&name).map(|s| s.as_str()))
+                        .collect();
+                    // 类型推断：该列所有非空值均可解析为数字 → N(19, 观测最大小数位)，否则 C
+                    let numeric = !vals.is_empty() && vals.iter().all(|v| v.parse::<f64>().is_ok());
+                    if numeric {
+                        let max_dec = vals
+                            .iter()
+                            .map(|v| v.find('.').map_or(0, |p| v.len() - p - 1))
+                            .max()
+                            .unwrap_or(0)
+                            .min(10) as u8;
+                        (name, b'N', 19, max_dec)
+                    } else {
+                        let max_len = vals
+                            .iter()
+                            .map(|v| v.as_bytes().len())
+                            .max()
+                            .unwrap_or(0)
+                            .max(50)
+                            .min(254) as u8;
+                        (name, b'C', max_len, 0)
+                    }
+                })
+                .collect()
+        } else {
+            vec![
+                ("DKMC".to_string(), b'C', 50, 0),
+                ("DKBH".to_string(), b'C', 30, 0),
+                ("MJ".to_string(), b'N', 14, 3),
+                ("DKYT".to_string(), b'C', 50, 0),
+                ("TFH".to_string(), b'C', 20, 0),
+                ("DLBM".to_string(), b'C', 10, 0),
+            ]
+        };
     if attributes.iter().any(|a| a.contains_key("LUJIN")) {
-        field_defs.push(("LUJIN", b'C', 254, 0));
+        field_defs.push(("LUJIN".to_string(), b'C', 254, 0));
     }
     if attributes.iter().any(|a| a.contains_key("MINGC")) {
-        field_defs.push(("MINGC", b'C', 100, 0));
+        field_defs.push(("MINGC".to_string(), b'C', 100, 0));
     }
 
     let num_fields = field_defs.len();
@@ -705,18 +746,18 @@ fn write_dbf_manual(
     buf.extend_from_slice(&[0u8; 2]);  // bytes 30-31: reserved
 
     let mut offset: u16 = 1;
-    for &(name, ftype, len, decimals) in &field_defs {
+    for (name, ftype, len, decimals) in &field_defs {
         let name_bytes = name.as_bytes();
         for j in 0..11 {
             buf.push(if j < name_bytes.len() { name_bytes[j] } else { 0 });
         }
-        buf.push(ftype);
+        buf.push(*ftype);
         // field offset in DBF is 4 bytes (LE), but only first 2 are used
         buf.extend_from_slice(&(offset as u32).to_le_bytes());
-        buf.push(len);
-        buf.push(decimals);
+        buf.push(*len);
+        buf.push(*decimals);
         buf.extend_from_slice(&[0u8; 14]);
-        offset += len as u16;
+        offset += *len as u16;
     }
     buf.push(0x0D);
 
@@ -724,7 +765,7 @@ fn write_dbf_manual(
         buf.push(0x20);
         // 按 field_defs 顺序取值（缺失 key 视为空串）；字段值直接写 UTF-8 字节
         for (field_name, _, len, _) in &field_defs {
-            let val = attr.get(*field_name).map(|s| s.as_str()).unwrap_or("");
+            let val = attr.get(field_name.as_str()).map(|s| s.as_str()).unwrap_or("");
             let vb = val.as_bytes();
             for j in 0..*len as usize {
                 buf.push(if j < vb.len() { vb[j] } else { b' ' });

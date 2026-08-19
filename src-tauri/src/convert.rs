@@ -21,6 +21,19 @@ pub struct FieldMapping {
     pub use_field: String,
     pub tfh: String,
     pub dlbm: String,
+    /// 高级字段模式：有序输出字段列。空 = 简单模式（走上方 6 槽位，行为不变）。
+    #[serde(default)]
+    pub columns: Vec<FieldColumn>,
+}
+
+/// 高级字段模式的一个输出字段列
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FieldColumn {
+    /// 输出字段名（限 14 项固定清单，如「图斑编号」「补充耕地实施年份」）
+    pub name: String,
+    /// 映射源："" 不填 | "__placeholder__" 占位 | "__area_sqm__"/"__area_ha__" 面积自动
+    /// | "__count__" 坐标点个数(锁定) | "__geom__" 图形属性(固定"面") | 源字段名
+    pub source: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1291,6 +1304,7 @@ fn single_shp_to_source(
                 plot_use,
                 plot_tfh,
                 plot_dlbm,
+                resolve_columns(&field_mapping.columns, surface, &info.field_names, &record),
                 options,
             ),
             source_stem: stem.clone(),
@@ -1405,6 +1419,7 @@ fn gdb_to_sources(
                     plot_use,
                     plot_tfh,
                     plot_dlbm,
+                    resolve_columns_map(&field_mapping.columns, surface, &feat.attributes),
                     options,
                 ),
                 source_stem: stem.clone(),
@@ -1426,6 +1441,7 @@ fn build_plot_data(
     plot_use: String,
     plot_tfh: String,
     plot_dlbm: String,
+    fields: Vec<(String, String)>,
     options: &ShpToTxtOptions,
 ) -> txt::PlotData {
     // 默认 (ox=false) 输出标准 (Y,X)（北坐标在前，与 TXT→SHP 认定的输入顺序一致，保证往返）；
@@ -1433,17 +1449,45 @@ fn build_plot_data(
     let rings = surface_to_indexed_rings(surface, options.on, options.oo, !options.ox);
     let coords = rings.iter().flat_map(|ring| ring.coords.iter().copied()).collect::<Vec<_>>();
 
+    // 高级字段模式（fields 非空）：按语义名回填 6 槽位，供 DKBH/解析日志等旧消费者使用。
+    // 此时忽略简单模式传入的 6 槽位值（前端 columns 非空即高级模式）。
+    let (plot_id, plot_name, plot_area, plot_use, plot_tfh, plot_dlbm, mut geom_type) =
+        if fields.is_empty() {
+            (plot_id, plot_name, plot_area, plot_use, plot_tfh, plot_dlbm, "面".to_string())
+        } else {
+            let find = |names: &[&str]| {
+                fields
+                    .iter()
+                    .find(|(n, _)| names.contains(&n.as_str()))
+                    .map(|(_, v)| v.clone())
+                    .unwrap_or_default()
+            };
+            (
+                find(&["图斑编号", "地块编号"]),
+                find(&["地块名称"]),
+                find(&["图斑面积", "地块面积"]),
+                find(&["地块用途"]),
+                find(&["图幅号"]),
+                find(&["地类"]),
+                find(&["图形属性"]),
+            )
+        };
+    if geom_type.is_empty() {
+        geom_type = "面".to_string();
+    }
+
     txt::PlotData {
         point_count: coords.len() as u32,
         area: plot_area,
         fid: plot_id,
         name: plot_name,
-        geom_type: "面".to_string(),
+        geom_type,
         tfh: plot_tfh,
         use_field: plot_use,
         dlbm: plot_dlbm,
         coords,
         rings,
+        fields,
     }
 }
 
@@ -1473,6 +1517,18 @@ fn tag_attrs_with_source(
     }
 }
 
+/// 标准 8 字段元数据行（旧格式）的字段名序列——TXT→SHP 时与之完全一致才走 6 拼音键输出
+const STANDARD_META_FIELDS: [&str; 8] = [
+    "坐标点个数",
+    "地块面积",
+    "地块编号",
+    "地块名称",
+    "图形属性",
+    "图幅号",
+    "地块用途",
+    "地类",
+];
+
 fn plots_to_surfaces_and_attributes(
     plots: &[txt::PlotData],
 ) -> (Vec<SurfaceGeometry>, Vec<HashMap<String, String>>) {
@@ -1491,13 +1547,27 @@ fn plots_to_surfaces_and_attributes(
         if !surface.parts.is_empty() {
             geometries.push(surface);
 
+            // 字段序列与标准 8 字段完全一致（或旧格式 fields 为空）→ 拼音键；
+            // 否则（如 12 字段补充耕地格式）→ FIELD1~FIELDn 全字段（按元数据行顺序）
+            let is_standard = plot.fields.is_empty()
+                || plot
+                    .fields
+                    .iter()
+                    .map(|(n, _)| n.as_str())
+                    .eq(STANDARD_META_FIELDS.iter().copied());
             let mut attr = HashMap::new();
-            attr.insert("DKMC".to_string(), plot.name.clone());
-            attr.insert("DKBH".to_string(), String::new());
-            attr.insert("MJ".to_string(), plot.area.clone());
-            attr.insert("DKYT".to_string(), plot.use_field.clone());
-            attr.insert("TFH".to_string(), plot.tfh.clone());
-            attr.insert("DLBM".to_string(), plot.dlbm.clone());
+            if is_standard {
+                attr.insert("DKMC".to_string(), plot.name.clone());
+                attr.insert("DKBH".to_string(), plot.fid.clone());
+                attr.insert("MJ".to_string(), plot.area.clone());
+                attr.insert("DKYT".to_string(), plot.use_field.clone());
+                attr.insert("TFH".to_string(), plot.tfh.clone());
+                attr.insert("DLBM".to_string(), plot.dlbm.clone());
+            } else {
+                for (idx, (_, v)) in plot.fields.iter().enumerate() {
+                    attr.insert(format!("FIELD{}", idx + 1), v.clone());
+                }
+            }
             attributes.push(attr);
         }
     }
@@ -1536,6 +1606,19 @@ fn field_placeholder(field_key: &str) -> &'static str {
         "use_field" => "DKYT",
         "tfh" => "TFH",
         "dlbm" => "DLBM",
+        _ => "",
+    }
+}
+
+/// 高级字段模式：输出字段名 → 占位文字（前端 ADV_PLACEHOLDER 的 Rust 镜像，双端同步维护）
+fn adv_placeholder(field_name: &str) -> &'static str {
+    match field_name {
+        "地块名称" => "DKMC",
+        "地块编号" | "图斑编号" => "DKBH",
+        "地块面积" | "图斑面积" => "MJ",
+        "地块用途" => "DKYT",
+        "图幅号" => "TFH",
+        "地类" => "DLBM",
         _ => "",
     }
 }
@@ -1616,6 +1699,54 @@ fn resolve_area_map(
         other => resolve_value_map(other, "area", attrs),
     }
 }
+
+/// 高级字段模式：按列配置解析出有序 (字段名, 值) 列表（SHP 版）。
+/// "__count__" 填 "0" 占位，真正的点数由 generate_txt 按 rings 重算（单一事实源）。
+fn resolve_columns(
+    columns: &[FieldColumn],
+    surface: &SurfaceGeometry,
+    field_names: &[String],
+    record: &[String],
+) -> Vec<(String, String)> {
+    columns
+        .iter()
+        .map(|col| {
+            let val = match col.source.as_str() {
+                "" => String::new(),
+                "__placeholder__" => adv_placeholder(&col.name).to_string(),
+                "__count__" => "0".to_string(),
+                "__geom__" => "面".to_string(),
+                "__area_sqm__" => format!("{:.2}", calculate_area_from_surface(surface)),
+                "__area_ha__" => format!("{:.4}", calculate_area_from_surface(surface) / 10000.0),
+                other => resolve_value(other, "", field_names, record),
+            };
+            (col.name.clone(), val)
+        })
+        .collect()
+}
+
+/// 高级字段模式：按列配置解析出有序 (字段名, 值) 列表（GDB 版）
+fn resolve_columns_map(
+    columns: &[FieldColumn],
+    surface: &SurfaceGeometry,
+    attrs: &HashMap<String, String>,
+) -> Vec<(String, String)> {
+    columns
+        .iter()
+        .map(|col| {
+            let val = match col.source.as_str() {
+                "" => String::new(),
+                "__placeholder__" => adv_placeholder(&col.name).to_string(),
+                "__count__" => "0".to_string(),
+                "__geom__" => "面".to_string(),
+                "__area_sqm__" => format!("{:.2}", calculate_area_from_surface(surface)),
+                "__area_ha__" => format!("{:.4}", calculate_area_from_surface(surface) / 10000.0),
+                other => resolve_value_map(other, "", attrs),
+            };
+            (col.name.clone(), val)
+        })
+        .collect()
+}
 /// 从坐标点列表中提取高斯-克吕格带号。
 /// 扫描所有地块的所有点，找第一个整数部分为 8 位的 X 值（东坐标），
 /// 取其前两位作为带号，若前两位落在 13-45 区间则返回，否则继续扫描。
@@ -1655,6 +1786,7 @@ mod tests {
             dlbm: String::new(),
             coords,
             rings: Vec::new(),
+            fields: Vec::new(),
         }
     }
 
@@ -1714,5 +1846,6 @@ pub fn __plot_with_coords(c: Vec<(f64, f64)>) -> crate::txt::PlotData {
         dlbm: String::new(),
         coords: c,
         rings: vec![],
+        fields: Vec::new(),
     }
 }

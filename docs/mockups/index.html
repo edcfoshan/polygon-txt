@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-t="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>UI 重构原型索引 — 极思G界址点互转工具</title>
+<style>
+:root{
+  --bg:#eef0f4; --srf:#fff; --brd:#e3e7ee; --brd2:#d2d8e3;
+  --tx:#1c2430; --tx2:#5a6575; --tx3:#98a2b3;
+  --ac:#2563eb; --acg:rgba(37,99,235,.09);
+  --a-ac:#8a6a2a; --a-bg:#faf7f0; --a-bd:#e0d5bc;
+  --b-ac:#2563eb; --b-bg:#f5f8ff; --b-bd:#c3d4f5;
+  --c-ac:#0891b2; --c-bg:#f0fafc; --c-bd:#bfe5ee;
+  --shadow:0 1px 2px rgba(28,36,48,.04),0 10px 34px rgba(28,36,48,.08);
+  --mono:"JetBrains Mono",Consolas,monospace;
+}
+html[data-t="dark"]{
+  --bg:#0e1117; --srf:#161b24; --brd:#2a3242; --brd2:#39435a;
+  --tx:#e7ecf3; --tx2:#a8b3c4; --tx3:#66717f;
+  --ac:#5b8cf0; --acg:rgba(91,140,240,.14);
+  --a-bg:#201d15; --a-bd:#4a422c;
+  --b-bg:#151d2c; --b-bd:#2c3a55;
+  --c-bg:#132024; --c-bd:#25444d;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:"Segoe UI","Microsoft YaHei",sans-serif;font-size:14px;color:var(--tx);background:var(--bg);min-height:100vh;padding:36px 20px 60px}
+.wrap{max-width:1080px;margin:0 auto}
+header{margin-bottom:26px}
+h1{font-size:21px;font-weight:800;margin-bottom:6px}
+h1 b{color:var(--ac)}
+.sub{font-size:13px;color:var(--tx2);line-height:1.7}
+.thb{float:right;font-size:11px;border:1px solid var(--brd2);background:var(--srf);color:var(--tx2);padding:5px 13px;border-radius:7px;cursor:pointer;font-family:inherit}
+.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin:22px 0 30px}
+@media(max-width:900px){.cards{grid-template-columns:1fr}}
+.card{background:var(--srf);border:1px solid var(--brd);border-radius:14px;overflow:hidden;box-shadow:var(--shadow);display:flex;flex-direction:column;transition:transform .15s}
+.card:hover{transform:translateY(-3px)}
+.thumb{height:150px;display:flex;align-items:stretch;padding:14px;gap:4px;border-bottom:1px solid var(--brd)}
+.tcol{border-radius:4px;display:flex;flex-direction:column;gap:3px;padding:5px}
+.tcol i{display:block;height:5px;border-radius:2px;opacity:.55}
+.tcol i.w{width:70%;opacity:.8}
+.cbody{padding:15px 16px 16px;flex:1;display:flex;flex-direction:column}
+.tag{display:inline-block;font-size:10px;font-weight:700;border-radius:5px;padding:2px 8px;margin-bottom:8px;align-self:flex-start}
+h2{font-size:15.5px;font-weight:800;margin-bottom:3px}
+.one{font-size:11.5px;color:var(--tx3);margin-bottom:11px}
+ul{list-style:none;font-size:12px;color:var(--tx2);line-height:1.85;flex:1}
+ul li::before{content:"·";color:var(--ac);font-weight:900;margin-right:7px}
+.open{display:block;text-align:center;margin-top:13px;padding:9px;border-radius:9px;font-size:12.5px;font-weight:700;text-decoration:none}
+/* A */
+.pa .thumb{background:var(--a-bg)}.pa .tcol{background:var(--srf);border:1px solid var(--a-bd)}.pa .tcol i{background:var(--a-ac)}
+.pa .tag{background:rgba(138,106,42,.12);color:var(--a-ac)}
+.pa .open{background:var(--a-ac);color:#fff}
+/* B */
+.pb .thumb{background:var(--b-bg)}.pb .tcol{background:var(--srf);border:1px solid var(--b-bd)}.pb .tcol i{background:var(--b-ac)}
+.pb .tag{background:rgba(37,99,235,.12);color:var(--b-ac)}
+.pb .open{background:var(--b-ac);color:#fff}
+/* C */
+.pc .thumb{background:var(--c-bg)}.pc .tcol{background:var(--srf);border:1px solid var(--c-bd)}.pc .tcol i{background:var(--c-ac)}
+.pc .tag{background:rgba(8,145,178,.12);color:var(--c-ac)}
+.pc .open{background:var(--c-ac);color:#fff}
+h3.sect{font-size:14px;font-weight:800;margin:8px 0 12px}
+table{width:100%;border-collapse:collapse;background:var(--srf);border:1px solid var(--brd);border-radius:12px;overflow:hidden;font-size:12.5px}
+th,td{padding:10px 14px;text-align:left;border-bottom:1px solid var(--brd);line-height:1.6}
+th{background:var(--srf);font-size:11.5px;color:var(--tx2);font-weight:700}
+tr:last-child td{border-bottom:none}
+td b{color:var(--ac)}
+.note{margin-top:26px;background:var(--srf);border:1px solid var(--brd);border-radius:12px;padding:16px 18px;font-size:12.5px;color:var(--tx2);line-height:1.9}
+.note b{color:var(--tx)}
+.note .k{display:inline-block;background:var(--acg);color:var(--ac);border-radius:4px;padding:0 6px;font-size:11px;font-family:var(--mono);margin:0 1px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <button class="thb" onclick="const h=document.documentElement;h.setAttribute('data-t',h.getAttribute('data-t')==='light'?'dark':'light')">切换主题</button>
+  <h1>UI 重构 — <b>三方案原型</b></h1>
+  <div class="sub">极思G界址点互转工具 · 2026-08 · 原型均为静态可交互页面（假数据），双主题、双方向（面→TXT / TXT→面）、三档模拟窗口尺寸可切换。选中方向后再制定实施计划，现阶段未改动任何现有代码。</div>
+</header>
+
+<div class="cards">
+
+  <div class="card pa">
+    <div class="thumb">
+      <div class="tcol" style="flex:27"><i class="w"></i><i></i><i class="w"></i><i></i><i class="w"></i><i></i><i class="w"></i></div>
+      <div class="tcol" style="flex:24"><i></i><i class="w"></i><i></i><i class="w"></i><i></i></div>
+      <div class="tcol" style="flex:36"><i class="w"></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+    </div>
+    <div class="cbody">
+      <span class="tag">方案 A</span>
+      <h2>折叠收纳式</h2>
+      <div class="one">保留三栏骨架，分组手风琴折叠 · 专业测绘风</div>
+      <ul>
+        <li>左栏三组折叠卡：导入 / 字段映射 / 输出选项</li>
+        <li>中栏为「高级配置」（投影+表头）默认折叠</li>
+        <li>改动最小，老用户零学习成本</li>
+        <li>黄铜行业色系精致化，细边框工具感</li>
+      </ul>
+      <a class="open" href="layout-a-accordion.html">打开原型 →</a>
+    </div>
+  </div>
+
+  <div class="card pb">
+    <div class="thumb">
+      <div class="tcol" style="flex:17"><i class="w"></i><i></i><i class="w"></i><i></i></div>
+      <div class="tcol" style="flex:40"><i class="w"></i><i></i><i></i><i></i><i class="w"></i><i></i></div>
+      <div class="tcol" style="flex:30"><i class="w"></i><i></i><i></i><i></i><i></i></div>
+    </div>
+    <div class="cbody">
+      <span class="tag">方案 B</span>
+      <h2>流程分区式</h2>
+      <div class="one">步骤导航（导入→映射→输出→高级）· 现代清爽风</div>
+      <ul>
+        <li>左侧 4 步垂直导航，完成态打勾，可自由跳转</li>
+        <li>右侧预览常驻，配置流程一目了然</li>
+        <li>低频配置收进步骤 4（默认折叠子卡）</li>
+        <li>白底蓝强调、大圆角、留白（Linear 式克制）</li>
+      </ul>
+      <a class="open" href="layout-b-flow.html">打开原型 →</a>
+    </div>
+  </div>
+
+  <div class="card pc">
+    <div class="thumb">
+      <div class="tcol" style="flex:5;background:transparent;border:1px dashed var(--c-bd)"></div>
+      <div class="tcol" style="flex:26"><i class="w"></i><i></i><i class="w"></i><i></i><i class="w"></i></div>
+      <div class="tcol" style="flex:56"><i class="w"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+    </div>
+    <div class="cbody">
+      <span class="tag">方案 C</span>
+      <h2>工作台式</h2>
+      <div class="one">图标导航换面板 + 行号预览主区 · 科技锐利风</div>
+      <ul>
+        <li>窄图标栏四组配置，点选切换、配置永不滚动</li>
+        <li>预览最大化（带行号、深色代码区）</li>
+        <li>顶部工具栏集中方向切换与转换按钮</li>
+        <li>高对比近直角、等宽标签、青色强调</li>
+      </ul>
+      <a class="open" href="layout-c-workbench.html">打开原型 →</a>
+    </div>
+  </div>
+
+</div>
+
+<h3 class="sect">痛点 × 方案对照</h3>
+<table>
+  <tr><th style="width:170px">痛点</th><th>方案 A 折叠收纳</th><th>方案 B 流程分区</th><th>方案 C 工作台</th></tr>
+  <tr><td><b>左栏太长要滚动</b></td><td>折叠后一屏放下；常用组默认展开</td><td>一屏只看一个步骤，零滚动</td><td>图标换面板，配置区固定高度</td></tr>
+  <tr><td><b>窗口尺寸适配</b></td><td>三栏 minmax 弹性（沿用现有机制）</td><td>步骤区/预览区按比例伸缩</td><td>预览区吃掉全部弹性空间</td></tr>
+  <tr><td><b>视觉不统一</b></td><td>现有黄铜风精致化，风险最小</td><td>全新清爽视觉语言</td><td>全新锐利工程风视觉语言</td></tr>
+</table>
+
+<div class="note">
+  <b>评审建议</b>：每个原型都请试这三件事 —— ① 右上角<span class="k">切换主题</span>（浅色/暗色双模式）② 顶部<span class="k">面→TXT / TXT→面</span>方向切换 ③ 原型工具条上的<span class="k">880×600 / 1100×720 / 1280×860</span>三档模拟窗口尺寸（拖动观察布局适配）。A 方案还可点分组标题折叠、B 方案点步骤导航跳转、C 方案点左侧图标换面板。<br><br>
+  <b>URL 参数</b>：<span class="k">?mode=dark</span> 可直接以暗色打开任一原型（如 layout-a-accordion.html?mode=dark）。<br>
+  <b>下一步</b>：选定方向（可混搭，如「B 的步骤 + C 的预览」）后告知，将按所选方向制定正式实施计划（含现有代码改动清单与回归验证）。
+</div>
+
+</div>
+</body>
+</html>

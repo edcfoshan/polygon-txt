@@ -7,8 +7,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **极思G界址点互转工具** — 测绘与国土行业 GIS 桌面工具，实现面要素（SHP/GDB）与标准界址点 TXT 文件的双向转换。Tauri v2 桌面应用（Rust 后端 + Vite/HTML 前端）。
 
 - 仓库：https://github.com/edcfoshan/polygon-txt
-- 窗口：默认 880×600px（`minWidth:800/minHeight:540`，可自由拉伸/最大化），无边框（`decorations: false`），自定义标题栏，支持浅色/暗色主题
-- 响应式布局：`.app` 占满视口，`.main` 用 CSS grid + `minmax(下限, fr比例)`，拖拽窗口时三栏按 260:260:360 等比变宽，拖到 minWidth:800 时下限保证字段不溢出
+- 窗口：默认 1100×720px（`minWidth:800/minHeight:540`，可自由拉伸/最大化），无边框（`decorations: false`），自定义标题栏
+- **v3.0 UI（方案A 折叠收纳式）**：三栏比例 1:1:1.3。左栏 = ①导入数据 + ②字段映射（高级开关在分组标题行）；中栏 = ③输出与选项（含输出目录）+ ④动态投影 + ⑤自定义表头；右栏预览。TXT→面 为 ①导入 TXT + ②输出设置。分组为手风琴卡（`togAcc`，默认全开），`.accs > .acc` 拉伸保证三栏底边齐平、超高卡内滚动。UI 原型在 docs/mockups/
+- **主题系统**：标题栏主题按钮为下拉面板（`#thMenu`），浅色/暗色（`html[data-t]`）× 8 色系（`html[data-c]`：normal 经典黑白默认/brass/green/blue/cyan/purple/orange/rose）独立组合；色系换全套配色（CSS 变量）；浅色模式预览字体统一黑色；持久化 `tg_theme` + `tg_color`
+- 显示比例：RATIO_PRESETS 四档（三栏等宽/默认 1:1:1.3/宽预览/宽输入），存 `tg_ratio`
 
 ## 构建与测试命令
 
@@ -185,6 +187,13 @@ SHP 存储 (X, Y) = (东坐标, 北坐标)。TXT 存储 (Y, X) = (北坐标, 东
 - 解析侧（`txt.rs` `parse_txt`）**只读第二列 part_index 切环，完全忽略第一列序号**——J 编号算法变化不影响反向解析
 - 地块元数据行以 `,@` 结尾
 - 坐标系字符串必须精确匹配：`2000国家大地坐标系`、`1980西安坐标系`、`1954北京坐标系`、`WGS84坐标系`
+
+### 高级字段模式（v2.2+）
+- 前端字段映射「高级模式」开关（默认关=简单 6 下拉，输出字节级不变）；开启后 14 项固定字段清单下拉 + 拖拽排序 + 增删，交互复刻属性描述区（`renderFieldRows`/`collectFieldRows`/`bindFieldRowEvents`）。`FieldMapping.columns`（`Vec<FieldColumn{name,source}>`）非空即高级模式，`source` 含 `__count__`（点数锁定）/`__geom__`（固定"面"）。未选字段名的占位行（「新行N」）**输出空值列**（元数据行多一个空位），不忽略——保证加行后预览立即可见变化
+- 输出：**不输出字段名列表行**（用户需求，接收系统按约定列序解析）；元数据行按列序输出；`PlotData.fields`（有序 `(名,值)`）空=旧 8 字段格式。`坐标点个数` 列由 generate 按 rings 重算（resolve 阶段是占位 "0"）。注意：本工具导出的高级格式 TXT（无列表行）导回时因无字段名会回退旧 8 位置切分（12 列错位）；外部文件自带列表行则按名解析正确
+- 解析：`【...,@】` = 字段名列表行；其他 `【...】` = 说明块（首行不以 `】` 结尾则进入跨行跳过态）。元数据行 `parts.len() >= meta_names.len()` 才按名配对（zip 截断），否则回退旧 8 位置切分。**剥尾只能用 `strip_suffix(',')` 剥一个逗号**——`trim_end_matches(',')` 会把末尾连续空字段整段剥掉导致列数错位（已修过的 bug）
+- TXT→SHP：解析字段序列==标准 8 项（`STANDARD_META_FIELDS`）→ 6 拼音键（DKBH=plot.fid，v2.2 修复恒空）；否则 `FIELD1~FIELDn` 全字段（含点数/图形属性），DBF 头字段按序写入（`read_dbf` 读回顺序随机是 dbase Record 迭代的既有行为，与文件无关）
+- 前端常量与 Rust 镜像需双端同步：`ADV_FIELD_NAMES`/`ADV_PLACEHOLDER` ↔ `adv_placeholder`；`STD_ADV_ROWS`/`BCG_ADV_ROWS` ↔ `STANDARD_META_FIELDS`/模板 12 字段
 
 ### DBF 写入
 手动二进制写入（未使用 dbase crate API）。字段偏移量必须为 4 字节（LE），不是 2 字节。

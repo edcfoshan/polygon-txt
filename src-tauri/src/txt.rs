@@ -52,6 +52,10 @@ pub struct PlotData {
     pub coords: Vec<(f64, f64)>, // (y, x) = (northing, easting) — as stored in TXT
     #[serde(default)]
     pub rings: Vec<IndexedRing>,
+    /// 高级字段模式：有序 (字段名, 值) 列表（如 12 字段补充耕地格式）。
+    /// 空 = 旧 8 字段标准格式（元数据行走固定槽位，字节级兼容）。
+    #[serde(default)]
+    pub fields: Vec<(String, String)>,
 }
 
 /// TXT 解析结果
@@ -60,6 +64,9 @@ pub struct TxtParseResult {
     pub project_info: String,
     pub attrs: HashMap<String, String>,
     pub plots: Vec<PlotData>,
+    /// [地块坐标] 后的字段名列表行 `【字段1,...,@】`（高级格式才有，旧格式为空）
+    #[serde(default)]
+    pub meta_fields: Vec<String>,
 }
 
 /// 解析 TXT 内容
@@ -71,6 +78,10 @@ pub fn parse_txt(text: &str) -> TxtParseResult {
     let mut section = String::new();
     let mut proj_lines: Vec<String> = Vec::new();
     let mut current_plot: Option<PlotData> = None;
+    // 高级格式：字段名列表行 `【字段1,...,@】` 的字段名；空 = 旧 8 字段标准格式
+    let mut meta_names: Vec<String> = Vec::new();
+    // 模板说明块跨行跳过状态（如「【地块坐标要求：...」到「...。】」）
+    let mut desc_block = false;
 
     for line in &lines {
         let trimmed = line.trim();
@@ -108,35 +119,94 @@ pub fn parse_txt(text: &str) -> TxtParseResult {
                 }
             }
             "coord" => {
+                // 【...,@】= 高级格式的字段名列表行；其他【...】= 模板说明块（跳过）。
+                // 必须在下方 contains(",@") 判定之前，否则列表行会被误判为元数据行。
+                if trimmed.starts_with('【') {
+                    if trimmed.ends_with(",@】") {
+                        let inner = trimmed.trim_start_matches('【').trim_end_matches(",@】");
+                        meta_names = inner
+                            .split(',')
+                            .map(|s| s.trim().to_string())
+                            .filter(|s| !s.is_empty())
+                            .collect();
+                    } else if !trimmed.ends_with('】') {
+                        // 说明块首行（如「【地块坐标要求：」），后续行直到以】结尾都跳过
+                        desc_block = true;
+                    }
+                    continue;
+                }
+                if desc_block {
+                    if trimmed.ends_with('】') {
+                        desc_block = false;
+                    }
+                    continue;
+                }
                 // metadata line: count,area,FID,name,type,tfh,use,dlbm,@
                 if trimmed.contains(",@") || trimmed.ends_with('@') {
                     // Flush previous plot
                     if let Some(plot) = current_plot.take() {
                         plots.push(plot);
                     }
-                    let meta_line = trimmed.trim_end_matches('@').trim_end_matches(',');
+                    // 只剥结尾 "@" 及其前的单个逗号。
+                    // 不能用 trim_end_matches(',')——会把末尾连续空字段整列剥掉，
+                    // 新格式（12 列末尾多个空字段）列数对不上列表行会误回退旧格式解析。
+                    let meta_line = trimmed.strip_suffix('@').unwrap_or(trimmed);
+                    let meta_line = meta_line.strip_suffix(',').unwrap_or(meta_line);
                     let parts: Vec<&str> = meta_line.split(',').collect();
-                    let count = parts.first().and_then(|s| s.parse().ok()).unwrap_or(0);
-                    let area = parts.get(1).unwrap_or(&"").to_string();
-                    let fid = parts.get(2).unwrap_or(&"").to_string();
-                    let name = parts.get(3).unwrap_or(&"").to_string();
-                    let geom_type = parts.get(4).unwrap_or(&"面").to_string();
-                    let tfh = parts.get(5).unwrap_or(&"").to_string();
-                    let use_field = parts.get(6).unwrap_or(&"").to_string();
-                    let dlbm = parts.get(7).unwrap_or(&"").to_string();
 
-                    current_plot = Some(PlotData {
-                        point_count: count,
-                        area,
-                        fid,
-                        name,
-                        geom_type,
-                        tfh,
-                        use_field,
-                        dlbm,
-                        coords: Vec::new(),
-                        rings: Vec::new(),
-                    });
+                    let plot = if !meta_names.is_empty() && parts.len() >= meta_names.len() {
+                        // 高级格式：按列表行字段名配对（多余列丢弃），并按语义名回填旧槽位
+                        let fields: Vec<(String, String)> = meta_names
+                            .iter()
+                            .zip(parts.iter())
+                            .map(|(n, v)| (n.clone(), v.trim().to_string()))
+                            .collect();
+                        let find = |names: &[&str]| {
+                            fields
+                                .iter()
+                                .find(|(n, _)| names.contains(&n.as_str()))
+                                .map(|(_, v)| v.clone())
+                                .unwrap_or_default()
+                        };
+                        let count = fields
+                            .iter()
+                            .find(|(n, _)| n == "坐标点个数")
+                            .and_then(|(_, v)| v.parse().ok())
+                            .unwrap_or(0);
+                        let mut geom_type = find(&["图形属性"]);
+                        if geom_type.is_empty() {
+                            geom_type = "面".to_string();
+                        }
+                        PlotData {
+                            point_count: count,
+                            area: find(&["图斑面积", "地块面积"]),
+                            fid: find(&["图斑编号", "地块编号"]),
+                            name: find(&["地块名称"]),
+                            geom_type,
+                            tfh: find(&["图幅号"]),
+                            use_field: find(&["地块用途"]),
+                            dlbm: find(&["地类"]),
+                            coords: Vec::new(),
+                            rings: Vec::new(),
+                            fields,
+                        }
+                    } else {
+                        // 旧 8 字段标准格式：按位置切分
+                        PlotData {
+                            point_count: parts.first().and_then(|s| s.parse().ok()).unwrap_or(0),
+                            area: parts.get(1).unwrap_or(&"").to_string(),
+                            fid: parts.get(2).unwrap_or(&"").to_string(),
+                            name: parts.get(3).unwrap_or(&"").to_string(),
+                            geom_type: parts.get(4).unwrap_or(&"面").to_string(),
+                            tfh: parts.get(5).unwrap_or(&"").to_string(),
+                            use_field: parts.get(6).unwrap_or(&"").to_string(),
+                            dlbm: parts.get(7).unwrap_or(&"").to_string(),
+                            coords: Vec::new(),
+                            rings: Vec::new(),
+                            fields: Vec::new(),
+                        }
+                    };
+                    current_plot = Some(plot);
                 } else if let Some(ref mut plot) = current_plot {
                     // J1,1,y,x or 1,1,y,x or J1,y,x ...
                     // Skip lines that don't look like coordinates
@@ -190,6 +260,7 @@ pub fn parse_txt(text: &str) -> TxtParseResult {
         project_info,
         attrs,
         plots,
+        meta_fields: meta_names,
     }
 }
 
@@ -246,6 +317,8 @@ pub fn generate_txt(
     }
 
     out.push_str("[地块坐标]\n");
+    // 高级格式不输出字段名列表行（用户需求：接收系统按约定列序解析）；
+    // 解析侧仍识别外部文件自带的【...,@】列表行（parse_txt）
     for plot in features {
         let plot_rings = if plot.rings.is_empty() {
             vec![IndexedRing {
@@ -256,17 +329,33 @@ pub fn generate_txt(
             plot.rings.clone()
         };
         let point_count: usize = plot_rings.iter().map(|ring| ring.coords.len()).sum();
-        let meta = format!(
-            "{},{},{},{},{},{},{},{},@\n",
-            point_count,
-            plot.area,
-            plot.fid,
-            plot.name,
-            plot.geom_type,
-            plot.tfh,
-            plot.use_field,
-            plot.dlbm,
-        );
+        let meta = if !plot.fields.is_empty() {
+            // 高级格式：按列顺序输出；「坐标点个数」列强制用本块实际点数（resolve 阶段是占位值）
+            let vals: Vec<String> = plot
+                .fields
+                .iter()
+                .map(|(n, v)| {
+                    if n == "坐标点个数" {
+                        point_count.to_string()
+                    } else {
+                        v.clone()
+                    }
+                })
+                .collect();
+            format!("{},@\n", vals.join(","))
+        } else {
+            format!(
+                "{},{},{},{},{},{},{},{},@\n",
+                point_count,
+                plot.area,
+                plot.fid,
+                plot.name,
+                plot.geom_type,
+                plot.tfh,
+                plot.use_field,
+                plot.dlbm,
+            )
+        };
         out.push_str(&meta);
         // J 界址点序号在单个地块内跨环（外环/洞/多部件）连续递增；
         // 每个地块从 J1 起。闭合点（与首点重合的末点，仅 oo=true 时存在）：
@@ -379,6 +468,7 @@ J1,2,30.000,30.000";
                     coords: vec![(30.0, 30.0), (30.0, 40.0), (40.0, 40.0), (30.0, 30.0)],
                 },
             ],
+            fields: vec![],
         }];
         let attrs = vec![AttrRow {
             k: "精度".into(),
@@ -426,6 +516,7 @@ J1,2,30.000,30.000";
             dlbm: "".into(),
             coords: vec![(10.0, 20.0)],
             rings: vec![],
+            fields: vec![],
         }];
         let out = generate_txt("", &attrs, &plots, true, false);
 

@@ -11,51 +11,158 @@
    ═══════════════════════════════════════════ */
 :root,[data-t="light"]{
   /* Layout ratio (s-mode three columns) — overridable via ratio settings */
-  --col1:260fr;              /* left (input) */
-  --col2:260fr;              /* middle (params) */
-  --col3:360fr;              /* right (preview) */
-  --bg:#fafafa;              /* cool off-white base */
+  --col1:100fr;              /* left (import + field mapping) */
+  --col2:100fr;              /* middle (output options + advanced) */
+  --col3:130fr;              /* right (preview) */
+  /* 色系 0：经典黑白（默认） */
+  --bg:#f0f0f0;              /* cool off-white base */
   --srf:#ffffff;             /* panel surface */
-  --srf2:#f3f4f6;            /* raised / hover */
-  --srf3:#ffffff;            /* header bar */
-  --brd:#e5e7eb;             /* border */
-  --brd2:#d1d5db;            /* stronger border */
-  --tx:#1a1a1c;              /* primary text */
-  --tx2:#4b5563;             /* secondary text */
-  --tx3:#9ca3af;             /* tertiary / placeholder */
-  --ac:#9a6f1f;              /* brass — surveying-industry appropriate */
-  --ach:#7d5a16;             /* accent hover */
-  --acg:rgba(154,111,31,.10);/* accent glow */
+  --srf2:#f5f5f5;            /* raised / hover */
+  --srf3:#ebebeb;            /* header bar */
+  --brd:#d9d9d9;             /* border */
+  --brd2:#c6c6c6;            /* stronger border */
+  --tx:#1a1a1a;              /* primary text */
+  --tx2:#4d4d4d;             /* secondary text */
+  --tx3:#8c8c8c;             /* tertiary / placeholder */
+  --ac:#1a1a1a;              /* accent — classic black */
+  --ach:#333333;             /* accent hover */
+  --acg:rgba(0,0,0,.08);     /* accent glow */
   --ok:#3f7a55;
   --er:#a8453e;
   --shadow-sm:0 1px 2px rgba(0,0,0,.04);
   --shadow-md:0 4px 14px rgba(0,0,0,.06);
   --shadow-lg:0 20px 50px rgba(0,0,0,.08);
   --ring:inset 0 1px 0 rgba(255,255,255,.9);
-  --pv-bg:#f9fafb;
-  --pv-fg:#2f6b3a;
+  --pv-bg:#fcfcfc;
+  --pv-fg:#1a1a1a;           /* 预览字体黑色（浅色模式统一） */
 }
 [data-t="dark"]{
-  --bg:#0f1115;              /* deeper, less visual noise */
-  --srf:#16181d;             /* panel base */
-  --srf2:#1c1f24;            /* raised */
-  --srf3:#22252b;            /* header bar */
-  --brd:#2c2e33;             /* border */
-  --brd2:#3a3c42;            /* stronger border */
-  --tx:#e8e6e1;              /* primary text */
-  --tx2:#9a9792;             /* secondary text */
-  --tx3:#62605d;             /* tertiary */
-  --ac:#c9a55f;              /* warm brass */
-  --ach:#dcb777;             /* accent hover */
-  --acg:rgba(201,165,95,.14);
+  --bg:#0f0f0f;              /* classic neutral dark */
+  --srf:#181818;
+  --srf2:#202020;
+  --srf3:#262626;
+  --brd:#303030;
+  --brd2:#404040;
+  --tx:#ececec;
+  --tx2:#ababab;
+  --tx3:#737373;
+  --ac:#e0e0e0;
+  --ach:#eeeeee;
+  --acg:rgba(255,255,255,.10);
   --ok:#7aae8a;
   --er:#c47772;
   --shadow-sm:0 1px 2px rgba(0,0,0,.4);
   --shadow-md:0 4px 14px rgba(0,0,0,.35);
   --shadow-lg:0 18px 48px rgba(0,0,0,.55);
   --ring:inset 0 1px 0 rgba(255,255,255,.04);
-  --pv-bg:#0f1013;
-  --pv-fg:#a8c8a0;
+  --pv-bg:#121212;
+  --pv-fg:#d9d9d9;
+}
+
+/* ═══ 色系 1：测绘黄铜 ═══ */
+[data-c="brass"],[data-c="brass"][data-t="light"]{
+  --bg:#ece9e2; --srf:#faf8f4; --srf2:#f1ede5; --srf3:#e8e3d8;
+  --brd:#d5cebf; --brd2:#c4bca8;
+  --tx:#2b2a26; --tx2:#5c5748; --tx3:#8f8875;
+  --ac:#9a6f1f; --ach:#7d5a16; --acg:rgba(154,111,31,.10);
+  --pv-bg:#f9faf6; --pv-fg:#1a1a1a;
+}
+[data-c="brass"][data-t="dark"]{
+  --bg:#12110e; --srf:#1b1a16; --srf2:#232119; --srf3:#2a2820;
+  --brd:#3a372c; --brd2:#4a4636;
+  --tx:#e8e4d8; --tx2:#b5ae9a; --tx3:#7d7763;
+  --ac:#c9a55f; --ach:#dcb777; --acg:rgba(201,165,95,.16);
+  --pv-bg:#141612; --pv-fg:#9ecfa8;
+}
+/* ═══ 色系 2：墨绿 ═══ */
+[data-c="green"],[data-c="green"][data-t="light"]{
+  --bg:#e8ece6; --srf:#f8faf6; --srf2:#eff3ec; --srf3:#e5eae1;
+  --brd:#ccd4c4; --brd2:#b8c3ae;
+  --tx:#272b25; --tx2:#565d4f; --tx3:#8a927e;
+  --ac:#2f6b3a; --ach:#3d8249; --acg:rgba(47,107,58,.12);
+  --pv-bg:#f7faf5; --pv-fg:#1a1a1a;
+}
+[data-c="green"][data-t="dark"]{
+  --bg:#0f1210; --srf:#181d17; --srf2:#1f261d; --srf3:#262e23;
+  --brd:#31392c; --brd2:#414c3e;
+  --tx:#e4e9de; --tx2:#adb5a2; --tx3:#757e6a;
+  --ac:#7db88a; --ach:#91c79c; --acg:rgba(125,184,138,.14);
+  --pv-bg:#121711; --pv-fg:#93c69e;
+}
+/* ═══ 色系 3：海蓝 ═══ */
+[data-c="blue"],[data-c="blue"][data-t="light"]{
+  --bg:#e7ebf2; --srf:#f7f9fc; --srf2:#eef2f8; --srf3:#e3e8f1;
+  --brd:#c9d2e0; --brd2:#b3c0d3;
+  --tx:#232a36; --tx2:#4f5b6e; --tx3:#8693a6;
+  --ac:#1e5a8a; --ach:#2a6d9e; --acg:rgba(30,90,138,.11);
+  --pv-bg:#f6f9fc; --pv-fg:#1a1a1a;
+}
+[data-c="blue"][data-t="dark"]{
+  --bg:#0e1117; --srf:#171c25; --srf2:#1e2430; --srf3:#252c3a;
+  --brd:#2d3543; --brd2:#3d4757;
+  --tx:#e5eaf2; --tx2:#a9b3c4; --tx3:#6f7a8c;
+  --ac:#6aa5d8; --ach:#81b6e2; --acg:rgba(106,165,216,.14);
+  --pv-bg:#10151d; --pv-fg:#8fbede;
+}
+/* ═══ 色系 4：青蓝 ═══ */
+[data-c="cyan"],[data-c="cyan"][data-t="light"]{
+  --bg:#e6eef1; --srf:#f6fafb; --srf2:#ecf3f5; --srf3:#e0eaee;
+  --brd:#c4d6dc; --brd2:#adc4cd;
+  --tx:#212c30; --tx2:#4b5d63; --tx3:#8298a0;
+  --ac:#0e7490; --ach:#158aad; --acg:rgba(14,116,144,.11);
+  --pv-bg:#f4fafb; --pv-fg:#1a1a1a;
+}
+[data-c="cyan"][data-t="dark"]{
+  --bg:#0d1316; --srf:#161f23; --srf2:#1d282d; --srf3:#243138;
+  --brd:#2b3a41; --brd2:#3a4c55;
+  --tx:#e2ecf0; --tx2:#a6bcc4; --tx3:#6b828b;
+  --ac:#4fc3dd; --ach:#69cde3; --acg:rgba(79,195,221,.13);
+  --pv-bg:#0f181c; --pv-fg:#7fd0e2;
+}
+/* ═══ 色系 5：绛紫 ═══ */
+[data-c="purple"],[data-c="purple"][data-t="light"]{
+  --bg:#ece9f2; --srf:#f9f8fc; --srf2:#f1eef7; --srf3:#e6e1f0;
+  --brd:#d2cbe2; --brd2:#bfb5d4;
+  --tx:#292536; --tx2:#575068; --tx3:#8b83a0;
+  --ac:#6d28d9; --ach:#7f3ce4; --acg:rgba(109,40,217,.11);
+  --pv-bg:#f8f7fc; --pv-fg:#1a1a1a;
+}
+[data-c="purple"][data-t="dark"]{
+  --bg:#110f16; --srf:#1a1722; --srf2:#221e2c; --srf3:#2a2536;
+  --brd:#342e44; --brd2:#453d59;
+  --tx:#e9e6f0; --tx2:#b0abc2; --tx3:#777089;
+  --ac:#a78bfa; --ach:#b5a0fb; --acg:rgba(167,139,250,.14);
+  --pv-bg:#141120; --pv-fg:#b4a0f2;
+}
+/* ═══ 色系 6：珊瑚橙 ═══ */
+[data-c="orange"],[data-c="orange"][data-t="light"]{
+  --bg:#f2ece6; --srf:#fcf9f6; --srf2:#f6f0ea; --srf3:#ede4dc;
+  --brd:#e0d1c3; --brd2:#d1bda9;
+  --tx:#33291f; --tx2:#665646; --tx3:#a08a74;
+  --ac:#c2410c; --ach:#d4501a; --acg:rgba(194,65,12,.11);
+  --pv-bg:#fdf9f5; --pv-fg:#1a1a1a;
+}
+[data-c="orange"][data-t="dark"]{
+  --bg:#161210; --srf:#211b16; --srf2:#2a221b; --srf3:#322820;
+  --brd:#413529; --brd2:#544434;
+  --tx:#f2e9e1; --tx2:#c3b2a2; --tx3:#8a7a69;
+  --ac:#fb923c; --ach:#fca258; --acg:rgba(251,146,60,.14);
+  --pv-bg:#1a1512; --pv-fg:#f0a163;
+}
+/* ═══ 色系 7：玫红 ═══ */
+[data-c="rose"],[data-c="rose"][data-t="light"]{
+  --bg:#f2e9ec; --srf:#fcf7f9; --srf2:#f6eef1; --srf3:#ede0e5;
+  --brd:#e0ccd3; --brd2:#d1b5bf;
+  --tx:#332529; --tx2:#664c53; --tx3:#a0838c;
+  --ac:#be185d; --ach:#cc2a6d; --acg:rgba(190,24,93,.11);
+  --pv-bg:#fdf6f8; --pv-fg:#1a1a1a;
+}
+[data-c="rose"][data-t="dark"]{
+  --bg:#161013; --srf:#211920; --srf2:#2a2027; --srf3:#322730;
+  --brd:#41303a; --brd2:#543d49;
+  --tx:#f2e6ea; --tx2:#c3aeb6; --tx3:#8a727c;
+  --ac:#f472b6; --ach:#f684c0; --acg:rgba(244,114,182,.14);
+  --pv-bg:#1a1317; --pv-fg:#ef8bbb;
 }
 
 *{margin:0;padding:0;box-sizing:border-box}
@@ -198,6 +305,21 @@ body::before{
 }
 .theme-toggle:hover{color:var(--ac);border-color:var(--ac);background:var(--acg)}
 .theme-toggle:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
+
+/* ─── 主题下拉面板（浅/暗 + 8 色系） ─── */
+.thwrap{position:relative}
+.thmenu{display:none;position:absolute;top:34px;right:0;z-index:60;background:var(--srf);border:1px solid var(--brd2);border-radius:9px;box-shadow:var(--shadow-lg);padding:10px;width:204px}
+.thmenu.on{display:block}
+.thm-row{display:flex;gap:6px;margin-bottom:9px}
+.thopt{flex:1;font-size:11px;padding:5px 0;border:1px solid var(--brd);background:var(--srf2);border-radius:6px;cursor:pointer;color:var(--tx2);font-family:inherit}
+.thopt:hover{border-color:var(--brd2);color:var(--tx)}
+.thopt.on{background:var(--acg);border-color:var(--ac);color:var(--ac);font-weight:600}
+.thm-lb{font-size:9px;color:var(--tx3);margin:2px 0 6px;letter-spacing:1.5px}
+.thm-colors{display:grid;grid-template-columns:1fr 1fr;gap:4px}
+.copt{display:flex;align-items:center;gap:6px;font-size:10.5px;padding:4.5px 7px;border:1px solid transparent;background:none;border-radius:6px;cursor:pointer;color:var(--tx2);font-family:inherit;text-align:left;min-width:0}
+.copt i{width:11px;height:11px;border-radius:50%;flex-shrink:0;box-shadow:inset 0 0 0 1px rgba(0,0,0,.15)}
+.copt:hover{background:var(--srf2)}
+.copt.on{background:var(--acg);border-color:var(--ac);color:var(--tx);font-weight:600}
 .theme-toggle:active{transform:scale(.95)}
 .theme-toggle svg{width:14px;height:14px;transition:transform .35s cubic-bezier(.4,0,.2,1)}
 .theme-toggle .sun,.theme-toggle .moon{position:absolute;transition:opacity .3s, transform .35s}
@@ -457,6 +579,8 @@ body::before{
 .pnl-l{border-right:1px solid var(--brd)}
 .pnl-m{border-right:1px solid var(--brd)}
 /* Compact middle panel — no scroll */
+.pnl-m .mode-s{display:flex;flex-direction:column;min-height:0} /* v3.0：让 .accs 链路获得确定高度，分组卡才能拉伸到栏底 */
+.pnl-m .mode-s .pnl-bd{display:flex;flex-direction:column;min-height:0}
 .pnl-m .pnl-bd{padding:6px 8px}
 .pnl-m .slabel{padding:3px 0 2px;font-size:10.5px}
 .pnl-m .fld{margin-bottom:4px}
@@ -508,6 +632,46 @@ body::before{
 .prec-slider{flex:1;accent-color:var(--ac);height:4px;cursor:pointer}
 .prec-val{min-width:72px;font-size:10px;color:var(--tx);font-variant-numeric:tabular-nums}
 
+/* ─── 手风琴分组卡（v3.0 方案A 折叠收纳式） ─── */
+.accs{display:flex;flex-direction:column;gap:6px;flex:1;height:100%;min-height:0}
+.acc{background:var(--srf);border:1px solid var(--brd);border-radius:8px;overflow:hidden;flex-shrink:0}
+.acc-h{display:flex;align-items:center;gap:7px;padding:7px 10px;cursor:pointer;user-select:none;background:var(--srf2)}
+.acc-h:hover{background:var(--srf3)}
+.acc-h .no{width:16px;height:16px;border-radius:4px;background:var(--acg);color:var(--ac);font-size:9.5px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.acc-h .t{font-size:11.5px;font-weight:600;flex:1}
+.acc-h .n{font-size:9.5px;color:var(--tx3)}
+.acc-h .arw{font-size:9px;color:var(--tx3);transition:transform .18s}
+.acc.open .acc-h .arw{transform:rotate(90deg)}
+.acc-h .accsw{font-size:10px;gap:3px;margin-left:6px;color:var(--tx2);flex-shrink:0;cursor:pointer}
+.acc-h .accsw input{width:12px;height:12px;accent-color:var(--ac);cursor:pointer}
+.acc-b{display:none;padding:8px 10px 10px;border-top:1px solid var(--brd)}
+.acc.open .acc-b{display:flex;flex-direction:column}
+/* 各栏分组卡平分/拉伸：三栏最下面的要素底边齐平（内容超高时卡内滚动） */
+.accs > .acc{flex:1;display:flex;flex-direction:column;min-height:0}
+.accs > .acc.open .acc-b{display:flex}
+.accs > .acc .acc-b{flex:1;min-height:0;flex-direction:column;overflow-y:auto}
+/* 中栏：③④自然高度，⑤自定义表头拿剩余空间（7 行表头完整显示，不再被平分压缩） */
+.pnl-m .accs > .acc{flex:0 0 auto}
+.pnl-m .accs > .acc:last-child{flex:1}
+.accs > .acc .acc-b > .drop,.accs > .acc .acc-b > .div,.accs > .acc .acc-b > .slabel,.accs > .acc .acc-b > .fld,.accs > .acc .acc-b > .mode-group,.accs > .acc .acc-b > .ck-grid,.accs > .acc .acc-b > .oc-row,.accs > .acc .acc-b > .hdr-tabs,.accs > .acc .acc-b > .hdr-panel,.accs > .acc .acc-b > .file-list{flex-shrink:0}
+.accs > .acc .acc-b > .file-list{flex:1;min-height:60px;overflow-y:auto}
+
+/* ─── 字段映射高级模式动态行（复用 attr-row 行式布局） ─── */
+.adv-toolbar{display:flex;align-items:center;gap:4px;margin-bottom:5px}
+.presetsel{font-size:10px;padding:2.5px 4px;border:1px solid var(--brd);border-radius:4px;background:var(--srf2);color:var(--tx2);outline:none;font-family:inherit;flex:1.2;min-width:0;cursor:pointer}
+.presetsel:focus-visible{border-color:var(--ac)}
+.presetsel option[value="custom"]{color:var(--tx3);font-style:italic}
+#fieldRows{max-height:220px;overflow-y:auto;padding-right:3px}
+#fieldRows::-webkit-scrollbar{width:6px}
+#fieldRows::-webkit-scrollbar-thumb{background:var(--brd);border-radius:3px}
+#fieldRows::-webkit-scrollbar-thumb:hover{background:var(--tx3)}
+.field-row .fk{width:118px;flex-shrink:0}
+.field-row .feq{font-size:10px;color:var(--tx3);flex-shrink:0}
+.field-row .fmap{flex:1;min-width:0}
+.field-row select.fk,.field-row select.fmap{padding:3px 5px;font-size:10px;border:1px solid var(--brd);border-radius:3px;background:var(--srf2);color:var(--tx);outline:none;font-family:inherit;min-width:0}
+.field-row select.fk:focus-visible,.field-row select.fmap:focus-visible{border-color:var(--ac);box-shadow:0 0 0 2px var(--acg)}
+.field-row select:disabled{opacity:.55;cursor:not-allowed}
+
 .pnl.hide{width:0!important;min-width:0;border:none;opacity:0}
 
 .pnl-h{
@@ -547,6 +711,10 @@ body::before{
   transition:all .22s cubic-bezier(.4,0,.2,1);position:relative;overflow:hidden;
   box-shadow:var(--shadow-sm), 0 1px 0 rgba(255,255,255,.2) inset;
 }
+/* 经典黑白：按钮底为纯黑/近白强调色 → 文字对比修正（浅色黑底白字 / 暗色亮底深字） */
+[data-c="normal"][data-t="light"] .btn-run{color:#fff}
+[data-c="normal"][data-t="light"] .drop:hover .drop-ic{color:#fff}
+[data-c="normal"][data-t="dark"] .btn-run{color:#16181d}
 .btn-run::after{
   content:'';position:absolute;inset:0;
   background:linear-gradient(180deg, rgba(255,255,255,.18), transparent 50%);
@@ -844,7 +1012,8 @@ body::before{
         <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
       </svg>
     </button>
-    <button class="theme-toggle" id="btnTheme" title="切换主题" aria-label="切换主题">
+    <div class="thwrap">
+    <button class="theme-toggle" id="btnTheme" title="主题与色系" aria-label="主题与色系">
       <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>
       </svg>
@@ -852,6 +1021,24 @@ body::before{
         <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
       </svg>
     </button>
+    <div class="thmenu" id="thMenu">
+      <div class="thm-row">
+        <button class="thopt on" data-t="light" type="button">☀ 浅色</button>
+        <button class="thopt" data-t="dark" type="button">☾ 暗色</button>
+      </div>
+      <div class="thm-lb">色系 / COLOR</div>
+      <div class="thm-colors">
+        <button class="copt on" data-c="normal" type="button"><i style="background:#1a1a1a"></i>经典黑白</button>
+        <button class="copt" data-c="brass" type="button"><i style="background:#9a6f1f"></i>测绘黄铜</button>
+        <button class="copt" data-c="green" type="button"><i style="background:#2f6b3a"></i>墨绿</button>
+        <button class="copt" data-c="blue" type="button"><i style="background:#1e5a8a"></i>海蓝</button>
+        <button class="copt" data-c="cyan" type="button"><i style="background:#0e7490"></i>青蓝</button>
+        <button class="copt" data-c="purple" type="button"><i style="background:#6d28d9"></i>绛紫</button>
+        <button class="copt" data-c="orange" type="button"><i style="background:#c2410c"></i>珊瑚橙</button>
+        <button class="copt" data-c="rose" type="button"><i style="background:#be185d"></i>玫红</button>
+      </div>
+    </div>
+    </div>
     <button class="tbar-btn" id="btnAbout" title="关于" aria-label="关于">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>
@@ -896,11 +1083,15 @@ body::before{
     <div class="pnl pnl-l">
       <!-- 面→TXT mode -->
       <div class="mode-s pnl-bd">
+        <div class="accs">
+        <div class="acc open">
+          <div class="acc-h" onclick="togAcc(this)"><span class="no">1</span><span class="t">导入数据</span><span class="n" id="impTag">未导入</span><span class="arw">▶</span></div>
+          <div class="acc-b">
         <div class="drop" id="dropZone">
           <div class="drop-ic">＋</div>
           <div class="drop-tx">选择 .shp 文件（可多选）</div>
         </div>
-        <div style="margin-top:4px;display:flex;gap:4px">
+        <div style="margin-top:4px;display:flex;gap:4px;flex-shrink:0">
           <div class="drop" id="dropGdb" style="flex:1;padding:6px 8px">
             <div style="display:flex;align-items:center;justify-content:center;gap:6px;font-size:11px;color:var(--tx3)">
               <span style="font-size:13px;font-weight:300">📁</span> 导入 .gdb 文件夹
@@ -908,32 +1099,53 @@ body::before{
           </div>
         </div>
         <div class="file-list" id="fl"></div>
-        <div style="text-align:right;margin-top:2px"><button class="btn" id="btnClearS">清空全部</button></div>
-        <div class="div"></div>
-        <div class="card">
-          <div class="card-label">字段映射</div>
+        <div style="text-align:right;margin-top:2px;flex-shrink:0"><button class="btn" id="btnClearS">清空全部</button></div>
+          </div>
+        </div>
+        <div class="acc open">
+          <div class="acc-h" onclick="togAcc(this)"><span class="no">2</span><span class="t">字段映射</span><span class="n" id="fmTag">简单模式</span><label class="accsw" onclick="event.stopPropagation()"><input type="checkbox" id="advMode">高级</label><span class="arw">▶</span></div>
           <div class="card-b">
-            <div class="fgrid">
+            <div class="fgrid" id="fieldSimple">
               <div class="fcell"><label>地块名称</label><select id="fn"><option value="">不填</option><option value="__placeholder__" selected>DKMC (占位)</option></select></div>
               <div class="fcell"><label>地块编号</label><select id="fi"><option value="">不填</option><option value="__placeholder__" selected>DKBH (占位)</option></select></div>
               <div class="fcell"><label>面积</label><select id="fa"><option value="">不填</option><option value="__placeholder__" selected>MJ (占位)</option><option value="__area_sqm__">平方米(自动)</option><option value="__area_ha__">公顷(自动)</option></select></div>
               <div class="fcell"><label>用途</label><select id="fu"><option value="">不填</option><option value="__placeholder__" selected>DKYT (占位)</option></select></div>
               <div class="fcell"><label>图幅号</label><select id="fm"><option value="">不填</option><option value="__placeholder__" selected>TFH (占位)</option></select></div>
               <div class="fcell"><label>地类</label><select id="fd"><option value="">不填</option><option value="__placeholder__" selected>DLBM (占位)</option></select></div>
-              <div class="fcell-full"><label>输出目录</label><div style="display:flex;gap:4px"><input type="text" id="out_dir_s" readonly placeholder="选择输出文件夹…" style="flex:1" class="fci"><button class="btn fci" id="btnBrowseS">浏览</button></div></div>
+            </div>
+            <div id="fieldAdv" style="display:none">
+              <div class="adv-toolbar">
+                <button class="btn attr-add" id="btnAddField" style="font-size:9.5px;padding:2px 8px">+ 添加字段</button>
+                <select class="presetsel" id="bcgSel" title="预设字段模板；手动修改任何行后自动变为「自定义」">
+                  <option value="std">8 字段标准</option>
+                  <option value="bcg">补充耕地模式</option>
+                  <option value="custom">自定义</option>
+                </select>
+                <button class="btn" id="btnResetFields" style="font-size:9.5px;padding:2px 8px">恢复默认</button>
+              </div>
+              <div id="fieldRows"></div>
             </div>
           </div>
+        </div>
         </div>
       </div>
       <!-- TXT→面 mode -->
       <div class="mode-t pnl-bd">
+        <div class="accs">
+        <div class="acc open">
+          <div class="acc-h" onclick="togAcc(this)"><span class="no">1</span><span class="t">导入 TXT</span><span class="n" id="impTTag">未导入</span><span class="arw">▶</span></div>
+          <div class="acc-b">
         <div class="drop" id="dropZoneTxt">
           <div class="drop-ic">＋</div>
           <div class="drop-tx">导入 TXT 文件（可多选）</div>
         </div>
         <div class="file-list" id="flT"></div>
-        <div style="text-align:right;margin-top:2px"><button class="btn" id="btnClearT">清空全部</button></div>
-        <div class="div"></div>
+        <div style="text-align:right;margin-top:2px;flex-shrink:0"><button class="btn" id="btnClearT">清空全部</button></div>
+          </div>
+        </div>
+        <div class="acc open">
+          <div class="acc-h" onclick="togAcc(this)"><span class="no">2</span><span class="t">输出设置</span><span class="n">一对一</span><span class="arw">▶</span></div>
+          <div class="acc-b">
         <div class="slabel">输出模式</div>
         <div class="mode-group" style="display:flex;flex-direction:column;gap:4px;margin-bottom:4px">
           <label class="ck"><input type="radio" name="t_output_mode" value="one_to_one" checked>一对一（每个 TXT 单独输出）</label>
@@ -960,15 +1172,20 @@ body::before{
             <button class="btn" id="out_btn" style="white-space:nowrap">浏览…</button>
           </div>
         </div>
+          </div>
+        </div>
+        </div>
       </div>
     </div>
 
     <!-- Middle -->
     <div class="pnl pnl-m">
       <!-- 面→TXT mode -->
-      <div class="mode-s">
-      <div class="pnl-h"><span class="pnl-label">参数设置</span></div>
-      <div class="pnl-bd">
+      <div class="mode-s pnl-bd">
+        <div class="accs">
+        <div class="acc open">
+          <div class="acc-h" onclick="togAcc(this)"><span class="no">3</span><span class="t">输出与选项</span><span class="n">一对一</span><span class="arw">▶</span></div>
+          <div class="acc-b">
         <div class="slabel">输出模式</div>
         <div class="mode-group" style="display:flex;flex-direction:column;gap:4px;margin-bottom:4px">
           <label class="ck"><input type="radio" name="output_mode" value="one_to_one" checked>一对一（每个导入文件单独输出）</label>
@@ -999,16 +1216,29 @@ body::before{
             <option value="1">续编</option>
           </select>
         </div>
+        <div class="fld">
+          <label>输出目录</label>
+          <div style="display:flex;gap:4px">
+            <input type="text" id="out_dir_s" readonly placeholder="选择输出文件夹…" style="flex:1;min-width:0" class="fci">
+            <button class="btn fci" id="btnBrowseS" style="white-space:nowrap">浏览</button>
+          </div>
+        </div>
+          </div>
+        </div>
+        <div class="acc open">
+          <div class="acc-h" onclick="togAcc(this)"><span class="no">4</span><span class="t">动态投影</span><span class="n" id="projTag">关闭</span><span class="arw">▶</span></div>
+          <div class="acc-b">
         <div class="oc-row">
           <div class="proj-switch" id="projSwitch">
             <button class="proj-switch-toggle" id="projSwitchToggle" type="button" aria-label="开关动态投影" disabled><span class="proj-switch-track"><span class="proj-switch-thumb"></span></span></button>
             <button class="proj-switch-label" id="projSwitchLabel" type="button" disabled>动态投影</button>
           </div>
         </div>
-
-        <div class="div"></div>
-
-        <div class="slabel">自定义表头</div>
+          </div>
+        </div>
+        <div class="acc open">
+          <div class="acc-h" onclick="togAcc(this)"><span class="no">5</span><span class="t">自定义表头</span><span class="n" id="hdrTag">7 行</span><span class="arw">▶</span></div>
+          <div class="acc-b">
         <div class="hdr-tabs">
           <div class="hdr-tab on" id="hdrTabAttr" data-tab="attr">属性描述</div>
           <div class="hdr-tab" id="hdrTabProj" data-tab="proj">项目信息</div>
@@ -1026,7 +1256,9 @@ body::before{
           <div style="display:flex;justify-content:flex-end;margin-bottom:3px"><button class="btn" id="btnPrefill" style="font-size:9.5px;padding:2px 8px">预填写</button></div>
           <textarea class="hdr-textarea" id="hpi"></textarea>
         </div>
-      </div>
+          </div>
+        </div>
+        </div>
       </div>
     </div>
 

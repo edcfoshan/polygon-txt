@@ -7,7 +7,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **极思G界址点互转工具** — 测绘与国土行业 GIS 桌面工具，实现面要素（SHP/GDB）与标准界址点 TXT 文件的双向转换。Tauri v2 桌面应用（Rust 后端 + Vite/HTML 前端）。
 
 - 仓库：https://github.com/edcfoshan/polygon-txt
-- 窗口：默认 1100×720px（`minWidth:800/minHeight:540`，可自由拉伸/最大化），无边框（`decorations: false`），自定义标题栏
+- 窗口：默认 1100×800px（`minWidth:800/minHeight:540`，可自由拉伸/最大化），无边框（`decorations: false`），自定义标题栏
+- **窗口记忆（v3.0）**：前端 `main.js` 实现（`onResized`/`onMoved` → quickSave/fullSave → localStorage，恢复时 clamp 屏内防跑出屏幕；最大化不记），非 Rust 侧、非 window-state 插件
 - **v3.0 UI（方案A 折叠收纳式）**：三栏比例 1:1:1.3。左栏 = ①导入数据 + ②字段映射（高级开关在分组标题行）；中栏 = ③输出与选项（含输出目录）+ ④动态投影 + ⑤自定义表头；右栏预览。TXT→面 为 ①导入 TXT + ②输出设置。分组为手风琴卡（`togAcc`，默认全开），`.accs > .acc` 拉伸保证三栏底边齐平、超高卡内滚动。UI 原型在 docs/mockups/
 - **主题系统**：标题栏主题按钮为下拉面板（`#thMenu`），浅色/暗色（`html[data-t]`）× 8 色系（`html[data-c]`：normal 经典黑白默认/brass/green/blue/cyan/purple/orange/rose）独立组合；色系换全套配色（CSS 变量）；浅色模式预览字体统一黑色；持久化 `tg_theme` + `tg_color`
 - 显示比例：RATIO_PRESETS 四档（三栏等宽/默认 1:1:1.3/宽预览/宽输入），存 `tg_ratio`
@@ -25,7 +26,9 @@ cargo build --release                # 仅 Rust 编译（不会嵌入前端）
 cargo test                           # 全部测试
 cargo test --test integration_test   # 集成测试（SHP/DBF/PRJ/TXT/GDB 往返 + 三模式输出）
 cargo test --test dynamic_projection_test          # 投影函数单元测试（GK 往返、reband、zone 推断）
-cargo test --test dynamic_projection_pipeline_test # 动态投影管线测试（keep/A/B/C/F/G + header 同步 + 预览一致性）
+cargo test --test dynamic_projection_pipeline_test # 动态投影管线测试（keep/A/B/C/F/G/H + header 同步 + 预览一致性）
+cargo test --test advanced_fields_test # 高级字段模式（模板解析/无列表行输出/往返/TXT→SHP FIELDn）
+cargo test --test realdata_attr_test  # 真实业务数据属性回归
 cargo test --test debug_output_test  # 调试用：从 TXT 生成 SHP/GDB 输出验证
 cargo run --bin diag_read_gdb -- [gdb路径]  # 诊断：打印 GDB 图层/首尾坐标点，对照 arcpy（不传参走默认路径）
 ```
@@ -53,13 +56,14 @@ index.html (CSS 内联, Google Fonts CDN)
 - Markdown 弹窗：`content/about.md` 和 `content/sponsor.md` 通过 `?raw` 导入，`renderMarkdown()` 渲染
 - 双模式：`data-mode="s"`（面→TXT，3 列 260+260+360）/ `data-mode="t"`（TXT→面，2 列 300+flex）
 - 预设配置 `PP` 数组包含三种模式（基础地块/规划审批/自定义），字段自动匹配规则在 `FIELD_MATCH_RULES`
-- **动态投影弹窗**（`#projModal`）：推荐区（顶部，基于经纬度范围智能推荐分带/带号/CM）+ 导入识别网格 + 目标形式下拉（`#projFormSelect`：3°带/6°带/转为大地坐标）+ 含带号开关（`#projPrefixToggle`，智能默认跟随导入数据 X 量级 >1e6 则开）+ 带号输入（`#projZoneInput`）↔ 中央经线输入（`#projCMInput`，双向联动，CM 立即规整到最近标称值）。三个维度（分带/含带号/转大地）解耦为独立控件——「不含带号」只控制 X 坐标前缀，不再禁用带号输入。输入是大地时「转为大地坐标」选项禁选；选中「转为大地坐标」时含带号开关+带号/CM 输入置灰。模式推断函数 `inferProjMode(inputIsDegree, inputBand, targetVal)`。模式自动推断表：
+- **动态投影弹窗**（`#projModal`）：推荐区（顶部，基于经纬度范围智能推荐分带/带号/CM）+ 导入识别网格 + 目标形式下拉（`#projFormSelect`：3°带/6°带/转为大地坐标）+ 含带号开关（`#projPrefixToggle`，智能默认跟随导入数据 X 量级 >1e6 则开）+ 带号输入（`#projZoneInput`）↔ 中央经线输入（`#projCMInput`，双向联动，CM 立即规整到最近标称值）。三个维度（分带/含带号/转大地）解耦为独立控件——「不含带号」只控制 X 坐标前缀，不再禁用带号输入。输入是大地时「转为大地坐标」选项禁选；选中「转为大地坐标」时含带号开关+带号/CM 输入置灰。模式推断函数 `inferProjMode(inputIsDegree, inputBand, targetVal, srcZone, dstZone)`。模式自动推断表：
 
 | 输入形式 | 目标分带 | mode |
 |---------|---------|------|
 | 大地(度) | 3° | A（大地→投影 3°） |
 | 大地(度) | 6° | B（大地→投影 6°） |
-| 投影(米) 同带 | — | C（同带前缀调整） |
+| 投影(米) 同带同带号 | — | C（同带前缀调整） |
+| 投影(米) 同带不同带号 | 同带 | H（同分带换带，如 38→39） |
 | 投影(米) 源3°→6° | 6° | F（换带 3°→6°） |
 | 投影(米) 源6°→3° | 3° | G（换带 6°→3°） |
 | 任意 | 转为大地坐标 | D（投影→大地，逆投影） |
@@ -84,7 +88,7 @@ index.html (CSS 内联, Google Fonts CDN)
 ### 转换选项（面→TXT，`ShpToTxtOptions` in convert.rs）
 - `ox` XY 坐标标反 / `oj` 点号前加"J" / `on` 起始点西北角 / `oo` 首末点重合 / `oc` 闭合点编号模式
 - `og` 输出公里网：仅当输入为大地坐标系（度）时可用。与动态投影互斥（`proj_mode ≠ "keep"` 时前端强制 og=false 并置灰）
-- `proj_mode` 动态投影模式：`"keep"`（不转换）/ `"A"`（大地→3°投影）/ `"B"`（大地→6°投影）/ `"C"`（同带前缀调整，仅加减 zone×1,000,000 不做实际投影）/ `"D"`（投影→大地，逆投影）/ `"F"`（3°→6°换带）/ `"G"`（6°→3°换带）
+- `proj_mode` 动态投影模式：`"keep"`（不转换）/ `"A"`（大地→3°投影）/ `"B"`（大地→6°投影）/ `"C"`（同带前缀调整，仅加减 zone×1,000,000 不做实际投影）/ `"D"`（投影→大地，逆投影）/ `"F"`（3°→6°换带）/ `"G"`（6°→3°换带）/ `"H"`（同分带不同带号换带，如 3°带 38→39，目标分带沿用源分带）
 - `proj_zone`: 用户填的带号（null=自动推算），`proj_no_prefix`: 不含带号前缀（自然值）
 - `output_mode`（一对一/按地块拆分/全合并）、`filename_field`（拆分模式文件名字段）
 - 前端 `getOptions()` 收集 → `applyProjMode()` 写入全局变量 → `updatePreview()`/`runShpToTxt()` 发送 IPC
@@ -114,7 +118,7 @@ index.html (CSS 内联, Google Fonts CDN)
 │   └─ main.js
 ├─ src-tauri/              ← Rust 后端
 │   ├─ src/                ←   lib/geometry/shp/txt/gdb/convert
-│   ├─ tests/              ←   integration_test / debug_output_test
+│   ├─ tests/              ←   integration / dynamic_projection(_pipeline) / advanced_fields / realdata_attr / debug_output
 │   ├─ templates/          ←   GDB 写入模板二进制
 │   └─ capabilities/       ←   Tauri 权限声明
 │
@@ -122,13 +126,13 @@ index.html (CSS 内联, Google Fonts CDN)
 ├─ latest.json             ← 自动更新清单（jsDelivr 端点从仓库根取此文件，发版时生成更新）
 ├─ .cargo/config.toml      ← 国内 crates 镜像（rsproxy）
 ├─ .claude/skills/         ← Claude skills（release：发版流程）
-├─ docs/                   ← 设计文档 + screenshots/
-├─ versions/               ← 历史 UI 原型 (v7/v8/v9) + mockups
-├─ _archive/               ← 逆向工程资料（tbx 解码、分析脚本）
+├─ docs/                   ← 设计文档 + screenshots/ + RELEASE.md（发版流程）
 │
 ├─ test_arcpy/             ← 测试数据：ArcPy 生成的标准 SHP/TXT/GDB
 ├─ test_data/              ← 测试数据：政府格式 SHP + TXT
-└─ 00测试数据/              ← 测试数据：实际业务 TXT + 转换产物
+├─ 00测试数据/              ← 测试数据：实际业务 TXT + 转换产物
+├─ 软件著作权申请资料/       ← 软著申请材料（未入库）
+└─ 其他相关tbx放进去release/ ← 发版产物（便携版 + NSIS，未入库）
 ```
 
 图片资源放在 `content/` 中，`about.md`/`sponsor.md` 以 `content/xxx` 相对路径引用，由 `renderMarkdown()` 渲染为 `<img>` 标签，浏览器从页面根（dist/）发起请求。
@@ -251,6 +255,6 @@ SHP 存储 (X, Y) = (东坐标, 北坐标)。TXT 存储 (Y, X) = (北坐标, 东
 `@tauri-apps/api ^2`、`@tauri-apps/plugin-dialog ^2`、`@tauri-apps/plugin-shell ^2`、`@tauri-apps/plugin-updater ^2`、`@tauri-apps/plugin-process ^2`、`vite ^6`、`vite-plugin-singlefile ^2`、`@tauri-apps/cli ^2`
 
 ### Rust（Cargo.toml）
-`tauri 2`、`tauri-plugin-dialog/fs/shell/updater/process 2`、`shapefile 0.8`、`dbase 0.3`、`geonative-core/filegdb/shapefile 0.2`、`chrono 0.4`、`encoding_rs 0.8`、`geo-types 0.7`、`serde 1`、`serde_json 1`、`tempfile 3`
+`tauri 2`、`tauri-plugin-dialog/fs/shell/updater/process 2`、`shapefile 0.8`、`dbase 0.3`、`geonative-core/filegdb/shapefile 0.2`、`proj-core 0.9`（高斯-克吕格投影）、`chrono 0.4`、`encoding_rs 0.8`、`geo-types 0.7`、`serde 1`、`serde_json 1`、`tempfile 3`
 
 **GPKG 已移除**（v1.1+）：读取仅 SHP/GDB，输出仅 SHP。`gpkg.rs`/`smoke.rs`/`rusqlite` 依赖已删除。

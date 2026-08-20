@@ -1,13 +1,13 @@
 {
   "$schema": "https://raw.githubusercontent.com/nicedoc/open/master/tauri.conf.schema.json",
   "productName": "极思G界址点互转工具",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "identifier": "com.jisig.bpoint-converter",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
     "beforeDevCommand": "npm run dev",
-    "beforeBuildCommand": "npm run build"
+    "beforeBuildCommand": ""
   },
   "app": {
     "windows": [
@@ -23,7 +23,8 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: asset:; connect-src 'self' https://api.github.com https://github.com https://*.githubusercontent.com"
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: asset:; connect-src 'self' https://api.github.com https://github.com https://*.githubusercontent.com",
+      "dangerousDisableAssetCspModification": true
     }
   },
   "plugins": {
@@ -34,7 +35,7 @@
         "https://cdn.jsdelivr.net/gh/edcfoshan/polygon-txt@master/latest.json",
         "https://github.com/edcfoshan/polygon-txt/releases/latest/download/latest.json"
       ],
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEEwMjYzRkZGQzk3RkI1RjAKUldUd3RYL0ovejhtb05aR2YxeFIrNHNTZDNMdlE0Q01kY2dxMXUvaktBdnlka0VhV2dyTkV2YWUK"
+      "pubkey": "dW50cnVzdGVkIGNvbWU6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEEwMjYzRkZGQzk3RkI1RjAKUldUd3RYL0ovejhtb05aR2YxeFIrNHNTZDNMdlE0Q01kY2dxMXUvaktBdnlka0VhV2dyTkV2YWUK"
     }
   },
   "bundle": {

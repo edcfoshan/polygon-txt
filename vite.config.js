@@ -9,17 +9,15 @@ function modalConfigPlugin() {
   return {
     name: "modal-config",
     transformIndexHtml(html) {
-      let cfg = { about: {}, sponsor: {} };
+      let cfg = { about: {} };
       try {
         cfg = JSON.parse(fs.readFileSync(configPath, "utf-8"));
       } catch { /* use defaults */ }
       const a = cfg.about || {};
-      const s = cfg.sponsor || {};
       const vars = `
 /* ─── modal-config.json injected ─── */
 :root{
 --m-a-w:${a.cardWidth || "420px"};--m-a-p:${a.padding || "24px 28px 20px"};--m-a-ts:${a.titleFontSize || "13px"};--m-a-bs:${a.bodyFontSize || "12px"};--m-a-im:${a.imageMaxHeight || "200px"};
---m-s-w:${s.cardWidth || "300px"};--m-s-p:${s.padding || "24px 28px 20px"};--m-s-ts:${s.titleFontSize || "13px"};--m-s-bs:${s.bodyFontSize || "12px"};--m-s-im:${s.imageMaxHeight || "200px"};
 }
 `;
       return html.replace("</style>", vars + "\n</style>");
@@ -34,6 +32,10 @@ function modalConfigPlugin() {
 }
 
 export default defineConfig({
+  define: {
+    // 构建时间戳：注入 about 弹窗，排查「跑的是哪个构建」的版本错位问题
+    __BUILD_TS__: JSON.stringify(new Date().toLocaleString("sv-SE", { hour12: false }).replace("T", " ")),
+  },
   clearScreen: false,
   server: {
     port: 1420,

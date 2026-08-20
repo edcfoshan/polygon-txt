@@ -181,7 +181,8 @@ fn test_generate_advanced_meta_no_list_line() {
             coords: vec![(4354939.292, 39436937.125), (4354937.927, 39436938.233), (4354939.292, 39436937.125)],
         }],
         fields: vec![
-            ("坐标点个数".to_string(), "0".to_string()), // 占位，应被重算为 3
+            // resolve 管线的占位哨兵，generate 按 value 替换为实际点数（与字段名无关）
+            ("坐标点个数".to_string(), convert::COUNT_SENTINEL.to_string()),
             ("图斑面积".to_string(), "0.2464".to_string()),
             ("备注".to_string(), String::new()),
         ],
@@ -308,6 +309,61 @@ fn test_shp_to_txt_advanced_pipeline() {
     }
 
     // 预览一致性：同一参数走 preview，内容应与导出一致（小文件不受 2000 行截断）
+    let preview = convert::shp_to_txt_preview(
+        &[shp_path], None, None, &header, &field_mapping, &options, None,
+    ).expect("预览失败");
+    assert_eq!(preview, exported.trim_end(), "预览与导出应逐字一致");
+}
+
+// ─── 5b. 自定义字段名：__count__/__geom__ 改名后能力保留，自定义名取源字段值 ───
+
+#[test]
+fn test_custom_field_names_and_renamed_count() {
+    let shp_path = test_shp_stem();
+    let header = make_header();
+    // 锁定列改名（「坐标点个数」→「点数」、「图形属性」→「形状」）+ 自定义名列 + 标准名面积
+    let columns: Vec<convert::FieldColumn> = [
+        ("点数", "__count__"),
+        ("权利人", "DKMC"),
+        ("形状", "__geom__"),
+        ("自定义空列", ""),
+        ("地块面积", "__area_ha__"),
+    ]
+    .iter()
+    .map(|(n, s)| convert::FieldColumn { name: n.to_string(), source: s.to_string() })
+    .collect();
+    let field_mapping = convert::FieldMapping {
+        name: "DKMC".into(), id: "DKBH".into(), area: "MJ".into(),
+        use_field: "DKYT".into(), tfh: "TFH".into(), dlbm: "DLBM".into(),
+        columns,
+    };
+    let options = adv_options();
+
+    let out_dir = tempfile::tempdir().expect("temp dir");
+    let result = convert::convert_shp_to_txt(
+        &[shp_path.clone()], None, None, &header, &field_mapping, &options,
+        out_dir.path(), None,
+    ).expect("自定义名转换失败");
+    assert!(result.success, "{}", result.message);
+    let exported = std::fs::read_to_string(out_dir.path().join("plot_000.txt")).expect("读输出");
+    assert!(!exported.contains('\u{E000}'), "哨兵不得泄露到导出 TXT:\n{}", exported);
+
+    let meta = exported.lines().find(|l| l.ends_with(",@") && !l.starts_with('【'))
+        .expect("元数据行");
+    let parts: Vec<&str> = meta.strip_suffix(",@").unwrap().split(',').collect();
+    assert_eq!(parts.len(), 5, "元数据行应 5 列: {}", meta);
+
+    // 改名后的 __count__ 列 = 真实点数（与坐标行数一致，含 oo 闭合补点），不再是占位
+    let count: usize = parts[0].parse().expect("改名点数列应为数值");
+    let j_lines = exported.lines().filter(|l| l.starts_with('J')).count();
+    assert_eq!(count, j_lines, "改名点数列({})应等于坐标行数({})", count, j_lines);
+
+    assert_eq!(parts[1], "DKMC", "自定义名「权利人」应取源字段值");
+    assert_eq!(parts[2], "面", "改名 __geom__ 列应仍输出「面」");
+    assert_eq!(parts[3], "", "自定义名空源应为空值列");
+    assert!(parts[4].parse::<f64>().is_ok(), "面积列应为数值: {}", parts[4]);
+
+    // 预览一致性
     let preview = convert::shp_to_txt_preview(
         &[shp_path], None, None, &header, &field_mapping, &options, None,
     ).expect("预览失败");

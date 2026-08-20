@@ -330,12 +330,12 @@ pub fn generate_txt(
         };
         let point_count: usize = plot_rings.iter().map(|ring| ring.coords.len()).sum();
         let meta = if !plot.fields.is_empty() {
-            // 高级格式：按列顺序输出；「坐标点个数」列强制用本块实际点数（resolve 阶段是占位值）
+            // 高级格式：按列顺序输出；__count__ 列（value==哨兵，与字段名无关）强制用本块实际点数
             let vals: Vec<String> = plot
                 .fields
                 .iter()
-                .map(|(n, v)| {
-                    if n == "坐标点个数" {
+                .map(|(_, v)| {
+                    if v == crate::convert::COUNT_SENTINEL {
                         point_count.to_string()
                     } else {
                         v.clone()

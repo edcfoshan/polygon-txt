@@ -29,12 +29,16 @@ pub struct FieldMapping {
 /// 高级字段模式的一个输出字段列
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FieldColumn {
-    /// 输出字段名（限 14 项固定清单，如「图斑编号」「补充耕地实施年份」）
+    /// 输出字段名（14 项固定清单内或用户自定义，如「图斑编号」「权利人」）
     pub name: String,
     /// 映射源："" 不填 | "__placeholder__" 占位 | "__area_sqm__"/"__area_ha__" 面积自动
     /// | "__count__" 坐标点个数(锁定) | "__geom__" 图形属性(固定"面") | 源字段名
     pub source: String,
 }
+
+/// `__count__` 列在 resolve 阶段的占位哨兵：generate_txt 按 value==哨兵替换为真实点数。
+/// 私用区字符，真实数据不可能出现——点数重算与字段名解耦（改名后仍正确）。
+pub const COUNT_SENTINEL: &str = "\u{E000}CNT";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AttrRow {
@@ -1714,7 +1718,7 @@ fn resolve_columns(
             let val = match col.source.as_str() {
                 "" => String::new(),
                 "__placeholder__" => adv_placeholder(&col.name).to_string(),
-                "__count__" => "0".to_string(),
+                "__count__" => COUNT_SENTINEL.to_string(),
                 "__geom__" => "面".to_string(),
                 "__area_sqm__" => format!("{:.2}", calculate_area_from_surface(surface)),
                 "__area_ha__" => format!("{:.4}", calculate_area_from_surface(surface) / 10000.0),
@@ -1737,7 +1741,7 @@ fn resolve_columns_map(
             let val = match col.source.as_str() {
                 "" => String::new(),
                 "__placeholder__" => adv_placeholder(&col.name).to_string(),
-                "__count__" => "0".to_string(),
+                "__count__" => COUNT_SENTINEL.to_string(),
                 "__geom__" => "面".to_string(),
                 "__area_sqm__" => format!("{:.2}", calculate_area_from_surface(surface)),
                 "__area_ha__" => format!("{:.4}", calculate_area_from_surface(surface) / 10000.0),

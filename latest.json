@@ -1,11 +1,11 @@
 {
-  "version": "3.0.0",
-  "notes": "UI 全面重构：折叠收纳式布局（三栏 1:1:1.3 + 编号分组卡）、主题下拉（浅/暗 × 8 色系 16 种组合，经典黑白默认）、字段映射预设下拉（8字段标准/补充耕地/自定义）、窗口长宽+位置记忆；修复黑白主题按钮文字对比度",
-  "pub_date": "2026-08-19T04:18:05.201Z",
+  "version": "3.1.0",
+  "notes": "字段映射高级模式增强：字段名可编辑（支持自定义字段）、锁定能力与字段名解耦（改名后点数统计仍生效）、用户字段方案保存/载入/删除；新增设置面板（主题/色系/显示比例/三区字号缩放统一收纳，标题栏一键明暗切换）；赞赏与关于弹窗合并",
+  "pub_date": "2026-08-20T06:07:09.255Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUd3RYL0ovejhtb0tmK2J3M1o5RUl4UmJvNlBGL2w4VlZYTTI0ZE5lV3cybE0vUWtYNlRna1VNTmxiaFRIaEVjTG9NL3lRQmhGcUxHeTlrZzdFWE8wdndlbnlQT0Q2cVE4PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg3MTEzMDc0CWZpbGU65p6B5oCdR+eVjOWdgOeCueS6kui9rOW3peWFt18zLjAuMF94NjQtc2V0dXAuZXhlCmZ4d1BPZXpWem1rT0JuN0NIU1RxemUvb1NqdVl5RUhZeG00c05teERQa0wrbWVBbmFkK2hHd0w2OVQ0dW4zVlVxS3VuQ05ZbVloUFBTTW14VGZON0N3PT0K",
-      "url": "https://github.com/edcfoshan/polygon-txt/releases/download/v3.0.0/polygon-txt_3.0_x64-setup.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUd3RYL0ovejhtb0gxbE1pRTd5TVFvTzdyT1hQd082NXJoMTVsYVBTcHJ1ZzlKWkZucC8yZVMyM1Z2T3dJWUU0cjRWMXZsZHNXRUVaY1paRERVOUpWd1pSNmFmU0c2UGd3PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg3MjA2MDI0CWZpbGU65p6B5oCdR+eVjOWdgOeCueS6kui9rOW3peWFt18zLjEuMF94NjQtc2V0dXAuZXhlCnZJamtGNXo1Nzg5V1dBQ0VPUzE4ZFltb3VGSFpocU5JRm0yOERSaHRDbzNYcklZbzVOTk9YaWFsMUV0OWx2RHBKQUQ5eDNRL3VMek5nQXlQTTM1bUNnPT0K",
+      "url": "https://github.com/edcfoshan/polygon-txt/releases/download/v3.1.0/polygon-txt_3.1_x64-setup.exe"
     }
   }
 }

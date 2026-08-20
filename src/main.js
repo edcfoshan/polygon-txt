@@ -4,9 +4,9 @@ import { LogicalSize, LogicalPosition } from '@tauri-apps/api/dpi';
 import { open as shellOpen } from '@tauri-apps/plugin-shell';
 import { check as checkForUpdater } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
+import { ask as dialogAsk } from '@tauri-apps/plugin-dialog';
 import { getVersion } from '@tauri-apps/api/app';
 import aboutContent from '../content/about.md?raw';
-import sponsorContent from '../content/sponsor.md?raw';
 import aboutQrImage from '../content/讨论群.jpg?inline';
 import sponsorQrImage from '../content/关注、赞赏码.png?inline';
 
@@ -135,8 +135,7 @@ function toast(m) {
   t._h = setTimeout(() => t.classList.remove("on"), 20000);
 }
 
-// ═══ Theme（主题下拉：浅/暗 + 8 色系，v3.0） ═══
-window.togTheme = function () { pickTheme(theme === "light" ? "dark" : "light"); };
+// ═══ Theme（主题：浅/暗 + 8 色系，v3.0；v3.1 起入口收进设置面板） ═══
 const THEME_COLORS = ["normal", "brass", "green", "blue", "cyan", "purple", "orange", "rose"];
 let themeColor = localStorage.getItem("tg_color") || "normal";
 
@@ -153,16 +152,25 @@ function pickColor(c) {
   localStorage.setItem("tg_color", c);
   syncThemeUI();
 }
-function togThemeMenu(e) {
-  if (e) e.stopPropagation();
-  const m = $("thMenu");
-  if (m) m.classList.toggle("on");
-}
 function syncThemeUI() {
-  const m = $("thMenu");
+  const m = $("settingsModal");
   if (!m) return;
   m.querySelectorAll(".thopt").forEach((b) => b.classList.toggle("on", b.dataset.t === theme));
   m.querySelectorAll(".copt").forEach((b) => b.classList.toggle("on", b.dataset.c === themeColor));
+}
+
+// ═══ 三区字号缩放（CSS zoom：a=标题栏+弹窗 b=折叠卡内容 c=预览文本） ═══
+const FS_KEYS = { a: "tg_zma", b: "tg_zmb", c: "tg_zmc" };
+function readFontScale(k) {
+  const v = parseFloat(localStorage.getItem(FS_KEYS[k]));
+  return Number.isFinite(v) ? Math.min(140, Math.max(85, v)) / 100 : 1;
+}
+function applyFontScale(k) {
+  document.documentElement.style.setProperty("--z" + k, String(readFontScale(k)));
+}
+function setFontScale(k, pct) {
+  localStorage.setItem(FS_KEYS[k], String(pct));
+  applyFontScale(k);
 }
 
 // ═══ 手风琴分组折叠（v3.0 方案A） ═══
@@ -890,8 +898,8 @@ function autoMatchFields(fieldNames) {
 // ═══ 字段映射高级模式 ═══
 // 固定清单 14 项；与后端 adv_placeholder / STANDARD_META_FIELDS 联动，增删需双端同步
 const ADV_FIELD_NAMES = ["坐标点个数","地块面积","图斑面积","地块编号","图斑编号","地块名称","补充耕地实施年份","耕地坡度级别","图形属性","图幅号","地块用途","备注","地类","耕地质量等级"];
-// 锁定字段：映射源固定，不可改不可删（行本身参与排序）
-const ADV_LOCKED = { "坐标点个数": "__count__", "图形属性": "__geom__" };
+// 锁定字段（按映射源判定——字段名可自由编辑，改名不丢锁定能力）：源固定不可改、行不可删
+const ADV_LOCKED_SRC = { "__count__": 1, "__geom__": 1 };
 // 高级字段名 → 占位文字（与 Rust convert.rs adv_placeholder 镜像）
 const ADV_PLACEHOLDER = { "地块名称": "DKMC", "地块编号": "DKBH", "图斑编号": "DKBH", "地块面积": "MJ", "图斑面积": "MJ", "地块用途": "DKYT", "图幅号": "TFH", "地类": "DLBM" };
 const ADV_AREA_FIELDS = ["地块面积", "图斑面积"];
@@ -925,18 +933,17 @@ let advInitialized = false; // 首次开启高级模式时从简单模式 6 下�
 let advPreset = "std";      // "std" | "bcg" | "custom"（补充耕地开关的三态）
 let lastFieldNames = [];    // 最近一次导入的源字段表（供行内映射源下拉重建）
 
-// 生成某字段名的映射源下拉选项（锁定字段返回单一锁定选项）
+// 生成某字段名的映射源下拉选项（锁定行按 source 判定，返回单一锁定选项；面积选项按 name 或既有 source）
 function buildAdvSourceOptions(name, cur) {
-  const locked = ADV_LOCKED[name];
-  if (locked) {
-    return `<option value="${locked}" selected>${locked === "__count__" ? "自动统计点数" : "固定「面」"}</option>`;
+  if (ADV_LOCKED_SRC[cur]) {
+    return `<option value="${cur}" selected>${cur === "__count__" ? "自动统计点数" : "固定「面」"}</option>`;
   }
   // 首项文案：空字段名行引导「选字段」，已选字段行显示「不填」（该列输出空值）
   let html = `<option value="">${name ? "不填" : "选字段"}</option>`;
   if (ADV_PLACEHOLDER[name]) {
     html += `<option value="__placeholder__"${cur === "__placeholder__" ? " selected" : ""}>${ADV_PLACEHOLDER[name]} (占位)</option>`;
   }
-  if (ADV_AREA_FIELDS.includes(name)) {
+  if (ADV_AREA_FIELDS.includes(name) || (cur && cur.startsWith("__area_"))) {
     html += `<option value="__area_sqm__"${cur === "__area_sqm__" ? " selected" : ""}>平方米(自动)</option>`;
     html += `<option value="__area_ha__"${cur === "__area_ha__" ? " selected" : ""}>公顷(自动)</option>`;
   }
@@ -955,33 +962,22 @@ function renderFieldRows(rows) {
   const box = $("fieldRows");
   if (!box) return;
   box.innerHTML = "";
-  let emptySeq = 0; // 空字段名行的占位序号（新行1、新行2…删行/重排后自动重编）
   rows.forEach((row, i) => {
-    const locked = ADV_LOCKED[row.name];
+    const locked = !!ADV_LOCKED_SRC[row.source];
     const div = document.createElement("div");
     div.className = "attr-row field-row";
     div.dataset.i = String(i);
-    // 空字段名 → 顶部占位选项「新行N」（value 空串；导出时该列被忽略）
-    const emptyOpt = row.name
-      ? `<option value="">新行</option>`
-      : `<option value="" selected>新行${++emptySeq}</option>`;
-    const nameOpts = ADV_FIELD_NAMES
-      .map((n) => `<option value="${escAttr(n)}"${n === row.name ? " selected" : ""}>${escAttr(n)}</option>`)
-      .join("");
-    // 字段名非空且不在清单（异常旧配置）→ 追加保留显示。
-    // 空名不能进此分支——会追加一个空文本 selected option 抢占「叫什么」的选中（显示空白的 bug）
-    const extraName = row.name && !ADV_FIELD_NAMES.includes(row.name)
-      ? `<option value="${escAttr(row.name)}" selected>${escAttr(row.name)}</option>`
-      : "";
+    // 左列字段名可编辑（自绘候选弹层 advSuggest）：空值 = 无名值列（placeholder「新行」），候选 = 14 项清单
     const btnHtml = locked ? "" : `<button class="abtn del" data-act="del" data-i="${i}" title="删除此行">✕</button>`;
     div.innerHTML =
       `<span class="grip" title="拖动排序">⠿</span>` +
-      `<select class="fk" data-i="${i}" data-f="name"${locked ? " disabled" : ""}>${emptyOpt}${nameOpts}${extraName}</select>` +
+      `<input class="fk" data-i="${i}" data-f="name" maxlength="30" autocomplete="off" spellcheck="false" placeholder="新行" value="${escAttr(row.name)}">` +
       `<span class="feq">←</span>` +
       `<select class="fmap" data-i="${i}" data-f="source"${locked ? " disabled" : ""}>${buildAdvSourceOptions(row.name, row.source)}</select>` +
       btnHtml;
     box.appendChild(div);
   });
+  hideAdvSuggest();
 }
 
 function collectFieldRows() {
@@ -1002,21 +998,171 @@ function advRowsMatchPreset(rows, preset) {
   return rows.length === p.length && rows.every((r, i) => r.name === p[i].name && r.source === p[i].source);
 }
 
-// 行改动后判定当前命中哪个预设（完全一致才亮预设态，否则自定义）
+// ─── 用户字段方案 CRUD（localStorage tg_adv_tpl）───
+// 同名覆盖即更新：新名=增 / 下拉选中=查 / 同名保存=改 / ✕=删
+function readAdvTpls() {
+  try {
+    const arr = JSON.parse(localStorage.getItem("tg_adv_tpl") || "[]");
+    return Array.isArray(arr)
+      ? arr.filter((t) => t && t.id && t.n && Array.isArray(t.rows)).slice(0, 50)
+      : [];
+  } catch { return []; }
+}
+function writeAdvTpls(tpls) {
+  try { localStorage.setItem("tg_adv_tpl", JSON.stringify(tpls)); } catch (e) { console.warn("保存字段方案失败:", e); }
+}
+function matchAdvTpl(rows) {
+  for (const t of readAdvTpls()) {
+    if (t.rows.length === rows.length && t.rows.every((r, i) => r.name === rows[i].name && r.source === rows[i].source)) return t.id;
+  }
+  return null;
+}
+// 存为方案：行内命名输入（WebView2 对 window.prompt 静默返回 null，弃用 prompt）
+window.saveAdvTpl = function () {
+  const inp = $("tplNameInput");
+  if (!inp || inp.style.display !== "none") return;
+  $("bcgSel").style.display = "none";
+  inp.value = "";
+  inp.style.display = "";
+  $("btnTplOk").style.display = "";
+  $("btnTplCancel").style.display = "";
+  inp.focus();
+};
+function closeTplNameInput() {
+  ["tplNameInput", "btnTplOk", "btnTplCancel"].forEach((id) => { const e = $(id); if (e) e.style.display = "none"; });
+  pendingOverwrite = "";
+  disarmButton($("btnTplOk"));
+  const sel = $("bcgSel");
+  if (sel) sel.style.display = "";
+  renderBcgSel();
+}
+window.cancelAdvTplSave = function () { closeTplNameInput(); };
+let pendingOverwrite = ""; // 重名待确认覆盖的方案名；改名/失焦/关闭即失效，须显式再点「覆盖?」才执行
+let tplSaving = false; // 防重入：异步保存未完成时再点 ✓ 不重复执行
+window.confirmAdvTplSave = function () {
+  const inp = $("tplNameInput");
+  if (!inp || inp.style.display === "none" || tplSaving) return;
+  const n = inp.value.trim();
+  if (!n) { toast("方案名不能为空"); inp.focus(); return; }
+  const hit = readAdvTpls().find((t) => t.n === n);
+  if (hit && n !== pendingOverwrite) {
+    pendingOverwrite = n;
+    armVisual($("btnTplOk"), "覆盖?");
+    toast("方案「" + n + "」已存在：再点一次「覆盖?」确认覆盖，或改个名字");
+    return;
+  }
+  tplSaving = true;
+  try {
+    const rows = collectFieldRows().map((r) => ({ name: r.name, source: r.source }));
+    // 内容与预设/已有方案完全相同 → 拒绝保存（防冗余方案与「切换后名字不变化」的困惑）
+    const sameAs = (p) => p.length === rows.length && p.every((r, i) => r.name === rows[i].name && r.source === rows[i].source);
+    if (advRowsMatchPreset(rows, "std")) { closeTplNameInput(); toast("与预设「8 字段标准」内容完全相同，无需另存方案"); return; }
+    if (advRowsMatchPreset(rows, "bcg")) { closeTplNameInput(); toast("与预设「补充耕地模式」内容完全相同，无需另存方案"); return; }
+    const dup = readAdvTpls().find((t) => t.n !== n && sameAs(t.rows));
+    if (dup) { closeTplNameInput(); toast("与已有方案「" + dup.n + "」内容完全相同，无需重复保存"); return; }
+    const tpls = readAdvTpls();
+    const h = tpls.find((t) => t.n === n);
+    if (h) h.rows = rows; else tpls.push({ id: "t" + Date.now(), n, rows });
+    writeAdvTpls(tpls);
+    advPreset = (h || tpls[tpls.length - 1]).id; // 保存即选中：内容与预设相同时也显示方案名（否则删除入口找不到 t 前缀态）
+    closeTplNameInput();
+    toast(h ? "已更新方案「" + n + "」" : "已保存方案「" + n + "」");
+  } finally {
+    tplSaving = false;
+  }
+};
+window.delAdvTpl = function () {
+  if (!readAdvTpls().length) { toast("还没有保存过自定义方案"); return; }
+  if (!String(advPreset).startsWith("t")) { toast("请先在下拉中选中要删除的方案"); return; }
+  const t = readAdvTpls().find((x) => x.id === advPreset);
+  if (!t) { toast("方案数据异常：请重新在下拉中选择后重试"); return; }
+  const id = t.id, name = t.n;
+  armButton($("btnDelTpl"), "确认删除?", () => {
+    writeAdvTpls(readAdvTpls().filter((x) => x.id !== id));
+    advPreset = "custom"; // 行保留不动，仅预设态回自定义
+    renderBcgSel();
+    toast("已删除方案「" + name + "」");
+  });
+};
+
+// 行改动后判定当前命中哪个预设（std → bcg → 用户方案 → custom；完全一致才亮预设态）
 function syncAdvPresetState() {
   const rows = collectFieldRows();
-  advPreset = advRowsMatchPreset(rows, "std") ? "std" : advRowsMatchPreset(rows, "bcg") ? "bcg" : "custom";
+  advPreset = advRowsMatchPreset(rows, "std") ? "std"
+    : advRowsMatchPreset(rows, "bcg") ? "bcg"
+    : (matchAdvTpl(rows) || "custom");
   renderBcgSel();
 }
 
-// 预设下拉（v3.0）：8 字段标准 / 补充耕地模式 / 自定义（手改后自动变「自定义」）
+// 预设下拉：固定项（std/bcg/custom）+ 用户方案动态项（value=方案 id，前缀 t 与固定项区分）
 function renderBcgSel() {
   const sel = $("bcgSel");
-  if (sel) sel.value = advPreset;
+  if (!sel) return;
+  sel.innerHTML =
+    `<option value="std">8 字段标准</option>` +
+    `<option value="bcg">补充耕地模式</option>` +
+    readAdvTpls().map((t) => `<option value="${escAttr(t.id)}">${escAttr(t.n)}</option>`).join("") +
+    `<option value="custom">自定义</option>`;
+  sel.value = String(advPreset);
+  if (sel.value !== String(advPreset)) { advPreset = "custom"; sel.value = "custom"; } // 方案已删 → 回自定义
+  // 有自定义方案即显示删除入口（不依赖选中态——改过字段后 ✕ 消失曾让用户找不到删除入口）
+  const del = $("btnDelTpl");
+  if (del) del.style.display = readAdvTpls().length > 0 ? "" : "none";
 }
 
 // 补充耕地开关三态视觉（v2.2 旧 checkbox 版）→ v3.0 已由预设下拉 bcgSel 取代
 function renderBcgToggle() { renderBcgSel(); }
+
+// ─── 字段名候选弹层（自绘，body 级 fixed 定位防 #fieldRows overflow 裁剪）───
+let advSug = null;
+function ensureAdvSuggest() {
+  if (advSug) return advSug;
+  advSug = document.createElement("div");
+  advSug.id = "advSuggest";
+  document.body.appendChild(advSug);
+  advSug.addEventListener("mousedown", (e) => {
+    const opt = e.target.closest(".opt");
+    if (!opt) return;
+    e.preventDefault(); // 阻止 input 先失焦
+    const inp = advSug._inp;
+    if (inp) {
+      if (opt.dataset.v !== "__keep__") inp.value = opt.dataset.v;
+      commitFieldName(inp);
+    }
+  });
+  return advSug;
+}
+function showAdvSuggest(inp) {
+  const box = ensureAdvSuggest();
+  const q = inp.value.trim();
+  const hits = ADV_FIELD_NAMES.filter((n) => !q || n.includes(q));
+  box.innerHTML =
+    hits.map((n) => `<div class="opt" data-v="${escAttr(n)}">${escAttr(n)}</div>`).join("") +
+    (q && !ADV_FIELD_NAMES.includes(q) ? `<div class="opt dim" data-v="__keep__">用「${escAttr(q)}」作自定义名</div>` : "");
+  const r = inp.getBoundingClientRect();
+  box.style.left = r.left + "px";
+  box.style.top = r.bottom + 2 + "px";
+  box.style.minWidth = r.width + "px";
+  box.style.display = "block";
+  box._inp = inp;
+}
+function hideAdvSuggest() { if (advSug) advSug.style.display = "none"; }
+
+// 字段名提交（回车/失焦/候选点击）：trim → 重建该行源下拉（占位/面积选项随名变）→ 同步预设态。
+// 不全量 renderFieldRows——避免打断其他行正在进行的输入
+function commitFieldName(inp) {
+  inp.value = inp.value.trim();
+  const fmap = inp.closest(".field-row")?.querySelector("select.fmap");
+  if (fmap && !fmap.disabled) {
+    let cur = fmap.value;
+    if (cur === "__placeholder__" && !ADV_PLACEHOLDER[inp.value]) cur = ""; // 新名无占位映射 → 该列转空值
+    fmap.innerHTML = buildAdvSourceOptions(inp.value, cur);
+    fmap.value = cur;
+  }
+  hideAdvSuggest();
+  syncAdvPresetState();
+  updatePreview();
+}
 
 function bindFieldRowEvents() {
   const box = $("fieldRows");
@@ -1030,15 +1176,20 @@ function bindFieldRowEvents() {
     syncAdvPresetState();
     updatePreview();
   });
+  // 字段名 input：输入中只更新候选与自动保存，绝不重渲染（保焦点光标）
+  box.addEventListener("input", (e) => {
+    if (e.target.matches("input.fk")) { showAdvSuggest(e.target); scheduleAutoSave(); }
+  });
+  box.addEventListener("focusin", (e) => { if (e.target.matches("input.fk")) showAdvSuggest(e.target); });
+  box.addEventListener("focusout", (e) => { if (e.target.matches("input.fk")) hideAdvSuggest(); });
+  box.addEventListener("keydown", (e) => {
+    if (!e.target.matches("input.fk")) return;
+    if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); e.target.blur(); } // 借 blur 的 change 提交
+    else if (e.key === "Escape") hideAdvSuggest();
+  });
+  box.addEventListener("scroll", hideAdvSuggest, { passive: true });
   box.addEventListener("change", (e) => {
-    if (e.target.closest("select.fk")) {
-      // 字段名变更 → 重建整行（映射源选项随字段名变；锁定字段自动锁定源）
-      const rows = collectFieldRows();
-      renderFieldRows(rows);
-      syncAdvPresetState();
-      updatePreview();
-      return;
-    }
+    if (e.target.matches("input.fk")) { commitFieldName(e.target); return; }
     if (e.target.closest("select.fmap")) {
       syncAdvPresetState();
       updatePreview();
@@ -1359,6 +1510,44 @@ function escAttr(s) {
   return String(s).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+// WebView2 的 confirm/prompt 均静默失败（不弹框返回 falsy）——Tauri 环境统一走 plugin-dialog 原生弹窗，浏览器开发回退 confirm
+async function uiConfirm(msg) {
+  if (window.__TAURI_INTERNALS__) {
+    try { return await dialogAsk(msg, { title: "确认" }); }
+    catch (e) { console.warn("ask:", e); toast("确认框失败: " + (e && e.message ? e.message : e)); return false; }
+  }
+  return window.confirm(msg);
+}
+
+// ─── 两段式确认按钮（GitHub 删除模式）：首次点击变红提示，再点执行，点按钮外任意处取消 ───
+// WebView2 下所有确认弹窗（prompt/confirm/plugin-dialog ask）均不可靠，破坏性操作一律走此纯 DOM 方案。
+// 不设超时——用户犹豫期间红字保持可见（3s 自动复原曾让用户以为「点了没反应」）
+function armVisual(btn, label) {
+  if (!btn || btn.dataset.arm === "1") return;
+  btn.dataset.arm = "1";
+  btn.dataset.label = btn.textContent;
+  btn.textContent = label;
+  btn.classList.add("arm");
+}
+function disarmButton(btn) {
+  if (!btn) return;
+  if (btn.dataset.label !== undefined) btn.textContent = btn.dataset.label;
+  delete btn.dataset.label;
+  delete btn.dataset.arm;
+  btn.classList.remove("arm");
+}
+// 点任何确认态按钮以外的地方 = 取消确认（全局一次绑定）
+document.addEventListener("mousedown", (e) => {
+  document.querySelectorAll("button.arm").forEach((b) => {
+    if (!e.target.closest("button") || e.target.closest("button") !== b) disarmButton(b);
+  });
+}, true);
+function armButton(btn, confirmLabel, action) {
+  if (!btn) return;
+  if (btn.dataset.arm === "1") { disarmButton(btn); action(); return; }
+  armVisual(btn, confirmLabel);
+}
+
 // 键名 → 固定候选值。这些键的值框渲染为 <select>（限选），其余键为自由 <input>
 const ATTR_SELECT_OPTIONS = {
   "几度分带": ["3", "6"],
@@ -1601,7 +1790,7 @@ window.ld = function (id) {
   }
   const cn = $("cn");
   if (cn) cn.textContent = c.n || "自定义";
-  document.querySelectorAll(".chip").forEach((e) => e.classList.remove("on"));
+  document.querySelectorAll("#ch .chip").forEach((e) => e.classList.remove("on"));
   const cp = document.querySelector(`.chip[data-chip="${id}"]`);
   if (cp) cp.classList.add("on");
   localStorage.setItem("tg_last", id);
@@ -1630,9 +1819,7 @@ window.saveOnly = function () {
   toast("已保存 「" + cfgObj.n + "」");
 };
 
-window.delCfg = function () {
-  if (cur === "usr") { toast("内置预设不可删除"); return; }
-  if (!confirm("确定删除方案「" + ($("cn")?.textContent || "") + "」？")) return;
+const doDelCfg = () => {
   delete cfgs[cur];
   localStorage.setItem("tg_dark", JSON.stringify(cfgs));
   cur = "usr";
@@ -1640,6 +1827,7 @@ window.delCfg = function () {
   renderChips();
   toast("已删除");
 };
+window.delCfg = doDelCfg;
 
 // ═══ Open GitHub ═══
 window.openGitHub = async function () {
@@ -1837,21 +2025,19 @@ window.doUpdate = async function () {
     if (doBtn) { doBtn.disabled = false; doBtn.textContent = "立即更新"; }
     if (prog) prog.parentElement.style.display = "none";
     // 兜底：引导跳转百度云手动下载（国内访问稳定）
-    if (confirm("自动下载/安装失败，是否打开百度网盘手动下载？")) {
+    if (await uiConfirm("自动下载/安装失败，是否打开百度网盘手动下载？")) {
       shellOpen(BAIDU_PAN_URL);
     }
   }
 };
 
 // ═══ Modals ═══
-window.openSponsor = function () { const m = $("sponsorModal"); if (m) m.classList.add("on"); };
-window.closeSponsor = function (e) { if (e && e.target !== $("sponsorModal")) return; const m = $("sponsorModal"); if (m) m.classList.remove("on"); };
 window.openAbout = function () { const m = $("aboutModal"); if (m) m.classList.add("on"); };
 window.closeAbout = function (e) { if (e && e.target !== $("aboutModal")) return; const m = $("aboutModal"); if (m) m.classList.remove("on"); };
-window.openRatio = function () { const m = $("ratioModal"); if (m) m.classList.add("on"); };
-window.closeRatio = function (e) { if (e && e.target !== $("ratioModal")) return; const m = $("ratioModal"); if (m) m.classList.remove("on"); };
+window.openSettings = function () { const m = $("settingsModal"); if (m) m.classList.add("on"); };
+window.closeSettings = function (e) { if (e && e.target !== $("settingsModal")) return; const m = $("settingsModal"); if (m) m.classList.remove("on"); };
 document.addEventListener("keydown", function (e) {
-  if (e.key === "Escape") { const sm = $("sponsorModal"); const am = $("aboutModal"); const gm = $("gdbSelectModal"); const um = $("updateModal"); const rm = $("ratioModal"); if (sm) sm.classList.remove("on"); if (am) am.classList.remove("on"); if (gm) gm.classList.remove("on"); if (um && !isUpdating) um.classList.remove("on"); if (rm) rm.classList.remove("on"); }
+  if (e.key === "Escape") { const am = $("aboutModal"); const gm = $("gdbSelectModal"); const um = $("updateModal"); const rm = $("settingsModal"); if (am) am.classList.remove("on"); if (gm) gm.classList.remove("on"); if (um && !isUpdating) um.classList.remove("on"); if (rm) rm.classList.remove("on"); }
 });
 
 // ═══ Display ratio (s-mode three-column) ═══
@@ -1955,6 +2141,20 @@ async function init() {
   applyRatio(preset);
   renderRatioChips();
 
+  // 三区字号恢复 + 滑块事件（拖动即时生效，自动保存）
+  const FS_SLIDERS = [["a", "fsA", "fsAv"], ["b", "fsB", "fsBv"], ["c", "fsC", "fsCv"]];
+  FS_SLIDERS.forEach(([k, sid, vid]) => {
+    applyFontScale(k);
+    const sl = $(sid), vv = $(vid);
+    if (!sl) return;
+    sl.value = String(Math.round(readFontScale(k) * 100));
+    if (vv) vv.textContent = sl.value + "%";
+    sl.addEventListener("input", () => {
+      setFontScale(k, parseInt(sl.value, 10));
+      if (vv) vv.textContent = sl.value + "%";
+    });
+  });
+
   const s = localStorage.getItem("tg_dark");
   if (s) cfgs = JSON.parse(s);
   PP.forEach((p) => {
@@ -1975,31 +2175,25 @@ async function init() {
 
   // ─── 注入弹窗内容（Markdown → HTML） ───
   const ab = $("aboutBody");
-  if (ab) ab.innerHTML = renderMarkdown(aboutContent).replace(/\{\{version\}\}/g, APP_VERSION ? "V" + APP_VERSION : "");
-  const sb = $("sponsorBody");
-  if (sb) sb.innerHTML = renderMarkdown(sponsorContent);
+  if (ab) ab.innerHTML = renderMarkdown(aboutContent).replace(/\{\{version\}\}/g, APP_VERSION ? "V" + APP_VERSION : "")
+    + `<div style="font-size:9px;color:var(--tx3);margin-top:10px;text-align:center">构建时间 ${typeof __BUILD_TS__ !== "undefined" ? __BUILD_TS__ : "dev"}</div>`;
 
   // ─── Bind click events (replaces inline onclick) ───
   const bind = (id, fn) => { const el = $(id); if (el) el.addEventListener("click", fn); };
   bind("btnGitHub", () => openGitHub());
-  bind("btnSponsor", () => openSponsor());
-  // 主题下拉面板（v3.0）：按钮开面板，面板内选浅/暗 + 8 色系；外点/ESC 关闭
-  bind("btnTheme", (e) => togThemeMenu(e));
-  const thMenuEl = $("thMenu");
-  if (thMenuEl) {
-    thMenuEl.addEventListener("click", (e) => e.stopPropagation());
-    thMenuEl.querySelectorAll(".thopt").forEach((b) => b.addEventListener("click", () => pickTheme(b.dataset.t)));
-    thMenuEl.querySelectorAll(".copt").forEach((b) => b.addEventListener("click", () => pickColor(b.dataset.c)));
+  // 主题/色系/比例/字号统一收进设置面板（v3.1）
+  const setModalEl = $("settingsModal");
+  if (setModalEl) {
+    setModalEl.querySelectorAll(".thopt").forEach((b) => b.addEventListener("click", () => pickTheme(b.dataset.t)));
+    setModalEl.querySelectorAll(".copt").forEach((b) => b.addEventListener("click", () => pickColor(b.dataset.c)));
   }
-  document.addEventListener("click", (e) => {
-    const m = $("thMenu");
-    if (m && m.classList.contains("on") && !e.target.closest(".thwrap")) m.classList.remove("on");
-  });
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape") { const m = $("thMenu"); if (m) m.classList.remove("on"); } });
   bind("btnAbout", () => openAbout());
-  bind("btnRatio", () => openRatio());
+  bind("btnSettings", () => openSettings());
   bind("btnSave", () => saveOnly());
-  bind("btnDel", () => delCfg());
+  bind("btnDel", () => {
+    if (cur === "usr") { toast("内置预设不可删除"); return; }
+    armButton($("btnDel"), "确认删除?", doDelCfg);
+  });
   bind("btnWinMin", async (e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -2074,11 +2268,44 @@ async function init() {
         const preset = v === "bcg" ? BCG_ADV_ROWS : STD_ADV_ROWS;
         renderFieldRows(preset.map((r) => ({ ...r })));
         advPreset = v;
+      } else if (v && v !== "custom") {
+        // 用户方案（id 前缀 t）：选中即载入整套字段清单
+        const t = readAdvTpls().find((x) => x.id === v);
+        if (t) {
+          renderFieldRows(t.rows.map((r) => ({ name: r.name || "", source: r.source || "" })));
+          advPreset = v;
+        }
       }
-      syncAdvPresetState();
+      // 显式选中即锁定显示：syncAdvPresetState 的 std→bcg→方案 判定会把「内容==预设」的方案覆盖成预设名
+      renderBcgSel();
       updatePreview();
     });
   }
+  // 方案命名输入框：回车提交（借 blur）、Esc 取消、失焦自动提交（点外部不再卡在编辑态导致「存为方案」按钮消失）
+  const tplNameEl = $("tplNameInput");
+  if (tplNameEl) {
+    tplNameEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); tplNameEl.blur(); }
+      else if (e.key === "Escape") { tplNameEl.dataset.cancel = "1"; tplNameEl.blur(); }
+    });
+    tplNameEl.addEventListener("input", () => {
+      pendingOverwrite = ""; // 改名后覆盖意图失效
+      disarmButton($("btnTplOk"));
+    });
+    tplNameEl.addEventListener("blur", () => {
+      if (tplNameEl.style.display === "none") return;
+      if (tplNameEl.dataset.cancel === "1") { delete tplNameEl.dataset.cancel; cancelAdvTplSave(); return; }
+      const n = tplNameEl.value.trim();
+      if (!n) { cancelAdvTplSave(); return; } // 空名失焦 = 放弃
+      if (pendingOverwrite === n) { cancelAdvTplSave(); return; } // 重名待覆盖时失焦 = 放弃（防误覆盖）
+      confirmAdvTplSave();
+    });
+  }
+  // ✓/✕ 按钮阻止 mousedown 默认行为（防输入框 blur 先触发提交造成双保存），click 走 HTML onclick
+  ["btnTplOk", "btnTplCancel"].forEach((id) => {
+    const b = $(id);
+    if (b) b.addEventListener("mousedown", (e) => e.preventDefault());
+  });
   bind("btnAddField", () => {
     const rows = collectFieldRows();
     rows.push({ name: "", source: "" });
@@ -2086,13 +2313,6 @@ async function init() {
     syncAdvPresetState();
     const box = $("fieldRows");
     if (box) box.scrollTop = box.scrollHeight;
-    updatePreview();
-  });
-  bind("btnResetFields", () => {
-    // 恢复默认 = 列表 + 映射源全重置到 8 字段标准，补充耕地开关回关
-    renderFieldRows(STD_ADV_ROWS.map((r) => ({ ...r })));
-    advPreset = "std";
-    syncAdvPresetState();
     updatePreview();
   });
   bindFieldRowEvents();
@@ -2148,8 +2368,16 @@ async function init() {
   bind("btnRunStt", () => runShpToTxt());
   bind("btnRunTts", () => runTxtToShp());
   bind("btnCloseAbout", () => closeAbout());
-  bind("btnCloseSponsor", () => closeSponsor());
-  bind("btnCloseRatio", () => closeRatio());
+  bind("btnCloseSet", () => closeSettings());
+  bind("btnFsReset", () => {
+    ["a", "b", "c"].forEach((k) => setFontScale(k, 100));
+    [["a", "fsA", "fsAv"], ["b", "fsB", "fsBv"], ["c", "fsC", "fsCv"]].forEach(([, sid, vid]) => {
+      const sl = $(sid), vv = $(vid);
+      if (sl) sl.value = "100";
+      if (vv) vv.textContent = "100%";
+    });
+    toast("字号已恢复默认");
+  });
   bind("btnUpdate", () => {
     // available/skipped 态：打开弹窗；idle/loading 态：手动触发检查
     const btn = $("btnUpdate");
@@ -2176,10 +2404,8 @@ async function init() {
   // Modal overlay click-to-close
   const aboutModal = $("aboutModal");
   if (aboutModal) aboutModal.addEventListener("click", (e) => { if (e.target === aboutModal) closeAbout(); });
-  const sponsorModal = $("sponsorModal");
-  if (sponsorModal) sponsorModal.addEventListener("click", (e) => { if (e.target === sponsorModal) closeSponsor(); });
-  const ratioModal = $("ratioModal");
-  if (ratioModal) ratioModal.addEventListener("click", (e) => { if (e.target === ratioModal) closeRatio(); });
+  const settingsModal = $("settingsModal");
+  if (settingsModal) settingsModal.addEventListener("click", (e) => { if (e.target === settingsModal) closeSettings(); });
   const gdbSelectModal = $("gdbSelectModal");
   if (gdbSelectModal) gdbSelectModal.addEventListener("click", (e) => { if (e.target === gdbSelectModal) closeGdbSelectModal(); });
   const updateModal = $("updateModal");

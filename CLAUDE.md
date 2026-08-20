@@ -10,7 +10,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 窗口：默认 1100×800px（`minWidth:800/minHeight:540`，可自由拉伸/最大化），无边框（`decorations: false`），自定义标题栏
 - **窗口记忆（v3.0）**：前端 `main.js` 实现（`onResized`/`onMoved` → quickSave/fullSave → localStorage，恢复时 clamp 屏内防跑出屏幕；最大化不记），非 Rust 侧、非 window-state 插件
 - **v3.0 UI（方案A 折叠收纳式）**：三栏比例 1:1:1.3。左栏 = ①导入数据 + ②字段映射（高级开关在分组标题行）；中栏 = ③输出与选项（含输出目录）+ ④动态投影 + ⑤自定义表头；右栏预览。TXT→面 为 ①导入 TXT + ②输出设置。分组为手风琴卡（`togAcc`，默认全开），`.accs > .acc` 拉伸保证三栏底边齐平、超高卡内滚动。UI 原型在 docs/mockups/
-- **主题系统**：标题栏主题按钮为下拉面板（`#thMenu`），浅色/暗色（`html[data-t]`）× 8 色系（`html[data-c]`：normal 经典黑白默认/brass/green/blue/cyan/purple/orange/rose）独立组合；色系换全套配色（CSS 变量）；浅色模式预览字体统一黑色；持久化 `tg_theme` + `tg_color`
+- **主题系统**：浅色/暗色（`html[data-t]`）× 8 色系（`html[data-c]`：normal 经典黑白默认/brass/green/blue/cyan/purple/orange/rose）独立组合；色系换全套配色（CSS 变量）；浅色模式预览字体统一黑色；持久化 `tg_theme` + `tg_color`。入口：标题栏 sun/moon 小按钮 = 一键明暗切换（`togTheme`）；完整设置在齿轮「设置」按钮 → `#settingsModal`
+- **设置面板（`#settingsModal`）**：外观（浅/暗 `.thopt` + 8 色系 `.copt`）+ 显示比例 + 三区字号滑块，统一收纳（v3.1 起取代旧 `#thMenu` 下拉与 `#ratioModal`）
+- **三区字号缩放**：CSS `zoom` 挂内容高度元素防满高容器溢出——A 区（标题栏/tabbar/弹窗/toast，`--za`）、B 区（折叠卡 `.acc` + `.ctr-ft`，`--zb`）、C 区（预览文本 `.pv`，`--zc`）。滑块 85–140% 步进 5% 即时生效，存 `tg_zma/tg_zmb/tg_zmc`。**注意**：`ld()` 配置集切换只洗 `#ch` 内的 chip（曾用全局 `.chip` 选择器误伤设置面板比例 chips 的选中态）；zoom 元素上 `getBoundingClientRect` 与 body 级 fixed 弹层（advSuggest）坐标系天然对齐（实测 1.3 倍 dx=0）
 - 显示比例：RATIO_PRESETS 四档（三栏等宽/默认 1:1:1.3/宽预览/宽输入），存 `tg_ratio`
 
 ## 构建与测试命令
@@ -192,9 +194,12 @@ SHP 存储 (X, Y) = (东坐标, 北坐标)。TXT 存储 (Y, X) = (北坐标, 东
 - 地块元数据行以 `,@` 结尾
 - 坐标系字符串必须精确匹配：`2000国家大地坐标系`、`1980西安坐标系`、`1954北京坐标系`、`WGS84坐标系`
 
-### 高级字段模式（v2.2+）
-- 前端字段映射「高级模式」开关（默认关=简单 6 下拉，输出字节级不变）；开启后 14 项固定字段清单下拉 + 拖拽排序 + 增删，交互复刻属性描述区（`renderFieldRows`/`collectFieldRows`/`bindFieldRowEvents`）。`FieldMapping.columns`（`Vec<FieldColumn{name,source}>`）非空即高级模式，`source` 含 `__count__`（点数锁定）/`__geom__`（固定"面"）。未选字段名的占位行（「新行N」）**输出空值列**（元数据行多一个空位），不忽略——保证加行后预览立即可见变化
-- 输出：**不输出字段名列表行**（用户需求，接收系统按约定列序解析）；元数据行按列序输出；`PlotData.fields`（有序 `(名,值)`）空=旧 8 字段格式。`坐标点个数` 列由 generate 按 rings 重算（resolve 阶段是占位 "0"）。注意：本工具导出的高级格式 TXT（无列表行）导回时因无字段名会回退旧 8 位置切分（12 列错位）；外部文件自带列表行则按名解析正确
+### 高级字段模式（v2.2+，字段名可编辑与方案 CRUD 为 v3.1）
+- 前端字段映射「高级模式」开关（默认关=简单 6 下拉，输出字节级不变）；开启后字段清单化 + 拖拽排序 + 增删，交互复刻属性描述区（`renderFieldRows`/`collectFieldRows`/`bindFieldRowEvents`）。**左列字段名是自绘 combobox（v3.1）**：`input.fk`（maxlength 30）+ body 级候选弹层 `#advSuggest`（fixed 定位防 `#fieldRows` overflow 裁剪；datalist 因 WebView2 中文 IME 硬伤弃用）。输入事件只更新候选+自动保存**绝不重渲染**（保焦点）；change（回车/失焦）→ `commitFieldName` 只重建该行 `.fmap`（不全量重渲染）→ `syncAdvPresetState` + `updatePreview`。空名 = 「新行」占位（输出无名值列）；手输命中清单名（如「图斑面积」）→ 该行恢复占位/面积专属选项；旧源 `__placeholder__` 且新名无占位映射 → 源置空。`FieldMapping.columns`（`Vec<FieldColumn{name,source}>`）非空即高级模式，`source` 含 `__count__`（点数锁定）/`__geom__`（固定"面"）。未选字段名的占位行**输出空值列**（元数据行多一个空位），不忽略——保证加行后预览立即可见变化
+- **锁定/面积判定按 source 不按 name（v3.1）**：`ADV_LOCKED_SRC`（`__count__`/`__geom__`）——字段名可自由改，改名不丢锁定/自动统计能力；锁定 = 源下拉 disabled + 无 ✕，名字仍可编辑。面积选项条件：`ADV_AREA_FIELDS.includes(name) || cur.startsWith("__area_")`
+- **`__count__` 哨兵传递（v3.1 关键）**：resolve_columns/resolve_columns_map 对 `__count__` 输出 `convert::COUNT_SENTINEL`（`"\u{E000}CNT"` 私用区），`generate_txt` 按 **value==哨兵** 替换为真实点数（txt.rs）——与字段名解耦，改名「坐标点个数」后点数列仍正确。不能在 resolve 阶段直接算点数：`close_rings`（oo=true 默认开）会补闭合点，与 rings 口径不一致。哨兵必须被 generate 替换，绝不进导出 TXT（测试断言）
+- **用户字段方案 CRUD（v3.1）**：localStorage `tg_adv_tpl`=[{id（前缀 `t`+时间戳）,n,rows}]（上限 50，读写 try/catch+结构校验）。`#bcgSel` 动态重建 option：std/bcg/用户方案/custom；`advPreset` 值域 `"std"|"bcg"|"custom"|<tplId>`。同名覆盖即更新（新名=增/选中=查/同名保存=改/✕ 删除时行保留仅态回 custom）；**删除 ✕ 恒显**（`readAdvTpls().length > 0` 即显示，不依赖选中态——改字段跳自定义后 ✕ 消失曾让用户找不到删除入口；未选中时点击 toast 引导）；方案已删时 renderBcgSel 回退 custom。`syncAdvPresetState` 命中顺序 std→bcg→用户方案→custom
+- 输出：**不输出字段名列表行**（用户需求，接收系统按约定列序解析）；元数据行按列序输出；`PlotData.fields`（有序 `(名,值)`）空=旧 8 字段格式。注意：本工具导出的高级格式 TXT（无列表行）导回时因无字段名会回退旧 8 位置切分（12 列错位）；外部文件自带列表行则按名解析正确
 - 解析：`【...,@】` = 字段名列表行；其他 `【...】` = 说明块（首行不以 `】` 结尾则进入跨行跳过态）。元数据行 `parts.len() >= meta_names.len()` 才按名配对（zip 截断），否则回退旧 8 位置切分。**剥尾只能用 `strip_suffix(',')` 剥一个逗号**——`trim_end_matches(',')` 会把末尾连续空字段整段剥掉导致列数错位（已修过的 bug）
 - TXT→SHP：解析字段序列==标准 8 项（`STANDARD_META_FIELDS`）→ 6 拼音键（DKBH=plot.fid，v2.2 修复恒空）；否则 `FIELD1~FIELDn` 全字段（含点数/图形属性），DBF 头字段按序写入（`read_dbf` 读回顺序随机是 dbase Record 迭代的既有行为，与文件无关）
 - 前端常量与 Rust 镜像需双端同步：`ADV_FIELD_NAMES`/`ADV_PLACEHOLDER` ↔ `adv_placeholder`；`STD_ADV_ROWS`/`BCG_ADV_ROWS` ↔ `STANDARD_META_FIELDS`/模板 12 字段
@@ -220,11 +225,16 @@ SHP 存储 (X, Y) = (东坐标, 北坐标)。TXT 存储 (Y, X) = (北坐标, 东
 ### 前端构建特殊行为
 `@tauri-apps/api` 在 Vite 生产构建中不会被包含在输出 JS 内。ES module `import` 由 Vite 在构建时解析，运行时通过 `window.__TAURI__` 调用。
 
+### WebView2 对话框陷阱（三坑实录）
+`prompt()`、`confirm()` 在 Tauri WebView2 中**均静默失败**（不弹框、返回 null/falsy）；换成 `plugin-dialog` 的 `ask()` 原生弹窗后**真机实测依然无反应**（代码链路验证无误：版本一致、命令名 `plugin:dialog|message`、权限 `allow-message` 已授权、插件已注册——但打包版就是不弹，根因未查明）。浏览器/Playwright 测试正常（工具拦截代答）掩盖了全部三坑。
+**结论：破坏性确认一律用两段式按钮 `armButton(btn, "确认删除?", action)`**（main.js）：首次点击变红提示、**再点执行（无超时，点按钮外任意处取消**——曾有 3s 自动复原被用户当成「点了没反应」，已移除）。行内文本输入（如 `#tplNameInput` 方案命名）：blur 自动提交（空值/Esc/重名待覆盖时失焦=放弃防误覆盖），按钮 mousedown preventDefault 防双触发。`uiConfirm`（ask 封装）仅剩 `doUpdate` 百度云兜底使用，catch 会 toast 报错。
+
 ### 构建陷阱：vite html-inline-proxy 间歇失败
 `npm run build`（vite + vite-plugin-singlefile）在改过 `index.html`（含内联 `<style>`）后偶发报 `No matching HTML proxy module found`（"2 modules transformed"，正常 15）。**Windows 文件系统时序竞态，非源码 bug**——清缓存前后 JS hash 一致。
 - 单独 `npm run build` 稳定；用 **bash** `rm -rf node_modules/.vite dist` 清缓存（PowerShell `Remove-Item` 大目录后立即 build 反而易触发竞态）
 - **`npm run tauri build` 的 `beforeBuildCommand` 会确定性失败**（4/4），但单独 build 5/5 成功；TAURI_* env 不是元凶，疑为 tauri 子进程 cwd/shell 差异
 - **绕过方案**（已验证）：① 单独 `npm run build` 生成 dist → ② 临时清空 `tauri.conf.json` 的 `beforeBuildCommand`（改 `""`）→ ③ `npm run tauri build`（用现成 dist，cargo+NSIS 正常）→ ④ **务必恢复** `beforeBuildCommand: "npm run build"`
+- **纯前端改动后必须 `cargo clean -p jisig-bpoint-converter --release && cargo clean -p jisig_bpoint_converter_lib --release` 再 `npm run tauri build`**：前端资产由 tauri-build（build.rs）在 **build script 阶段**读 dist 嵌入 OUT_DIR，其 rerun-if-changed 触发源不含 frontendDist 目录、不含 Rust 源码——**touch tauri.conf.json / touch lib.rs 实测均无效**（增量构建仍不重嵌资产）→ **exe 嵌的还是上次的前端**（v3.1 三轮前端修复全部因此未进 exe，点 ✕ 无反应排查三轮才定位）。验证法：跑 exe 开「关于」看底部构建时间（v3.1+ `__BUILD_TS__`，vite.config.js `define` 注入）；exe 二进制 grep 无效（资产压缩嵌入无明文）
 
 ### 权限（capabilities/default.json）
 需要：`core:default`、`dialog:default/open/save`、`fs:default/read/write/exists/mkdir/remove/rename/stat`、`shell:allow-open`、`updater:default`、`process:allow-restart/exit`

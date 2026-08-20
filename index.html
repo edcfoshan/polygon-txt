@@ -233,7 +233,7 @@ body::before{
 
 .spacer{flex:1}
 
-/* ═══ Title bar icon buttons (GitHub, Sponsor) ═══ */
+/* ═══ Title bar icon buttons ═══ */
 .tbar-btn{
   width:28px;height:28px;border-radius:6px;
   border:1px solid transparent;background:transparent;
@@ -245,8 +245,6 @@ body::before{
 .tbar-btn:hover{color:var(--tx2);background:var(--srf2);border-color:var(--brd)}
 .tbar-btn:active{transform:scale(.95)}
 .tbar-btn svg{width:15px;height:15px}
-.tbar-btn.sponsor{color:var(--ac)}
-.tbar-btn.sponsor:hover{color:var(--ach);background:var(--acg);border-color:rgba(154,111,31,.25)}
 /* 更新按钮四态：idle 默认刷新 / available 有新版绿箭头 / skipped 已跳过灰箭头 / loading 检查中 */
 .tbar-btn.update-badge{position:relative;color:var(--tx3)}
 .tbar-btn.update-badge .ic-arrow{display:none}
@@ -295,21 +293,7 @@ body::before{
 .btn:active{transform:scale(.97)}
 .btn:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
 
-/* Theme toggle */
-.theme-toggle{
-  width:30px;height:30px;border-radius:6px;
-  border:1px solid var(--brd);background:transparent;
-  color:var(--tx2);cursor:pointer;display:flex;align-items:center;justify-content:center;
-  transition:all .25s cubic-bezier(.4,0,.2,1);
-  position:relative;overflow:hidden;
-}
-.theme-toggle:hover{color:var(--ac);border-color:var(--ac);background:var(--acg)}
-.theme-toggle:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
-
-/* ─── 主题下拉面板（浅/暗 + 8 色系） ─── */
-.thwrap{position:relative}
-.thmenu{display:none;position:absolute;top:34px;right:0;z-index:60;background:var(--srf);border:1px solid var(--brd2);border-radius:9px;box-shadow:var(--shadow-lg);padding:10px;width:204px}
-.thmenu.on{display:block}
+/* ─── 外观选项（设置面板内：浅/暗 + 8 色系，v3.0 起 thopt/copt 复用） ─── */
 .thm-row{display:flex;gap:6px;margin-bottom:9px}
 .thopt{flex:1;font-size:11px;padding:5px 0;border:1px solid var(--brd);background:var(--srf2);border-radius:6px;cursor:pointer;color:var(--tx2);font-family:inherit}
 .thopt:hover{border-color:var(--brd2);color:var(--tx)}
@@ -320,13 +304,20 @@ body::before{
 .copt i{width:11px;height:11px;border-radius:50%;flex-shrink:0;box-shadow:inset 0 0 0 1px rgba(0,0,0,.15)}
 .copt:hover{background:var(--srf2)}
 .copt.on{background:var(--acg);border-color:var(--ac);color:var(--tx);font-weight:600}
-.theme-toggle:active{transform:scale(.95)}
-.theme-toggle svg{width:14px;height:14px;transition:transform .35s cubic-bezier(.4,0,.2,1)}
-.theme-toggle .sun,.theme-toggle .moon{position:absolute;transition:opacity .3s, transform .35s}
-[data-t="dark"] .theme-toggle .sun{opacity:1;transform:rotate(0) scale(1)}
-[data-t="dark"] .theme-toggle .moon{opacity:0;transform:rotate(-90deg) scale(.5)}
-[data-t="light"] .theme-toggle .sun{opacity:0;transform:rotate(90deg) scale(.5)}
-[data-t="light"] .theme-toggle .moon{opacity:1;transform:rotate(0) scale(1)}
+
+/* ─── 三区字号缩放（CSS zoom，挂内容高度元素上防满高容器溢出） ─── */
+.titlebar,.tabbar,.modal-overlay,#toast{zoom:var(--za,1)}
+.acc,.ctr-ft{zoom:var(--zb,1)}
+.pv{zoom:var(--zc,1)}
+
+/* ─── 设置面板：滚动内容区 + 字号滑块行 ─── */
+.set-body{overflow-y:auto;min-height:0;scrollbar-width:thin}
+.set-body::-webkit-scrollbar{width:6px}
+.set-body::-webkit-scrollbar-thumb{background:var(--brd);border-radius:3px}
+.fsrow{display:flex;align-items:center;gap:10px;margin-bottom:9px}
+.fsrow label{flex:0 0 36px;font-size:11.5px;color:var(--tx2)}
+.fsrow input[type=range]{flex:1;accent-color:var(--ac);cursor:pointer}
+.fsrow .fsv{flex:0 0 40px;text-align:right;font-family:"JetBrains Mono",monospace;font-size:11px;color:var(--ac)}
 
 .win-ctls{display:flex;align-items:center;margin-left:6px}
 .win-btn{
@@ -339,7 +330,7 @@ body::before{
 .win-btn:hover{background:var(--srf2);color:var(--tx)}
 .win-btn.close:hover{background:#e81123;color:#fff}
 
-/* ═══ Sponsor Modal ═══ */
+/* ═══ Modals ═══ */
 .modal-overlay{
   position:fixed;inset:0;z-index:1000;
   background:rgba(0,0,0,.45);
@@ -365,7 +356,6 @@ body::before{
   flex-direction:column;
 }
 .modal-card[data-modal="about"]{max-width:var(--m-a-w,520px);width:var(--m-a-w,520px);padding:var(--m-a-p,24px 28px 20px);text-align:left}
-.modal-card[data-modal="sponsor"]{max-width:var(--m-s-w,520px);width:var(--m-s-w,520px);padding:var(--m-s-p,24px 28px 20px)}
 .modal-overlay.on .modal-card{transform:translateY(0)}
 .modal-close{
   position:absolute;top:8px;right:10px;
@@ -396,14 +386,11 @@ body::before{
 .modal-body::-webkit-scrollbar{width:6px}
 .modal-body::-webkit-scrollbar-thumb{background:var(--brd);border-radius:3px}
 .modal-body p,.modal-body li{font-size:var(--m-a-bs,12px);line-height:1.6}
-.modal-card[data-modal="sponsor"] .modal-body p,.modal-card[data-modal="sponsor"] .modal-body li{font-size:var(--m-s-bs,12px)}
 .modal-card img{
   max-width:100%;max-height:var(--m-a-im,280px);border-radius:6px;
   border:1px solid var(--brd);
   display:block;margin:0 auto;
 }
-.modal-card[data-modal="sponsor"] h3{font-size:var(--m-s-ts,13px)}
-.modal-card[data-modal="sponsor"] img{max-height:var(--m-s-im,280px)}
 
 /* ═══ GDB 选择 Modal ═══ */
 .modal-card[data-modal="gdbSelect"]{
@@ -659,6 +646,8 @@ body::before{
 /* ─── 字段映射高级模式动态行（复用 attr-row 行式布局） ─── */
 .adv-toolbar{display:flex;align-items:center;gap:4px;margin-bottom:5px}
 .presetsel{font-size:10px;padding:2.5px 4px;border:1px solid var(--brd);border-radius:4px;background:var(--srf2);color:var(--tx2);outline:none;font-family:inherit;flex:1.2;min-width:0;cursor:pointer}
+.tplname{cursor:text;color:var(--tx)}
+.btn.arm{color:#e5484d;border-color:#e5484d;font-weight:600}
 .presetsel:focus-visible{border-color:var(--ac)}
 .presetsel option[value="custom"]{color:var(--tx3);font-style:italic}
 #fieldRows{max-height:220px;overflow-y:auto;padding-right:3px}
@@ -668,9 +657,13 @@ body::before{
 .field-row .fk{width:118px;flex-shrink:0}
 .field-row .feq{font-size:10px;color:var(--tx3);flex-shrink:0}
 .field-row .fmap{flex:1;min-width:0}
-.field-row select.fk,.field-row select.fmap{padding:3px 5px;font-size:10px;border:1px solid var(--brd);border-radius:3px;background:var(--srf2);color:var(--tx);outline:none;font-family:inherit;min-width:0}
-.field-row select.fk:focus-visible,.field-row select.fmap:focus-visible{border-color:var(--ac);box-shadow:0 0 0 2px var(--acg)}
+.field-row select.fk,.field-row input.fk,.field-row select.fmap{padding:3px 5px;font-size:10px;border:1px solid var(--brd);border-radius:3px;background:var(--srf2);color:var(--tx);outline:none;font-family:inherit;min-width:0}
+.field-row select.fk:focus-visible,.field-row input.fk:focus-visible,.field-row select.fmap:focus-visible{border-color:var(--ac);box-shadow:0 0 0 2px var(--acg)}
 .field-row select:disabled{opacity:.55;cursor:not-allowed}
+#advSuggest{position:fixed;z-index:999;background:var(--srf);border:1px solid var(--brd);border-radius:4px;box-shadow:0 4px 14px rgba(0,0,0,.18);max-height:180px;overflow-y:auto;display:none;font-size:10px}
+#advSuggest .opt{padding:4px 8px;cursor:pointer;white-space:nowrap;color:var(--tx)}
+#advSuggest .opt:hover{background:var(--acg)}
+#advSuggest .opt.dim{color:var(--tx3)}
 
 .pnl.hide{width:0!important;min-width:0;border:none;opacity:0}
 
@@ -1006,47 +999,14 @@ body::before{
         <path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.17 6.839 9.49.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.604-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.463-1.11-1.463-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.831.092-.646.35-1.086.636-1.336-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0 1 12 6.836a9.59 9.59 0 0 1 2.504.337c1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.167 22 16.418 22 12c0-5.523-4.477-10-10-10z"/>
       </svg>
     </button>
-    <!-- Sponsor button -->
-    <button class="tbar-btn sponsor" id="btnSponsor" title="赞赏支持" aria-label="赞赏">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
-      </svg>
-    </button>
-    <div class="thwrap">
-    <button class="theme-toggle" id="btnTheme" title="主题与色系" aria-label="主题与色系">
-      <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>
-      </svg>
-      <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
-      </svg>
-    </button>
-    <div class="thmenu" id="thMenu">
-      <div class="thm-row">
-        <button class="thopt on" data-t="light" type="button">☀ 浅色</button>
-        <button class="thopt" data-t="dark" type="button">☾ 暗色</button>
-      </div>
-      <div class="thm-lb">色系 / COLOR</div>
-      <div class="thm-colors">
-        <button class="copt on" data-c="normal" type="button"><i style="background:#1a1a1a"></i>经典黑白</button>
-        <button class="copt" data-c="brass" type="button"><i style="background:#9a6f1f"></i>测绘黄铜</button>
-        <button class="copt" data-c="green" type="button"><i style="background:#2f6b3a"></i>墨绿</button>
-        <button class="copt" data-c="blue" type="button"><i style="background:#1e5a8a"></i>海蓝</button>
-        <button class="copt" data-c="cyan" type="button"><i style="background:#0e7490"></i>青蓝</button>
-        <button class="copt" data-c="purple" type="button"><i style="background:#6d28d9"></i>绛紫</button>
-        <button class="copt" data-c="orange" type="button"><i style="background:#c2410c"></i>珊瑚橙</button>
-        <button class="copt" data-c="rose" type="button"><i style="background:#be185d"></i>玫红</button>
-      </div>
-    </div>
-    </div>
     <button class="tbar-btn" id="btnAbout" title="关于" aria-label="关于">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>
       </svg>
     </button>
-    <button class="tbar-btn" id="btnRatio" title="显示比例" aria-label="显示比例">
+    <button class="tbar-btn" id="btnSettings" title="设置" aria-label="设置">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <rect x="2" y="4" width="6" height="16" rx="1"/><rect x="9" y="4" width="6" height="16" rx="1"/><rect x="16" y="4" width="6" height="16" rx="1"/>
+        <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1.08-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1.08 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
       </svg>
     </button>
     <div class="spacer" data-tauri-drag-region></div>
@@ -1116,12 +1076,18 @@ body::before{
             <div id="fieldAdv" style="display:none">
               <div class="adv-toolbar">
                 <button class="btn attr-add" id="btnAddField" style="font-size:9.5px;padding:2px 8px">+ 添加字段</button>
-                <select class="presetsel" id="bcgSel" title="预设字段模板；手动修改任何行后自动变为「自定义」">
+                <button class="btn" id="btnSaveTpl" style="font-size:9.5px;padding:2px 8px" onclick="saveAdvTpl()" title="把当前字段清单保存为方案（同名覆盖）">存为方案</button>
+                <button class="btn" id="btnDelTpl" style="font-size:9.5px;padding:2px 8px;display:none" onclick="delAdvTpl()" title="删除选中的自定义方案">✕</button>
+              </div>
+              <div class="adv-toolbar">
+                <select class="presetsel" id="bcgSel" title="预设/自定义字段方案；手动修改任何行后自动变为「自定义」">
                   <option value="std">8 字段标准</option>
                   <option value="bcg">补充耕地模式</option>
                   <option value="custom">自定义</option>
                 </select>
-                <button class="btn" id="btnResetFields" style="font-size:9.5px;padding:2px 8px">恢复默认</button>
+                <input class="presetsel tplname" id="tplNameInput" maxlength="30" placeholder="输入方案名，回车保存" style="display:none;flex:1">
+                <button class="btn" id="btnTplOk" style="font-size:9.5px;padding:2px 8px;display:none" onclick="confirmAdvTplSave()" title="确认保存">✓</button>
+                <button class="btn" id="btnTplCancel" style="font-size:9.5px;padding:2px 8px;display:none" onclick="cancelAdvTplSave()" title="取消">✕</button>
               </div>
               <div id="fieldRows"></div>
             </div>
@@ -1308,23 +1274,51 @@ J2,1,Y500.000,X301.000
   </div>
 </div>
 
-<!-- Sponsor Modal -->
-<div class="modal-overlay" id="sponsorModal">
-  <div class="modal-card" data-modal="sponsor">
-    <button class="modal-close" id="btnCloseSponsor" aria-label="关闭">×</button>
-    <div class="modal-body" id="sponsorBody"></div>
-  </div>
-</div>
-
-<!-- Ratio Modal -->
-<div class="modal-overlay" id="ratioModal">
-  <div class="modal-card" data-modal="ratio" style="max-width:420px;width:420px;padding:24px 28px 20px;text-align:left">
-    <button class="modal-close" id="btnCloseRatio" aria-label="关闭">×</button>
-    <div style="font-size:14px;font-weight:600;color:var(--tx);margin-bottom:4px">显示比例</div>
-    <div style="font-size:11px;color:var(--tx3);margin-bottom:14px">选择三栏（输入 / 参数 / 预览）的宽度比例，仅面→TXT 模式生效</div>
-    <div class="chips" id="ratioChips" style="flex-wrap:wrap;gap:6px"></div>
-    <div style="margin-top:16px;padding:10px 12px;background:var(--srf2);border:1px solid var(--brd);border-radius:6px;font-size:11px;color:var(--tx2);line-height:1.6">
-      <strong style="color:var(--tx)">提示</strong>：选“宽主区”可在预览中看到更多坐标行；窗口拉到最小时字段不会被挤溢。设置自动记住，刷新后仍生效。
+<!-- Settings Modal（外观 / 显示比例 / 界面字号） -->
+<div class="modal-overlay" id="settingsModal">
+  <div class="modal-card" data-modal="settings" style="max-width:420px;width:420px;padding:20px 24px 16px;text-align:left">
+    <button class="modal-close" id="btnCloseSet" aria-label="关闭">×</button>
+    <div style="font-size:14px;font-weight:600;color:var(--tx);margin-bottom:12px">设置</div>
+    <div class="set-body">
+      <div class="thm-row">
+        <button class="thopt on" data-t="light" type="button">☀ 浅色</button>
+        <button class="thopt" data-t="dark" type="button">☾ 暗色</button>
+      </div>
+      <div class="thm-lb">色系 / COLOR</div>
+      <div class="thm-colors">
+        <button class="copt on" data-c="normal" type="button"><i style="background:#1a1a1a"></i>经典黑白</button>
+        <button class="copt" data-c="brass" type="button"><i style="background:#9a6f1f"></i>测绘黄铜</button>
+        <button class="copt" data-c="green" type="button"><i style="background:#2f6b3a"></i>墨绿</button>
+        <button class="copt" data-c="blue" type="button"><i style="background:#1e5a8a"></i>海蓝</button>
+        <button class="copt" data-c="cyan" type="button"><i style="background:#0e7490"></i>青蓝</button>
+        <button class="copt" data-c="purple" type="button"><i style="background:#6d28d9"></i>绛紫</button>
+        <button class="copt" data-c="orange" type="button"><i style="background:#c2410c"></i>珊瑚橙</button>
+        <button class="copt" data-c="rose" type="button"><i style="background:#be185d"></i>玫红</button>
+      </div>
+      <div class="thm-lb" style="margin-top:12px">显示比例 / RATIO</div>
+      <div class="chips" id="ratioChips" style="flex-wrap:wrap;gap:6px"></div>
+      <div class="thm-lb" style="margin-top:12px">界面字号 / FONT SIZE</div>
+      <div class="fsrow">
+        <label>界面</label>
+        <input type="range" id="fsA" min="85" max="140" step="5" value="100">
+        <span class="fsv" id="fsAv">100%</span>
+      </div>
+      <div class="fsrow">
+        <label>内容</label>
+        <input type="range" id="fsB" min="85" max="140" step="5" value="100">
+        <span class="fsv" id="fsBv">100%</span>
+      </div>
+      <div class="fsrow">
+        <label>预览</label>
+        <input type="range" id="fsC" min="85" max="140" step="5" value="100">
+        <span class="fsv" id="fsCv">100%</span>
+      </div>
+      <div style="text-align:right;margin-top:2px">
+        <button class="btn" id="btnFsReset" style="font-size:10px;padding:3px 10px">字号恢复默认</button>
+      </div>
+    </div>
+    <div style="margin-top:10px;padding:9px 11px;background:var(--srf2);border:1px solid var(--brd);border-radius:6px;font-size:10.5px;color:var(--tx2);line-height:1.6">
+      「界面」含标题栏与弹窗；「内容」为三栏折叠卡；「预览」为右侧坐标文本。设置自动记住，刷新后仍生效。
     </div>
   </div>
 </div>

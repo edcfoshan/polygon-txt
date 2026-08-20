@@ -1,16 +1,9 @@
 {
   "about": {
-    "cardWidth": "520px",
+    "cardWidth": "560px",
     "padding": "24px 28px 20px",
     "titleFontSize": "13px",
     "bodyFontSize": "12px",
-    "imageMaxHeight": "280px"
-  },
-  "sponsor": {
-    "cardWidth": "520px",
-    "padding": "24px 28px 20px",
-    "titleFontSize": "13px",
-    "bodyFontSize": "12px",
-    "imageMaxHeight": "280px"
+    "imageMaxHeight": "320px"
   }
 }

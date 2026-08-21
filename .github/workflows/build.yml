@@ -71,23 +71,38 @@ jobs:
       - name: Build frontend
         run: npm run build
 
-      # CI 未配置签名私钥：构建前移除 updater 公钥和签名产物要求，避免缺私钥报错
-      - name: Disable updater signing for CI
+      # CI 配置处理：productName 改 ASCII 避免资产名中文损坏；按是否有私钥决定 updater 签名
+      - name: Patch Tauri config for CI
         shell: bash
         run: |
-          node -e "
-            const fs = require('fs');
-            const p = 'src-tauri/tauri.conf.json';
-            const c = JSON.parse(fs.readFileSync(p, 'utf8'));
-            if (c.bundle) c.bundle.createUpdaterArtifacts = false;
-            if (c.plugins && c.plugins.updater) delete c.plugins.updater.pubkey;
-            fs.writeFileSync(p, JSON.stringify(c, null, 2) + '\n');
-          "
+          if [ -z "${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}" ]; then
+            echo "::warning::TAURI_SIGNING_PRIVATE_KEY 未配置，禁用 updater 签名"
+            node -e "
+              const fs = require('fs');
+              const p = 'src-tauri/tauri.conf.json';
+              const c = JSON.parse(fs.readFileSync(p, 'utf8'));
+              c.productName = 'polygon-txt';
+              if (c.bundle) c.bundle.createUpdaterArtifacts = false;
+              if (c.plugins && c.plugins.updater) delete c.plugins.updater.pubkey;
+              fs.writeFileSync(p, JSON.stringify(c, null, 2) + '\n');
+            "
+          else
+            echo "TAURI_SIGNING_PRIVATE_KEY 已配置，保留 updater 签名"
+            node -e "
+              const fs = require('fs');
+              const p = 'src-tauri/tauri.conf.json';
+              const c = JSON.parse(fs.readFileSync(p, 'utf8'));
+              c.productName = 'polygon-txt';
+              fs.writeFileSync(p, JSON.stringify(c, null, 2) + '\n');
+            "
+          fi
 
       - name: Build Tauri app (no release)
         uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           args: --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
 

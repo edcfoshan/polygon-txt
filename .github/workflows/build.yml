@@ -75,10 +75,8 @@ jobs:
         uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          # 未配置私钥时禁用 updater 签名（避免构建失败）；配置后正常签名
-          TAURI_CONFIG: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY && '' || '{"bundle":{"createUpdaterArtifacts":false}}' }}
+          # 禁用 updater 签名（未配置私钥时构建不报错；本地发布流程不受影响）
+          TAURI_CONFIG: '{"bundle":{"createUpdaterArtifacts":false}}'
         with:
           args: --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
 

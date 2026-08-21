@@ -108,13 +108,41 @@ TXT → 面 方向同样是 **①导入 TXT + ②输出设置** 编号分组，�
 
 ## 下载安装
 
-前往 [Releases](https://github.com/edcfoshan/polygon-txt/releases) 下载最新版本的 Windows 安装包（NSIS 安装版 + 绿色便携版），双击运行即可。
+前往 [Releases](https://github.com/edcfoshan/polygon-txt/releases) 下载最新版本。
+
+### 系统要求
+
+| 平台 | 要求 | 下载文件 |
+|------|------|----------|
+| **Windows** | Windows 10/11 64位 | `.exe` 安装包 或 `-portable.exe` 便携版 |
+| **macOS** | macOS 10.15+ (Catalina) | `.dmg` 安装包（arm64 = Apple Silicon, x64 = Intel） |
+| **Linux** | Ubuntu 20.04+ / 其他主流发行版 | `.AppImage` 或 `.deb` |
+
+> ⚠️ **Windows 7 不支持**：Tauri v2 依赖的 WebView2 需要 Windows 10 或更高版本。
 
 **百度云备选**：<https://pan.baidu.com/s/1xyW3-hyZrFDDG9ijYOf46g> 提取码 `e8vy`
 
-**已安装旧版本的用户，无需手动下载——打开应用，标题栏右上角点击刷新按钮即可一键自动更新到最新版本。**
+**已安装旧版本的 Windows 用户，无需手动下载——打开应用，标题栏右上角点击刷新按钮即可一键自动更新到最新版本。**
 
 安装包约 5MB，绿色便携版解压即用，秒级启动，全程离线，数据不出本机。
+
+### 从源码构建（所有平台）
+
+前置要求：[Node.js](https://nodejs.org/) 、[Rust](https://www.rust-lang.org/)
+
+```bash
+npm install         # 安装前端依赖
+npm run tauri dev   # 开发模式（热重载）
+npm run tauri build # 生产构建
+```
+
+- **Windows**：输出 NSIS 安装包 + 便携版
+- **macOS**：输出 `.dmg` 安装包
+- **Linux**：输出 `.AppImage` 和 `.deb`
+
+### GitHub Actions 自动构建
+
+本项目配置了 GitHub Actions CI，每次推送代码或创建 PR 时会自动构建全部平台版本。打 `v*` 标签（如 `v3.2.0`）时会自动创建正式 Release。
 
 ## TXT 格式示例
 
@@ -141,16 +169,6 @@ TXT → 面 方向同样是 **①导入 TXT + ②输出设置** 编号分组，�
 - 第二列 `界址线号` = `IndexedRing.part_index`（外环 = 1、洞 = 2、多部件下一 part = 3 ……逐环递增），是反向解析 TXT → SHP 切环的唯一依据
 - 闭合点（首末点重合的末点）默认写本环首点序号、不占号（开启 `oc` 选项时改"续编"占号）
 - 元数据行以 `,@` 结尾；坐标系字符串必须精确匹配 `2000国家大地坐标系` / `1980西安坐标系` / `1954北京坐标系` / `WGS84坐标系`
-
-## 从源码构建
-
-前置要求：[Node.js](https://nodejs.org/) 、[Rust](https://www.rust-lang.org/)
-
-```bash
-npm install         # 安装前端依赖
-npm run tauri dev   # 开发模式（热重载）
-npm run tauri build # 生产构建（输出 NSIS 安装包）
-```
 
 ## 技术栈
 

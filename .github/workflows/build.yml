@@ -71,12 +71,23 @@ jobs:
       - name: Build frontend
         run: npm run build
 
+      # CI 未配置签名私钥：构建前移除 updater 公钥和签名产物要求，避免缺私钥报错
+      - name: Disable updater signing for CI
+        shell: bash
+        run: |
+          node -e "
+            const fs = require('fs');
+            const p = 'src-tauri/tauri.conf.json';
+            const c = JSON.parse(fs.readFileSync(p, 'utf8'));
+            if (c.bundle) c.bundle.createUpdaterArtifacts = false;
+            if (c.plugins && c.plugins.updater) delete c.plugins.updater.pubkey;
+            fs.writeFileSync(p, JSON.stringify(c, null, 2) + '\n');
+          "
+
       - name: Build Tauri app (no release)
         uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # 禁用 updater 签名（未配置私钥时构建不报错；本地发布流程不受影响）
-          TAURI_CONFIG: '{"bundle":{"createUpdaterArtifacts":false}}'
         with:
           args: --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
 

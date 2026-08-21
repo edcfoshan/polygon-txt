@@ -24,15 +24,19 @@ jobs:
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
             label: windows-x64
+            bundles: nsis
           - platform: macos-latest
             target: aarch64-apple-darwin
             label: macos-arm64
+            bundles: dmg,app
           - platform: macos-latest
             target: x86_64-apple-darwin
             label: macos-x64
+            bundles: dmg,app
           - platform: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             label: linux-x64
+            bundles: appimage,deb
 
     runs-on: ${{ matrix.platform }}
 
@@ -71,8 +75,12 @@ jobs:
         uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # 未配置私钥时禁用 updater 签名（避免构建失败）；配置后正常签名
+          TAURI_CONFIG: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY && '' || '{"bundle":{"createUpdaterArtifacts":false}}' }}
         with:
-          args: --target ${{ matrix.target }}
+          args: --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
@@ -81,6 +89,8 @@ jobs:
           path: |
             src-tauri/target/${{ matrix.target }}/release/bundle/**/*.exe
             src-tauri/target/${{ matrix.target }}/release/bundle/**/*.dmg
+            src-tauri/target/${{ matrix.target }}/release/bundle/**/*.app.tar.gz
             src-tauri/target/${{ matrix.target }}/release/bundle/**/*.AppImage
             src-tauri/target/${{ matrix.target }}/release/bundle/**/*.deb
+            src-tauri/target/${{ matrix.target }}/release/bundle/**/*.sig
           retention-days: 7

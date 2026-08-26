@@ -44,7 +44,7 @@ jobs:
       - name: Compute release title
         id: rel
         shell: bash
-        run: echo "title=V${${{ github.ref_name }}#v}" | cut -d. -f1 >> /dev/null; echo "title=V$(echo '${{ github.ref_name }}' | sed 's/^v//; s/\.[^.]*$//')" >> "$GITHUB_OUTPUT"
+        run: echo "title=V$(echo '${{ github.ref_name }}' | sed 's/^v//; s/\.[^.]*$//')" >> "$GITHUB_OUTPUT"
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable

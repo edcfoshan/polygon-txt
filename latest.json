@@ -1,43 +1,43 @@
 {
-  "version": "3.1.0",
-  "notes": "## 极思G界址点互转工具 v3.1.0\n\n### 下载说明\n- **Windows**: 下载 `.exe` 安装包或 `-portable.exe` 便携版\n- **macOS**: 下载 `.dmg` 安装包（arm64 = Apple Silicon, x64 = Intel）\n- **Linux**: 下载 `.AppImage` 或 `.deb`\n\n### 系统要求\n- Windows 10/11 (64位)\n- macOS 10.15+ (Catalina 或更新)\n- Linux (需安装 WebKit2GTK)\n\n### 更新日志\n请查看 [CHANGELOG.md](https://github.com/edcfoshan/polygon-txt/blob/master/CHANGELOG.md)",
-  "pub_date": "2026-08-21T04:03:46.893Z",
+  "version": "3.2.0",
+  "notes": "## 极思G界址点互转工具 v3.2.0\n\n### 下载说明\n- **Windows**: 下载 `.exe` 安装包或 `-portable.exe` 便携版\n- **macOS**: 下载 `.dmg` 安装包（arm64 = Apple Silicon, x64 = Intel）\n- **Linux**: 下载 `.AppImage` 或 `.deb`\n\n### 系统要求\n- Windows 10/11 (64位)\n- macOS 10.15+ (Catalina 或更新)\n- Linux (需安装 WebKit2GTK)\n\n### 更新日志\n请查看 [CHANGELOG.md](https://github.com/edcfoshan/polygon-txt/blob/master/CHANGELOG.md)",
+  "pub_date": "2026-08-26T06:12:50.610Z",
   "platforms": {
     "darwin-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUd3RYL0ovejhtb0ZXbCtsa2greHIyNHg2UnVmSnBCZE9oL0FlaCs0K1BGblpka05lQkZRR1VMdXdiOG9uM0lzQllkalpqOEFLOHNuSG5wNXBRMmUvZTIyQy9SMTFHUmdFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg3Mjg0OTAwCWZpbGU6cG9seWdvbi10eHQuYXBwLnRhci5negplTFdJS2JPS3k1WVNMaFMrRWpqelRSM253azF3Ui9zOTVLbjByMEJib2JiZEhxRm16ZzJaUUU2dk5kY3h0OEpLWENXSWwzRS84d1V6MVU0WE1sdWZBZz09Cg==",
-      "url": "https://api.github.com/repos/edcfoshan/polygon-txt/releases/assets/523198140"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUd3RYL0ovejhtb0hiKzVKU0J3d2F3Y1orZFF0dXV1TVJ4NDVCZGsxVFZITVBMejdZVlI3aHdYdkxib05LZFJCc2Mrd0QvSkVXZHNEMExzUk1oKzJnZ1JEUjBMSGlERWc0PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg3NzI0NjI5CWZpbGU6cG9seWdvbi10eHQuYXBwLnRhci5negpPYk90RGo5MjF1aEtPN2o2MHhzRzVNQWU1aFJab2NmQ1kvc1FQRS9IRmxQbmx5YmkvQ2RkR3htR2o4VXE1UE5jUDMzM1ZVREpIZ3ZRUXBpZXl3ZERBQT09Cg==",
+      "url": "https://api.github.com/repos/edcfoshan/polygon-txt/releases/assets/530360246"
     },
     "darwin-x86_64-app": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUd3RYL0ovejhtb0ZXbCtsa2greHIyNHg2UnVmSnBCZE9oL0FlaCs0K1BGblpka05lQkZRR1VMdXdiOG9uM0lzQllkalpqOEFLOHNuSG5wNXBRMmUvZTIyQy9SMTFHUmdFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg3Mjg0OTAwCWZpbGU6cG9seWdvbi10eHQuYXBwLnRhci5negplTFdJS2JPS3k1WVNMaFMrRWpqelRSM253azF3Ui9zOTVLbjByMEJib2JiZEhxRm16ZzJaUUU2dk5kY3h0OEpLWENXSWwzRS84d1V6MVU0WE1sdWZBZz09Cg==",
-      "url": "https://api.github.com/repos/edcfoshan/polygon-txt/releases/assets/523198140"
-    },
-    "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUd3RYL0ovejhtb0NJdm1XS1FKMytzNzhCQ0pWeUJ3ZFNOSERJQXNhQWh0N080SXJMQTkrY0RucS9iTGhOeWd1TXJGeGxjUnRWVENhVUNWa1p3QU5xSk9SeURJWktMdGcwPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg3Mjg0OTc3CWZpbGU6cG9seWdvbi10eHRfMy4xLjBfeDY0LXNldHVwLmV4ZQpPdEZlMjFpNGtETFI1MlNrQ2xoYWZRYzY4V0dDZXVHUHpWWFpCVW9tMGs5bVBTRXhDb3BLOUFRejBvb1ExOTlmZmhGNWZVQjZpNmt6b0c0TnJPTElBZz09Cg==",
-      "url": "https://api.github.com/repos/edcfoshan/polygon-txt/releases/assets/523199237"
-    },
-    "windows-x86_64-nsis": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUd3RYL0ovejhtb0NJdm1XS1FKMytzNzhCQ0pWeUJ3ZFNOSERJQXNhQWh0N080SXJMQTkrY0RucS9iTGhOeWd1TXJGeGxjUnRWVENhVUNWa1p3QU5xSk9SeURJWktMdGcwPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg3Mjg0OTc3CWZpbGU6cG9seWdvbi10eHRfMy4xLjBfeDY0LXNldHVwLmV4ZQpPdEZlMjFpNGtETFI1MlNrQ2xoYWZRYzY4V0dDZXVHUHpWWFpCVW9tMGs5bVBTRXhDb3BLOUFRejBvb1ExOTlmZmhGNWZVQjZpNmt6b0c0TnJPTElBZz09Cg==",
-      "url": "https://api.github.com/repos/edcfoshan/polygon-txt/releases/assets/523199237"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUd3RYL0ovejhtb0hiKzVKU0J3d2F3Y1orZFF0dXV1TVJ4NDVCZGsxVFZITVBMejdZVlI3aHdYdkxib05LZFJCc2Mrd0QvSkVXZHNEMExzUk1oKzJnZ1JEUjBMSGlERWc0PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg3NzI0NjI5CWZpbGU6cG9seWdvbi10eHQuYXBwLnRhci5negpPYk90RGo5MjF1aEtPN2o2MHhzRzVNQWU1aFJab2NmQ1kvc1FQRS9IRmxQbmx5YmkvQ2RkR3htR2o4VXE1UE5jUDMzM1ZVREpIZ3ZRUXBpZXl3ZERBQT09Cg==",
+      "url": "https://api.github.com/repos/edcfoshan/polygon-txt/releases/assets/530360246"
     },
     "darwin-aarch64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUd3RYL0ovejhtb0pJdnpZVU5kWlpCbS9ncnY2V2QvQmNjZmcrNHBaaUVyTGpocUNmUWRUZjFXSHpoUlRkeVIrdDFOZW1wRWJvSG42UE5QZVNmamI3a1laUXBsK1QzM1FZPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg3Mjg1MDE1CWZpbGU6cG9seWdvbi10eHQuYXBwLnRhci5negpkTmpRdkxpSmM1ZWV6R2t2N01WVHk0bmg4c1hXSG1NNGo5d2d3cFY1M2hvNzYyTmFiVWhnRW9ueTRjZlVLZktMRWM3eE94eUhNTVl2UlpZV2lhUWFDdz09Cg==",
-      "url": "https://api.github.com/repos/edcfoshan/polygon-txt/releases/assets/523199673"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUd3RYL0ovejhtb0FibjlLS1M4UGZsN3Y0K3EzK3BlM0Z0TGp0c1l4K2dtLzc4d0c1VjZZZk5uSTFDcXBSMHd5aDVMZFNXMWRqY2d4U1dGUnFodmNzQ3dRaEY1QmxSeWdRPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg3NzI0NjcyCWZpbGU6cG9seWdvbi10eHQuYXBwLnRhci5negpFNi9nZUthVWZHT3lBN3FrQnN4c3BXSVdjMGVra3d6QmllWkNrZG5yWGRoVFJqWHY2M1Z3b1ZyS01HMGJMYzdNZTE2YjlaMW1PejFzWlJzQ1NqckxBZz09Cg==",
+      "url": "https://api.github.com/repos/edcfoshan/polygon-txt/releases/assets/530360896"
     },
     "darwin-aarch64-app": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUd3RYL0ovejhtb0pJdnpZVU5kWlpCbS9ncnY2V2QvQmNjZmcrNHBaaUVyTGpocUNmUWRUZjFXSHpoUlRkeVIrdDFOZW1wRWJvSG42UE5QZVNmamI3a1laUXBsK1QzM1FZPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg3Mjg1MDE1CWZpbGU6cG9seWdvbi10eHQuYXBwLnRhci5negpkTmpRdkxpSmM1ZWV6R2t2N01WVHk0bmg4c1hXSG1NNGo5d2d3cFY1M2hvNzYyTmFiVWhnRW9ueTRjZlVLZktMRWM3eE94eUhNTVl2UlpZV2lhUWFDdz09Cg==",
-      "url": "https://api.github.com/repos/edcfoshan/polygon-txt/releases/assets/523199673"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUd3RYL0ovejhtb0FibjlLS1M4UGZsN3Y0K3EzK3BlM0Z0TGp0c1l4K2dtLzc4d0c1VjZZZk5uSTFDcXBSMHd5aDVMZFNXMWRqY2d4U1dGUnFodmNzQ3dRaEY1QmxSeWdRPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg3NzI0NjcyCWZpbGU6cG9seWdvbi10eHQuYXBwLnRhci5negpFNi9nZUthVWZHT3lBN3FrQnN4c3BXSVdjMGVra3d6QmllWkNrZG5yWGRoVFJqWHY2M1Z3b1ZyS01HMGJMYzdNZTE2YjlaMW1PejFzWlJzQ1NqckxBZz09Cg==",
+      "url": "https://api.github.com/repos/edcfoshan/polygon-txt/releases/assets/530360896"
     },
     "linux-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUd3RYL0ovejhtb0QwSm9yVHR4M2pPcFVYRm1lRi9QMVhiZ2xGQmd6aUNTM3BzN1VFekdLRG1BWkZ4c1JVcGErT295UXdWcFFPaFVTVW9TZUdYRndLb2RvTGliL0JScXdBPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg3Mjg1MDIxCWZpbGU6cG9seWdvbi10eHRfMy4xLjBfYW1kNjQuQXBwSW1hZ2UKeUxGa2p2YjR1eHZKa2hpVllQdDNvZnNZTzFNWS9tS25YK1lRM0tQcGtSR0tUV1gxUEsyTVRVdnNwTFNhTXNJeG9wOHlZRmZ4cSsyczA4Q3c3SmhGRGc9PQo=",
-      "url": "https://api.github.com/repos/edcfoshan/polygon-txt/releases/assets/523199725"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUd3RYL0ovejhtb0lOQzdyNjdJVW8wbVdkb21IcnNFa2FSQVhzekJoY3RQbU9wZXBTYTFVRTBQWmFUUE0vSWhHZ241K3R4MC9aQkdLRWsxOFpHVndWN2Rla3Q4U1VoQndrPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg3NzI0NjgzCWZpbGU6cG9seWdvbi10eHRfMy4yLjBfYW1kNjQuQXBwSW1hZ2UKOUthNlJYOHkzNlY4OVNiN0x6M2ZsZEZXU3dGZEFyNWVrczkrc21LdTlUU0NGZk4wdnd2eWgrR0trdy9HWURwc3h0aWo5cFV3ditqV1ZRamVuVTFYRFE9PQo=",
+      "url": "https://api.github.com/repos/edcfoshan/polygon-txt/releases/assets/530361089"
     },
     "linux-x86_64-appimage": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUd3RYL0ovejhtb0QwSm9yVHR4M2pPcFVYRm1lRi9QMVhiZ2xGQmd6aUNTM3BzN1VFekdLRG1BWkZ4c1JVcGErT295UXdWcFFPaFVTVW9TZUdYRndLb2RvTGliL0JScXdBPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg3Mjg1MDIxCWZpbGU6cG9seWdvbi10eHRfMy4xLjBfYW1kNjQuQXBwSW1hZ2UKeUxGa2p2YjR1eHZKa2hpVllQdDNvZnNZTzFNWS9tS25YK1lRM0tQcGtSR0tUV1gxUEsyTVRVdnNwTFNhTXNJeG9wOHlZRmZ4cSsyczA4Q3c3SmhGRGc9PQo=",
-      "url": "https://api.github.com/repos/edcfoshan/polygon-txt/releases/assets/523199725"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUd3RYL0ovejhtb0lOQzdyNjdJVW8wbVdkb21IcnNFa2FSQVhzekJoY3RQbU9wZXBTYTFVRTBQWmFUUE0vSWhHZ241K3R4MC9aQkdLRWsxOFpHVndWN2Rla3Q4U1VoQndrPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg3NzI0NjgzCWZpbGU6cG9seWdvbi10eHRfMy4yLjBfYW1kNjQuQXBwSW1hZ2UKOUthNlJYOHkzNlY4OVNiN0x6M2ZsZEZXU3dGZEFyNWVrczkrc21LdTlUU0NGZk4wdnd2eWgrR0trdy9HWURwc3h0aWo5cFV3ditqV1ZRamVuVTFYRFE9PQo=",
+      "url": "https://api.github.com/repos/edcfoshan/polygon-txt/releases/assets/530361089"
     },
     "linux-x86_64-deb": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUd3RYL0ovejhtb09Ha21oa2RqNm9ONUZISk9EdFRUNU1MU3NucWZyUDUyQU9xOEwxTnFCcmJ1MHR5c1RrTkI1SkFCNHRvWTRVNk10Z0FPbXhYNTVxa21RbkxRQUNxSmdFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg3Mjg1MDIxCWZpbGU6cG9seWdvbi10eHRfMy4xLjBfYW1kNjQuZGViCnN4UVFxUm8ySTJ0cVFNV1htVHI4bFVFaEtGMElNdVh1czc5RlBtSTRpM1BQMFFYeXZkNy9saGt4VE5MM0wxc3VQejN0YmJuOHZYbitaT0Y1eTNTRERRPT0K",
-      "url": "https://api.github.com/repos/edcfoshan/polygon-txt/releases/assets/523199713"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUd3RYL0ovejhtb05jL1RjRDFoWTBDUWsyZUdPOStla1hock95V2FCa1dmc3RweW1PQlNiYWxZTlgyY1RYYjFLSXVvNEgyelZHcy9rd05ueUkyd1NQZTlXMDRwdDRuRVE4PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg3NzI0NjgzCWZpbGU6cG9seWdvbi10eHRfMy4yLjBfYW1kNjQuZGViCm5hYTk2aGI1SWVmWURFWmF0cHhubVBPenR5RU43YkF3dnJ5RUFHOVR0VjNFTXl6V09aUjhNMS9nR25BRndnZEkxU1dhV3FzNzl0NW5qTHpaUlVBb0R3PT0K",
+      "url": "https://api.github.com/repos/edcfoshan/polygon-txt/releases/assets/530361072"
+    },
+    "windows-x86_64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUd3RYL0ovejhtb0ZQcWkzdWFLNkZRYmlBbzVpVXdTak9HSVN0dGJnY3RoQ3cwM0VDREJWZmwwZ2JEejIvcmxSNXdZMDlEWmhkbnF4MzlhbXpKMzBWZFZtNmRvdTU0Nnd3PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg3NzI0NzY3CWZpbGU6cG9seWdvbi10eHRfMy4yLjBfeDY0LXNldHVwLmV4ZQpnU3g5M1J6UnM1L2dlMmluSDRTV0h5Q1MrbWJUczhWS0tTbFpWN0wxaTFrd0tTTmxhSWVOMkV1by9wU0h5R3I4eWZnMFhCc0dZVWZTdjRxR2hUa25BZz09Cg==",
+      "url": "https://api.github.com/repos/edcfoshan/polygon-txt/releases/assets/530362472"
+    },
+    "windows-x86_64-nsis": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUd3RYL0ovejhtb0ZQcWkzdWFLNkZRYmlBbzVpVXdTak9HSVN0dGJnY3RoQ3cwM0VDREJWZmwwZ2JEejIvcmxSNXdZMDlEWmhkbnF4MzlhbXpKMzBWZFZtNmRvdTU0Nnd3PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg3NzI0NzY3CWZpbGU6cG9seWdvbi10eHRfMy4yLjBfeDY0LXNldHVwLmV4ZQpnU3g5M1J6UnM1L2dlMmluSDRTV0h5Q1MrbWJUczhWS0tTbFpWN0wxaTFrd0tTTmxhSWVOMkV1by9wU0h5R3I4eWZnMFhCc0dZVWZTdjRxR2hUa25BZz09Cg==",
+      "url": "https://api.github.com/repos/edcfoshan/polygon-txt/releases/assets/530362472"
     }
   }
 }

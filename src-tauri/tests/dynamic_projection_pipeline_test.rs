@@ -74,8 +74,8 @@ fn dynamic_proj_mode_a_forward() {
 }
 
 #[test]
-fn dynamic_proj_mode_c_add_prefix() {
-    // 模式 C 同带含带号：自然值 easting + zone×1,000,000
+fn keep_prefix_add() {
+    // keep + proj_zone：前缀开关与投影正交，不投影只加带号前缀（自然值 + zone×1,000,000）
     let mut sources = vec![make_test_source(vec![(3_381_842.0, 537_123.0)])]; // easting 无前缀
     let header = header_with_test_attrs(vec![
         ("坐标系", "CGCS2000"),
@@ -85,18 +85,19 @@ fn dynamic_proj_mode_c_add_prefix() {
         ("投影类型", "高斯克吕格"),
         ("计量单位", "米"),
     ]);
-    let options = ShpToTxtOptions { proj_mode: "C".to_string(), proj_zone: Some(38), ..shp_opts_test_default() };
+    let options = ShpToTxtOptions { proj_mode: "keep".to_string(), proj_zone: Some(38), ..shp_opts_test_default() };
     let new_header = apply_dynamic_projection_to_sources(&mut sources, &header, &options).unwrap();
     let (y, x) = sources[0].plots[0].plot.coords[0];
     assert_eq!(y, 3_381_842.0, "northing unchanged");
     assert_eq!(x, 38_537_123.0, "easting should have zone 38 prefix, got {}", x);
-    assert_eq!(new_header.attrs.iter().find(|a| a.k == "形式").unwrap().v, "投影（米）");
-    assert_eq!(new_header.attrs.iter().find(|a| a.k == "几度分带").unwrap().v, "3°带");
+    // keep 不做头表同步：原样返回
+    assert_eq!(new_header.attrs[0].v, "CGCS2000");
+    assert_eq!(new_header.attrs.iter().find(|a| a.k == "带号").unwrap().v, "38");
 }
 
 #[test]
-fn dynamic_proj_mode_c_strip_prefix() {
-    // 模式 C 同带不含带号：剥离 zone×1,000,000 前缀
+fn keep_prefix_strip() {
+    // keep + proj_zone + no_prefix：剥离已有 zone×1,000,000 前缀输出自然值
     let mut sources = vec![make_test_source(vec![(3_381_842.0, 38_537_123.0)])]; // easting 有前缀
     let header = header_with_test_attrs(vec![
         ("坐标系", "CGCS2000"),
@@ -106,12 +107,28 @@ fn dynamic_proj_mode_c_strip_prefix() {
         ("投影类型", "高斯克吕格"),
         ("计量单位", "米"),
     ]);
-    let options = ShpToTxtOptions { proj_mode: "C".to_string(), proj_zone: Some(38), proj_no_prefix: true, ..shp_opts_test_default() };
-    let new_header = apply_dynamic_projection_to_sources(&mut sources, &header, &options).unwrap();
+    let options = ShpToTxtOptions { proj_mode: "keep".to_string(), proj_zone: Some(38), proj_no_prefix: true, ..shp_opts_test_default() };
+    let _ = apply_dynamic_projection_to_sources(&mut sources, &header, &options).unwrap();
     let (y, x) = sources[0].plots[0].plot.coords[0];
     assert_eq!(y, 3_381_842.0, "northing unchanged");
     assert_eq!(x, 537_123.0, "easting should have prefix stripped, got {}", x);
-    assert_eq!(new_header.attrs.iter().find(|a| a.k == "形式").unwrap().v, "投影（米）");
+}
+
+#[test]
+fn keep_prefix_rezone() {
+    // keep + 前缀换号：先剥实际前缀取自然值，再按目标带号加回（38 → 39）
+    let mut sources = vec![make_test_source(vec![(3_381_842.0, 38_537_123.0)])];
+    let header = header_with_test_attrs(vec![
+        ("坐标系", "CGCS2000"),
+        ("形式", "投影（米）"),
+        ("几度分带", "3°带"),
+        ("带号", "38"),
+    ]);
+    let options = ShpToTxtOptions { proj_mode: "keep".to_string(), proj_zone: Some(39), ..shp_opts_test_default() };
+    let _ = apply_dynamic_projection_to_sources(&mut sources, &header, &options).unwrap();
+    let (y, x) = sources[0].plots[0].plot.coords[0];
+    assert_eq!(y, 3_381_842.0, "northing unchanged");
+    assert_eq!(x, 39_537_123.0, "easting should be re-prefixed with zone 39, got {}", x);
 }
 
 #[test]

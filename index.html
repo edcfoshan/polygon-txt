@@ -809,6 +809,13 @@ body::before{
 .ck:hover{color:var(--tx)}
 .ck input{accent-color:var(--ac);width:13px;height:13px;cursor:pointer}
 
+/* Output mode segmented control（v3.1：三行 radio → 一段式开关，省纵向空间；高亮态 .on 由 main.js 维护） */
+.mode-seg{display:flex;gap:4px;margin-bottom:6px}
+.mode-seg .seg{flex:1;min-width:0;text-align:center;font-size:11px;padding:5px 0;border:1px solid var(--brd);background:var(--srf2);border-radius:6px;cursor:pointer;color:var(--tx2);font-family:inherit;white-space:nowrap;overflow:hidden}
+.mode-seg .seg:hover{border-color:var(--brd2);color:var(--tx)}
+.mode-seg .seg.on{background:var(--acg);border-color:var(--ac);color:var(--ac);font-weight:600}
+.mode-seg input{display:none}
+
 /* Section label */
 .slabel{
   font-size:10.5px;font-weight:600;color:var(--tx2);
@@ -915,6 +922,11 @@ body::before{
 .proj-switch-label:hover:not(:disabled){color:var(--ac);background:var(--acg)}
 .proj-switch-label:disabled{cursor:not-allowed;opacity:.45}
 .proj-switch-label.on{color:var(--ok);font-weight:500}
+.proj-crs-line{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--tx2);background:var(--srf2);border:1px solid var(--brd);border-radius:6px;padding:5px 8px;margin-bottom:6px;font-family:"JetBrains Mono",monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.proj-crs-line .d{color:var(--ac);font-weight:600}
+.proj-crs-line .muted{color:var(--tx3);font-weight:400;font-style:italic}
+.proj-switch-row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:2px}
+.proj-prefix-label{font-size:10px;color:var(--tx3)}
 .modal-card[data-modal="proj"]{width:400px;max-width:92vw;padding:0;text-align:left}
 .modal-card[data-modal="proj"] h3{padding:18px 22px 2px;margin:0;font-size:14px}
 .modal-card[data-modal="proj"] .modal-sub{padding:0 22px 14px;font-size:11px;margin:0}
@@ -1113,10 +1125,10 @@ body::before{
           <div class="acc-h" onclick="togAcc(this)"><span class="no">2</span><span class="t">输出设置</span><span class="n">一对一</span><span class="arw">▶</span></div>
           <div class="acc-b">
         <div class="slabel">输出模式</div>
-        <div class="mode-group" style="display:flex;flex-direction:column;gap:4px;margin-bottom:4px">
-          <label class="ck"><input type="radio" name="t_output_mode" value="one_to_one" checked>一对一（每个 TXT 单独输出）</label>
-          <label class="ck"><input type="radio" name="t_output_mode" value="split_by_plot">按地块拆分（每个地块单独输出）</label>
-          <label class="ck"><input type="radio" name="t_output_mode" value="merge_all">全部合并为一个 SHP</label>
+        <div class="mode-seg">
+          <label class="seg on" title="每个 TXT 单独输出一个文件"><input type="radio" name="t_output_mode" value="one_to_one" checked><span>一对一</span></label>
+          <label class="seg" title="每个地块单独输出一个文件"><input type="radio" name="t_output_mode" value="split_by_plot"><span>按地块拆分</span></label>
+          <label class="seg" title="全部合并为一个 SHP"><input type="radio" name="t_output_mode" value="merge_all"><span>全部合并</span></label>
         </div>
         <div id="t_filenameFieldRow" style="display: none; margin-left: 20px; margin-bottom: 6px;">
           <label style="font-size:11px;color:var(--tx3)">地块拆分文件名</label>
@@ -1153,10 +1165,10 @@ body::before{
           <div class="acc-h" onclick="togAcc(this)"><span class="no">3</span><span class="t">输出与选项</span><span class="n">一对一</span><span class="arw">▶</span></div>
           <div class="acc-b">
         <div class="slabel">输出模式</div>
-        <div class="mode-group" style="display:flex;flex-direction:column;gap:4px;margin-bottom:4px">
-          <label class="ck"><input type="radio" name="output_mode" value="one_to_one" checked>一对一（每个导入文件单独输出）</label>
-          <label class="ck"><input type="radio" name="output_mode" value="split_by_plot">按地块拆分（每个地块单独输出）</label>
-          <label class="ck"><input type="radio" name="output_mode" value="merge_all">全部合并为一个 TXT</label>
+        <div class="mode-seg">
+          <label class="seg on" title="每个导入文件单独输出一个 TXT"><input type="radio" name="output_mode" value="one_to_one" checked><span>一对一</span></label>
+          <label class="seg" title="每个地块单独输出一个文件"><input type="radio" name="output_mode" value="split_by_plot"><span>按地块拆分</span></label>
+          <label class="seg" title="全部合并为一个 TXT"><input type="radio" name="output_mode" value="merge_all"><span>全部合并</span></label>
         </div>
         <div id="filenameFieldRow" style="display: none; margin-left: 20px; margin-bottom: 6px;">
           <label style="font-size:11px;color:var(--tx3)">地块拆分文件名</label>
@@ -1194,11 +1206,17 @@ body::before{
         <div class="acc open">
           <div class="acc-h" onclick="togAcc(this)"><span class="no">4</span><span class="t">动态投影</span><span class="n" id="projTag">关闭</span><span class="arw">▶</span></div>
           <div class="acc-b">
-        <div class="oc-row">
+        <div class="proj-crs-line" id="projCrsStatus">导入后显示坐标系</div>
+        <div class="proj-switch-row">
           <div class="proj-switch" id="projSwitch">
             <button class="proj-switch-toggle" id="projSwitchToggle" type="button" aria-label="开关动态投影" disabled><span class="proj-switch-track"><span class="proj-switch-thumb"></span></span></button>
             <button class="proj-switch-label" id="projSwitchLabel" type="button" disabled>动态投影</button>
           </div>
+          <label class="proj-toggle proj-toggle-inline">
+            <input type="checkbox" id="projPrefixToggle" disabled>
+            <span class="proj-toggle-track"><span class="proj-toggle-thumb"></span></span>
+            <span class="proj-toggle-label proj-prefix-label">带号前缀</span>
+          </label>
         </div>
           </div>
         </div>

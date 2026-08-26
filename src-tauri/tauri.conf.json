@@ -1,13 +1,13 @@
 {
   "$schema": "https://raw.githubusercontent.com/nicedoc/open/master/tauri.conf.schema.json",
   "productName": "极思G界址点互转工具",
-  "version": "3.1.0",
+  "version": "3.2.0",
   "identifier": "com.jisig.bpoint-converter",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
     "beforeDevCommand": "npm run dev",
-    "beforeBuildCommand": ""
+    "beforeBuildCommand": "npm run build"
   },
   "app": {
     "windows": [

@@ -36,6 +36,32 @@ pub struct GdbFileInfo {
     pub layers: Vec<GdbLayerInfo>,
     pub all_features: Vec<Vec<GdbFeature>>,
     pub all_field_names: Vec<Vec<String>>,
+    /// 首个面状图层几何字段的坐标系 WKT（供前端识别坐标系用；无则为 None）
+    pub srs_wkt: Option<String>,
+}
+
+/// 读取图层 .gdbtable 头部字段区，提取几何字段的坐标系 WKT。
+/// Layer::schema() 返回的 FieldDef 不携带 srs_wkt，需走底层字段区解析；只读文件头 64KB。
+fn read_table_srs_wkt(gdb_dir: &Path, info: &fgdb::LayerInfo) -> Option<String> {
+    use std::io::Read;
+    let mut f = std::fs::File::open(info.table_path(gdb_dir)).ok()?;
+    let mut head = vec![0u8; 64 * 1024];
+    let n = f.read(&mut head).unwrap_or(0);
+    head.truncate(n);
+    let mut r = fgdb::bytes::LeReader::new(&head);
+    let hdr = fgdb::table::parse_table_header(&mut r).ok()?;
+    r.seek(hdr.field_desc_offset as usize).ok()?;
+    let fs = fgdb::table::parse_field_section(&mut r).ok()?;
+    schema_srs_wkt(&fs.fields)
+}
+
+/// 从图层字段区提取几何字段的坐标系 WKT（首个非空）
+fn schema_srs_wkt(fields: &[fgdb::Field]) -> Option<String> {
+    fields
+        .iter()
+        .find_map(|f| f.geometry.as_ref())
+        .map(|g| g.srs_wkt.clone())
+        .filter(|w| !w.trim().is_empty())
 }
 
 // ─── 手动回退用图层条目 ───
@@ -116,11 +142,15 @@ fn read_gdb_via_library(
     let mut layers = Vec::new();
     let mut all_features = Vec::new();
     let mut all_field_names = Vec::new();
+    let mut srs_wkt: Option<String> = None;
 
     for info in layer_infos.iter() {
         match gdb.layer(&info.name) {
             Ok(layer) => {
                 let schema = layer.schema();
+                if srs_wkt.is_none() {
+                    srs_wkt = read_table_srs_wkt(path, info);
+                }
                 let field_names: Vec<String> =
                     schema.fields.iter().map(|f| f.name.clone()).collect();
 
@@ -172,10 +202,13 @@ fn read_gdb_via_library(
                             info.name
                         );
                         match read_layer_manual(path, &entry) {
-                            Ok((layer_info, feats, fields)) => {
+                            Ok((layer_info, feats, fields, wkt)) => {
                                 layers.push(layer_info);
                                 all_features.push(feats);
                                 all_field_names.push(fields);
+                                if srs_wkt.is_none() {
+                                    srs_wkt = wkt;
+                                }
                                 continue;
                             }
                             Err(e) => {
@@ -217,6 +250,7 @@ fn read_gdb_via_library(
         layers,
         all_features,
         all_field_names,
+        srs_wkt,
     })
 }
 
@@ -233,13 +267,17 @@ fn read_gdb_fallback(path: &Path) -> Result<GdbFileInfo, String> {
     let mut layers = Vec::new();
     let mut all_features = Vec::new();
     let mut all_field_names = Vec::new();
+    let mut srs_wkt: Option<String> = None;
 
     for entry in &entries {
         match read_layer_manual(path, entry) {
-            Ok((layer_info, features, field_names)) => {
+            Ok((layer_info, features, field_names, wkt)) => {
                 layers.push(layer_info);
                 all_features.push(features);
                 all_field_names.push(field_names);
+                if srs_wkt.is_none() {
+                    srs_wkt = wkt;
+                }
             }
             Err(e) => {
                 eprintln!("跳过图层 {}: {}", entry.name, e);
@@ -262,6 +300,7 @@ fn read_gdb_fallback(path: &Path) -> Result<GdbFileInfo, String> {
         layers,
         all_features,
         all_field_names,
+        srs_wkt,
     })
 }
 
@@ -290,7 +329,7 @@ fn parse_catalog_manual(dir: &Path) -> Result<Vec<LayerEntry>, String> {
 fn read_layer_manual(
     dir: &Path,
     entry: &LayerEntry,
-) -> Result<(GdbLayerInfo, Vec<GdbFeature>, Vec<String>), String> {
+) -> Result<(GdbLayerInfo, Vec<GdbFeature>, Vec<String>, Option<String>), String> {
     let table_bytes = std::fs::read(entry.table_path(dir))
         .map_err(|e| format!("读取图层文件失败: {}", e))?;
     let tx_bytes = std::fs::read(entry.tablx_path(dir))
@@ -378,7 +417,7 @@ fn read_layer_manual(
         geometry_type: geom_type.to_string(),
     };
 
-    Ok((layer_info, features, field_names))
+    Ok((layer_info, features, field_names, schema_srs_wkt(&schema.fields)))
 }
 
 // ─── Z/M 标志剥离（ArcGIS Pro 兼容） ───

@@ -13,6 +13,10 @@ src-tauri/target/
 
 # 浏览器测试缓存
 .playwright-mcp/
+.playwright-cli/
+
+# 原型可视化服务器会话
+.superpowers/
 
 # ArcGIS FileGDB 运行时锁文件（不提交）
 *.sr.lock

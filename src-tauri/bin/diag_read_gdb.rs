@@ -15,6 +15,7 @@ fn main() {
 
     match jisig_bpoint_converter_lib::gdb::read_gdb(&gdb_dir) {
         Ok(info) => {
+            println!("srs_wkt: {}", info.srs_wkt.as_deref().unwrap_or("(none)"));
             println!("OK: {} 个图层", info.layers.len());
             for l in &info.layers {
                 println!(

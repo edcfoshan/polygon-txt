@@ -58,13 +58,13 @@ index.html (CSS 内联, Google Fonts CDN)
 - Markdown 弹窗：`content/about.md` 和 `content/sponsor.md` 通过 `?raw` 导入，`renderMarkdown()` 渲染
 - 双模式：`data-mode="s"`（面→TXT，3 列 260+260+360）/ `data-mode="t"`（TXT→面，2 列 300+flex）
 - 预设配置 `PP` 数组包含三种模式（基础地块/规划审批/自定义），字段自动匹配规则在 `FIELD_MATCH_RULES`
-- **动态投影弹窗**（`#projModal`）：推荐区（顶部，基于经纬度范围智能推荐分带/带号/CM）+ 导入识别网格 + 目标形式下拉（`#projFormSelect`：3°带/6°带/转为大地坐标）+ 含带号开关（`#projPrefixToggle`，智能默认跟随导入数据 X 量级 >1e6 则开）+ 带号输入（`#projZoneInput`）↔ 中央经线输入（`#projCMInput`，双向联动，CM 立即规整到最近标称值）。三个维度（分带/含带号/转大地）解耦为独立控件——「不含带号」只控制 X 坐标前缀，不再禁用带号输入。输入是大地时「转为大地坐标」选项禁选；选中「转为大地坐标」时含带号开关+带号/CM 输入置灰。模式推断函数 `inferProjMode(inputIsDegree, inputBand, targetVal, srcZone, dstZone)`。模式自动推断表：
+- **动态投影弹窗**（`#projModal`）：推荐区（顶部，基于经纬度范围智能推荐分带/带号/CM）+ 导入识别网格 + 目标形式下拉（`#projFormSelect`：3°带/6°带/转为大地坐标）+ 带号输入（`#projZoneInput`）↔ 中央经线输入（`#projCMInput`，双向联动，CM 立即规整到最近标称值）。输入是大地时「转为大地坐标」选项禁选。模式推断函数 `inferProjMode(inputIsDegree, inputBand, targetVal, srcZone, dstZone)`（同带同号返回 null → `applyProjMode` 拦截）。**v3.2 起弹窗只做真投影**；带号前缀由 4号卡片「带号前缀」开关（`#projPrefixToggle`）独立负责（与动态投影正交，见下方 proj_mode 说明）。模式自动推断表：
 
 | 输入形式 | 目标分带 | mode |
 |---------|---------|------|
 | 大地(度) | 3° | A（大地→投影 3°） |
 | 大地(度) | 6° | B（大地→投影 6°） |
-| 投影(米) 同带同带号 | — | C（同带前缀调整） |
+| 投影(米) 同带同带号 | — | 拦截：toast「无需投影」（v3.2 起 C 废除，前缀走正交开关） |
 | 投影(米) 同带不同带号 | 同带 | H（同分带换带，如 38→39） |
 | 投影(米) 源3°→6° | 6° | F（换带 3°→6°） |
 | 投影(米) 源6°→3° | 3° | G（换带 6°→3°） |
@@ -90,7 +90,7 @@ index.html (CSS 内联, Google Fonts CDN)
 ### 转换选项（面→TXT，`ShpToTxtOptions` in convert.rs）
 - `ox` XY 坐标标反 / `oj` 点号前加"J" / `on` 起始点西北角 / `oo` 首末点重合 / `oc` 闭合点编号模式
 - `og` 输出公里网：仅当输入为大地坐标系（度）时可用。与动态投影互斥（`proj_mode ≠ "keep"` 时前端强制 og=false 并置灰）
-- `proj_mode` 动态投影模式：`"keep"`（不转换）/ `"A"`（大地→3°投影）/ `"B"`（大地→6°投影）/ `"C"`（同带前缀调整，仅加减 zone×1,000,000 不做实际投影）/ `"D"`（投影→大地，逆投影）/ `"F"`（3°→6°换带）/ `"G"`（6°→3°换带）/ `"H"`（同分带不同带号换带，如 3°带 38→39，目标分带沿用源分带）
+- `proj_mode` 动态投影模式：`"keep"`（不投影，仍可单独调带号前缀）/ `"A"`（大地→3°投影）/ `"B"`（大地→6°投影）/ `"D"`（投影→大地，逆投影）/ `"F"`（3°→6°换带）/ `"G"`（6°→3°换带）/ `"H"`（同分带不同带号换带，如 3°带 38→39，目标分带沿用源分带）。`"C"` 已废除（v3.2）——同带调前缀改为 keep + `proj_zone`：4号卡片「带号前缀」开关与动态投影**正交**，keep 且 proj_zone 有值时 `adjust_zone_prefix`（convert.rs）单独加/剥前缀，不点亮动态投影开关；前端 `inferProjMode` 同带同号返回 null 由 `applyProjMode` 拦截 toast
 - `proj_zone`: 用户填的带号（null=自动推算），`proj_no_prefix`: 不含带号前缀（自然值）
 - `output_mode`（一对一/按地块拆分/全合并）、`filename_field`（拆分模式文件名字段）
 - 前端 `getOptions()` 收集 → `applyProjMode()` 写入全局变量 → `updatePreview()`/`runShpToTxt()` 发送 IPC

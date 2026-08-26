@@ -315,6 +315,8 @@ window.confirmGdbSelect = function () {
   window.closeGdbSelectModal();
   renderLeftGdbSummary();
   toast(`已选定 ${selectedLayers.length}/${gdbLayers.length} 个要素类`);
+  autoEnableProjPrefix();
+  updateProjButton();
   updatePreview();
 };
 
@@ -388,9 +390,11 @@ function renderLeftGdbSummary() {
   const sel = selectedLayers.length;
   const name = window._gdbName || "GDB";
   const cntText = sel === 0 ? "待选择" : `选中 ${sel}/${total}`;
+  // 单图层显示 库名.gdb\图层名（用户能看到具体导入了哪层）；多图层维持库名+计数
+  const dispName = sel === 1 ? `${name}.gdb\${selectedLayers[0]}` : `${name}.gdb`;
   fl.innerHTML = `<div class="gitem${sel === 0 ? " gitem-pending" : ""}" id="gdbSumRow" title="点击选择要素类">`
     + `<span class="gicon">◈</span>`
-    + `<span class="gname">${name}.gdb</span>`
+    + `<span class="gname" title="${dispName}">${dispName}</span>`
     + `<span class="gcnt">${cntText}</span>`
     + `<span class="gclose" id="gdbSumClose" title="移除 GDB 导入">×</span>`
     + `</div>`;
@@ -414,7 +418,9 @@ function clearGdbImport() {
   selectedLayers = [];
   gdbTempSelected = [];
   window._gdbName = "";
+  syncOgGate(null);
   renderFileList();   // 复用现有函数清空 #fl
+  updateProjButton();
   updatePreview();
   toast("已移除 GDB 导入");
 }
@@ -433,9 +439,16 @@ function renderFileList() {
 
 window.removeFile = function (i) {
   loadedFiles.splice(i, 1);
-  if (!loadedFiles.length) { const fl = $("fl"); if (fl) fl.innerHTML = ""; lastPreviewKey = ""; updatePreview(); return; }
+  if (!loadedFiles.length) {
+    syncOgGate(null);
+    updateProjButton();
+    const fl = $("fl"); if (fl) fl.innerHTML = ""; lastPreviewKey = ""; updatePreview(); return;
+  }
   renderFileList();
+  if (loadedFiles.length === 1) syncOgGate(loadedFiles[0].crs_info || null);
   updatePreview();
+  updateProjButton();
+  if (loadedFiles.length === 1) autoEnableProjPrefix();
 };
 
 
@@ -445,12 +458,14 @@ window.removeFile = function (i) {
 //   #demo=geodetic        假装大地（度）
 //   #demo=projected-3     假装投影 3°带
 //   #demo=projected-6     假装投影 6°带
+//   #demo=cm117           假装 CM117 无带号投影（GK_CM_117E，自然值坐标）
 //   #demo=unknown         假装未知
 function getDemoCrInfo(type) {
   switch (type) {
     case 'geodetic':    return { c: 'CGCS2000', u: '度',  b: '3', z: 38 };
     case 'projected-3': return { c: 'CGCS2000', u: '米',  b: '3', z: 38 };
     case 'projected-6': return { c: 'CGCS2000', u: '米',  b: '6', z: 20 };
+    case 'cm117':       return { c: 'CGCS2000', u: '米',  b: '3', z: null, cm: '117', xmax: 327194.7, xmin: 323608.5, ymin: 2550517.3, ymax: 2552476.6 };
     case 'unknown':     return { c: '',         u: '米',  b: null, z: null };
   }
   return null;
@@ -477,28 +492,172 @@ function updateProjButton() {
   const toggle = $('projSwitchToggle');
   const label = $('projSwitchLabel');
   if (!toggle || !label) return;
+  // 识别状态行 + 带号前缀开关跟随本按钮的所有调用点（导入/应用/重置/初始化）刷新
+  renderProjCrsStatus();
+  refreshProjPrefixToggle();
   const ok = loadedFiles.length === 1;
   toggle.disabled = !ok;
   label.disabled = !ok;
   const on = (projMode !== 'keep' && ok);
   toggle.classList.toggle('on', on);
   label.classList.toggle('on', on);
-  if (!on) { label.textContent = '动态投影'; return; }
-  // 读属性表实时值（apply 后属性表已是目标投影态）
-  const rows = collectAttrRows();
-  const get = (k) => { const r = rows.find(a => a.k === k); return r ? r.v : ''; };
-  const c = CRS_SHORT[get('坐标系')] || get('坐标系') || '?';
-  if (get('计量单位') === '度') {
-    label.textContent = c + '（度）';
-  } else {
-    const b = get('几度分带');
-    const z = get('带号');
-    label.textContent = c + ' ' + (b === '6' ? '6°带' : '3°带') + (z || '?') + '带';
-  }
+  // 开关文字保持「动态投影」短文本；投影应用后的目标坐标系由识别状态行显示
+  label.textContent = '动态投影';
 }
 
-/// 模式推断：输入形式 + 用户选的目标形式 → A/B/C/D/F/G
+/// 输入是否为大地坐标（度）：PRJ 单位=度 且坐标量级未超 360（PRJ 错标投影规避）
+function isDegreeInput() {
+  const xmax = currentCrsInfo && currentCrsInfo.xmax;
+  return !!(currentCrsInfo && currentCrsInfo.u === '度' && !(xmax != null && Math.abs(xmax) > 360));
+}
+
+/// 解析当前导入源的有效带号，返回 {zone, band: '3'|'6'}；无法识别返回 null
+/// 带号优先取 .prj/识别信息的 z，为空则从 X 量级推断（8 位数 = 坐标自带带号前缀 ≥1e7）；
+/// 度坐标（无带号前缀概念）永远返回 null。
+/// allowCmInfer=true 时再兜底一层：无显式带号但有中央经线 → CM÷分带推算
+/// （CM117+3°带 → 39）。该层是确定性换算而非猜测，但默认态判定（autoEnable）不用它——
+/// 无带号坐标系默认不动数据，仅用户手动开前缀开关时启用。
+function resolveCurrentZone(allowCmInfer) {
+  if (isDegreeInput()) return null;
+  const info = currentCrsInfo;
+  if (!info) return null;
+  let zone = info.z ? parseInt(info.z, 10) : 0;
+  if (!zone && info.xmax != null && Math.abs(info.xmax) >= 10000000) {
+    zone = Math.round((info.xmax - 500000) / 1000000);
+  }
+  if (!zone && allowCmInfer && info.cm != null) {
+    const cm = parseFloat(info.cm);
+    if (cm > 0) {
+      zone = info.b === '6' ? Math.round((cm + 3) / 6) : Math.round(cm / 3);
+    }
+  }
+  if (!zone) return null;
+  const band = info.b === '6' ? '6'
+    : info.b === '3' ? '3'
+    : (zone >= 24 && zone <= 45) ? '3' : (zone >= 13 && zone <= 23) ? '6' : '3';
+  return { zone, band };
+}
+
+/// 4号卡片识别状态行：
+/// - 动态投影激活时显示目标投影（属性表已被 applyProjMode / autoEnable 同步为目标态）
+/// - 未激活时显示当前导入源的坐标系 · 分带 · 带号 · 中央经线
+function renderProjCrsStatus() {
+  const el = $('projCrsStatus');
+  if (!el) return;
+  const hasSource = loadedFiles.length > 0 || sourceType === 'gdb';
+  if (!hasSource) {
+    el.innerHTML = '<span class="muted">导入后显示坐标系</span>';
+    return;
+  }
+  // 激活态：识别行显示目标投影（projZone/_projFormValue 为可靠模块态；属性表可能受存档/时序覆盖）
+  if (projMode !== 'keep') {
+    const info = currentCrsInfo;
+    const c = CRS_SHORT[info && info.c] || (info && info.c) || '?';
+    if (projMode === 'D') {
+      el.innerHTML = '📐 <span>' + c + '</span> · <span class="muted">大地坐标（度）</span>';
+      return;
+    }
+    const zone = projZone || (info && info.z ? parseInt(info.z, 10) : 0) || (resolveCurrentZone() || {}).zone || 0;
+    const fv = window._projFormValue;
+    const bw = fv === '6' ? '6' : fv === '3' ? '3'
+      : (info && info.b) || (zone >= 24 && zone <= 45 ? '3' : '6');
+    const parts = [c];
+    if (bw) parts.push(bw === '6' ? '6°带' : '3°带');
+    parts.push(zone > 0 ? '<span class="d">带号' + zone + '</span>' : '<span class="muted">带号?</span>');
+    if (zone > 0) parts.push('CM' + (bw === '6' ? zone * 6 - 3 : zone * 3) + '°');
+    el.innerHTML = '📐 ' + parts.join(' · ');
+    return;
+  }
+  // 未激活态：显示输入坐标系识别
+  const info = currentCrsInfo;
+  if (!info || !info.c) {
+    el.innerHTML = '<span class="muted">导入后显示坐标系</span>';
+    return;
+  }
+  const c = CRS_SHORT[info.c] || info.c;
+  if (isDegreeInput()) {
+    el.innerHTML = '📐 <span>' + c + '</span> · <span class="muted">大地坐标（度）</span>';
+    return;
+  }
+  const band = info.b === '6' ? '6°带' : info.b === '3' ? '3°带' : '';
+  const z = info.z ? parseInt(info.z, 10) : 0;
+  const cmVal = z > 0 ? (info.b === '6' ? z * 6 - 3 : z * 3) : (info.cm != null ? parseFloat(info.cm) : 0);
+  const parts = [c];
+  parts.push(band || '<span class="muted">分带未知</span>');
+  if (z > 0) parts.push('<span class="d">带号' + z + '</span>');
+  else if (cmVal > 0) parts.push('<span class="muted">无带号</span>');
+  else parts.push('<span class="muted">带号未知</span>');
+  if (cmVal > 0) parts.push('CM' + cmVal + '°');
+  el.innerHTML = '📐 ' + parts.join(' · ');
+}
+
+/// 当前是否恰好载入一个可转换源：单个 SHP 文件，或 GDB 已确认选定的图层集
+/// （GDB 走 selectedLayers 而非 loadedFiles，前缀开关/导出参数判定需两者兼顾）
+function singleSourceLoaded() {
+  return loadedFiles.length === 1 || (sourceType === 'gdb' && selectedLayers.length > 0);
+}
+
+/// 带号前缀开关的可用/勾选态（与动态投影正交，只看输出是否为米坐标且带号可确定）：
+/// - keep：可点 = 单源 + 米坐标 + 能确定带号（.prj 或 8 位数 X，含 CM 推算）——无带号且无 CM 才禁灰
+/// - A/B/F/G/H（投影输出米）：可点 = 单源
+/// - D（转大地）：输出为度，禁灰
+function refreshProjPrefixToggle() {
+  const tb = $('projPrefixToggle');
+  if (!tb) return;
+  const single = singleSourceLoaded();
+  let enabled;
+  if (projMode === 'D') {
+    enabled = false;
+  } else if (projMode === 'keep') {
+    // 允许 CM 推算层：无带号坐标系（如 CM117）可手动开前缀（点击时按 CM÷分带推带号）
+    enabled = single && !isDegreeInput() && !!resolveCurrentZone(true);
+  } else {
+    enabled = single;   // A/B/F/G/H：输出均为米坐标
+  }
+  tb.disabled = !enabled;
+  // 禁灰（无带号/度输出）→ 显示关闭态；否则勾选态 = 含带号输出（_projNoPrefix 为 false 时勾选）
+  if (!enabled) { tb.checked = false; }
+  else { tb.checked = !window._projNoPrefix; }
+}
+
+/// 智能默认（导入时重置）：与动态投影正交，只决定前缀开关初值，不改投影模式。
+/// 有带号（.prj/WKT z 或 X≥1e7）→ 默认开（加前缀）；无带号 / 度坐标 → 默认关（自然值）。
+/// 识别出带号时顺带补属性表「带号」行（推断带号时 autoFillHeader 不会填）。
+function autoEnableProjPrefix() {
+  if (!singleSourceLoaded()) { refreshProjPrefixToggle(); return; }
+  const res = resolveCurrentZone();
+  window._projNoPrefix = !res;
+  if (res) {
+    const rows = collectAttrRows();
+    const r = rows.find(a => a.k === '带号');
+    if (r && !r.v) { r.v = String(res.zone); renderAttrRows(rows); }
+  }
+  refreshProjPrefixToggle();
+}
+
+/// 点击「带号前缀」开关：开 = 输出东坐标带带号前缀；关 = 输出自然值（剥前缀）。
+/// 与动态投影正交：keep 下直接生效（Rust keep+proj_zone 做前缀调整），不点亮动态投影开关。
+window.toggleProjPrefix = function () {
+  const tb = $('projPrefixToggle');
+  if (!tb || tb.disabled) return;
+  window._projNoPrefix = !tb.checked;
+  // 开启时若属性表「带号」行空则补填（含 CM 推算：如 CM117+3°带 → 39）
+  if (tb.checked) {
+    const res = resolveCurrentZone(true);
+    if (res) {
+      const rows = collectAttrRows();
+      const r = rows.find(a => a.k === '带号');
+      if (r && !r.v) { r.v = String(res.zone); renderAttrRows(rows); }
+    }
+  }
+  updateProjButton();
+  updatePreview();
+  toast(tb.checked ? '已开启：输出东坐标自动加带号前缀' : '已关闭：输出自然值（不含带号前缀）');
+};
+
+/// 模式推断：输入形式 + 用户选的目标形式 → A/B/D/F/G/H
 /// inputIsDegree: 输入是否大地(度)；inputBand: 输入分带 '3'|'6'|''；targetVal: '3'|'6'|'deg'
+/// 返回 null = 同带同号（无需投影，前缀由「带号前缀」开关负责）
 function inferProjMode(inputIsDegree, inputBand, targetVal, srcZone, dstZone) {
   if (targetVal === 'deg') return 'D';
   const tBand = parseInt(targetVal, 10) || 3;
@@ -507,11 +666,11 @@ function inferProjMode(inputIsDegree, inputBand, targetVal, srcZone, dstZone) {
     const sz = srcZone ? String(srcZone) : '';
     const dz = dstZone ? String(dstZone) : '';
     if (sz && dz && sz !== dz) return 'H';  // 同分带不同带号 → 换带
-    return 'C';
+    return null;  // 同带同号：无需投影
   }
   if (inputBand === '3' && tBand === 6) return 'F';
   if (inputBand === '6' && tBand === 3) return 'G';
-  return 'C';
+  return null;
 }
 
 /// 根据导入数据的经纬度范围，智能推荐最佳分带/带号/中央经线
@@ -522,11 +681,12 @@ function buildRecommendText(info) {
     // 地理数据：直接用 xmin/xmax 作为经纬度范围
     if (info.xmin == null || info.xmax == null) return '导入数据后可显示坐标范围建议';
     lonMin = info.xmin; lonMax = info.xmax;
-  } else if (info.b && info.z && info.xmin != null && info.ymin != null) {
-    // 投影数据：近似逆投影得到经纬度范围
-    const cm = info.b === '6' ? info.z * 6 - 3 : info.z * 3;
-    // 含带号前缀时剥离（X 量级 ≥ 1e6 → 减去 zone×1e6），避免经度算成几百上千度
-    const zoneF = Math.abs(info.xmin) >= 1000000 ? info.z * 1000000 : 0;
+  } else if (info.b && (info.z || info.cm != null) && info.xmin != null && info.ymin != null) {
+    // 投影数据：近似逆投影得到经纬度范围（CM 版无 z 时直接用识别到的中央经线）
+    const zn = info.z ? parseInt(info.z, 10) : 0;
+    const cm = info.z ? (info.b === '6' ? zn * 6 - 3 : zn * 3) : parseFloat(info.cm);
+    // 含带号前缀时剥离（X 量级 ≥ 1e7 即 8 位数 → 减去 zone×1e6），避免经度算成几百上千度
+    const zoneF = zn && Math.abs(info.xmin) >= 10000000 ? zn * 1000000 : 0;
     const latMid = ((info.ymin + info.ymax) / 2) / 111320; // 近似纬度
     const mPerDeg = 111320 * Math.cos(latMid * Math.PI / 180);
     lonMin = cm + ((info.xmin - zoneF - 500000) / mPerDeg);
@@ -554,9 +714,10 @@ function computeRecommendedZone(info, band) {
   let midLon;
   if (info.u === '度' && info.xmin != null) {
     midLon = (info.xmin + info.xmax) / 2;
-  } else if (info.b && info.z && info.xmin != null && info.ymin != null) {
-    const cm = info.b === '6' ? info.z * 6 - 3 : info.z * 3;
-    const zoneF = Math.abs(info.xmin) >= 1000000 ? info.z * 1000000 : 0;
+  } else if (info.b && (info.z || info.cm != null) && info.xmin != null && info.ymin != null) {
+    const zn = info.z ? parseInt(info.z, 10) : 0;
+    const cm = info.z ? (info.b === '6' ? zn * 6 - 3 : zn * 3) : parseFloat(info.cm);
+    const zoneF = zn && Math.abs(info.xmin) >= 10000000 ? zn * 1000000 : 0;
     const latMid = ((info.ymin + info.ymax) / 2) / 111320;
     const mPerDeg = 111320 * Math.cos(latMid * Math.PI / 180);
     midLon = cm + (((info.xmin + info.xmax) / 2 - zoneF - 500000) / mPerDeg);
@@ -717,21 +878,19 @@ window.applyProjMode = function () {
   const val = sel ? sel.value : '3';
   const zi = $('projZoneInput');
 
-  window._projFormValue = val; // 记忆下次恢复
-
   if (val === 'deg') {
+    window._projFormValue = val; // 记忆下次恢复
     projMode = 'D';
     projZone = null;
-    window._projNoPrefix = false;
   } else {
     const xmax = currentCrsInfo && currentCrsInfo.xmax;
     // u='度' 但坐标量级>360 → PRJ 错标地理，实际是投影（米）
     const inputIsDegree = currentCrsInfo && currentCrsInfo.u === '度' && !(xmax != null && Math.abs(xmax) > 360);
     const zRaw = zi ? zi.value.trim() : '';
-    projZone = zRaw ? parseInt(zRaw, 10) : null;
-    // srcZone 优先 currentCrsInfo.z，空则从坐标范围推断（含带号前缀时）——避免 PRJ 无带号时误判 C
+    const dstZone = zRaw ? parseInt(zRaw, 10) : null;
+    // srcZone 优先 currentCrsInfo.z，空则从坐标范围推断（8 位数带前缀时）
     let srcZone = currentCrsInfo && currentCrsInfo.z;
-    if (!srcZone && currentCrsInfo && currentCrsInfo.xmax != null && currentCrsInfo.xmax > 1000000) {
+    if (!srcZone && currentCrsInfo && currentCrsInfo.xmax != null && currentCrsInfo.xmax >= 10000000) {
       srcZone = Math.round((currentCrsInfo.xmax - 500000) / 1000000);
     }
     // inputBand 优先 currentCrsInfo.b，空则从 srcZone 推断（3°带 24-45 / 6°带 13-23）
@@ -739,8 +898,15 @@ window.applyProjMode = function () {
     if (!inputBand && srcZone) {
       inputBand = (srcZone >= 24 && srcZone <= 45) ? '3' : (srcZone >= 13 && srcZone <= 23) ? '6' : '';
     }
-    projMode = inferProjMode(inputIsDegree, inputBand, val, srcZone, projZone);
-    window._projNoPrefix = false;
+    const mode = inferProjMode(inputIsDegree, inputBand, val, srcZone, dstZone);
+    // 同带同号（或分带未知）→ 无需投影，前缀交给「带号前缀」开关；弹窗保持打开供改选
+    if (!mode) {
+      toast('目标与当前坐标系相同，无需投影；如需带号前缀请用「带号前缀」开关');
+      return;
+    }
+    window._projFormValue = val;
+    projMode = mode;
+    projZone = dstZone;
   }
 
   // toast 文案
@@ -781,7 +947,6 @@ window.applyProjMode = function () {
 window.resetProjMode = function () {
   projMode = 'keep';
   projZone = null;
-  window._projNoPrefix = false;
   window._projFormValue = null;
   // 恢复属性表到导入态（currentCrsInfo）
   if (currentCrsInfo) {
@@ -843,6 +1008,7 @@ function processImport() {
   syncOgGate(first.crs_info);
   updatePreview();
   updateProjButton();
+  autoEnableProjPrefix();
   toast("已导入 " + loadedFiles.length + " 个文件");
 }
 
@@ -1343,7 +1509,7 @@ function renderTxtParseLog() {
     : "等待导入 TXT 文件…";
 }
 
-window.clearAllFiles = function () { loadedFiles = []; sourceType = null; sourcePath = null; gdbLayers = []; selectedLayers = []; gdbTempSelected = []; window._gdbName = ""; const fl = $("fl"); if (fl) fl.innerHTML = ""; const out = $("out_dir_s"); if (out) out.value = ""; toast("已清空"); };
+window.clearAllFiles = function () { loadedFiles = []; sourceType = null; sourcePath = null; gdbLayers = []; selectedLayers = []; gdbTempSelected = []; window._gdbName = ""; syncOgGate(null); const fl = $("fl"); if (fl) fl.innerHTML = ""; const out = $("out_dir_s"); if (out) out.value = ""; updateProjButton(); toast("已清空"); };
 window.clearAllFilesTxt = function () { txtFiles = []; const fl = $("flT"); if (fl) fl.innerHTML = ""; const pv = $("pvT"); if (pv) pv.textContent = "等待导入 TXT 文件…"; const out = $("out_dir"); if (out) out.value = ""; toast("已清空"); };
 
 // ═══ Preview ═══
@@ -1476,7 +1642,11 @@ function getOptions() {
     og: ($("og")?.checked && !$("og")?.disabled && projMode === "keep") || false,
     zone_type: parseInt($("oz")?.value, 10) || 3,
     proj_mode: projMode || "keep",
-    proj_zone: typeof projZone !== "undefined" ? (projZone || null) : null,
+    // keep：前缀带号取导入识别（仅单文件且有带号才传；多文件/无带号传 null 原样输出）
+    // 非 keep：弹窗目标带号（空由 Rust 按源带号/自动推算处理）
+    proj_zone: projMode === "keep"
+      ? (singleSourceLoaded() ? ((resolveCurrentZone(true) || {}).zone ?? null) : null)
+      : (projZone || null),
     proj_no_prefix: !!window._projNoPrefix,
     output_mode: outputMode,
     filename_field: filenameField,
@@ -2214,13 +2384,19 @@ async function init() {
   bind("btnClearS", () => clearAllFiles());
   bind("btnBrowseS", () => selectOutputDirS());
 
+  // 分段开关高亮态：与选中 radio 同步（radio 隐藏在 label.seg 内，点 label 切换）
+  function syncModeSeg(name) {
+    document.querySelectorAll(`input[name="${name}"]`).forEach((r) => {
+      r.closest(".seg")?.classList.toggle("on", r.checked);
+    });
+  }
   // 输出模式切换：控制文件名字段下拉框显示，并立即刷新预览
   const outputModeRadios = document.querySelectorAll('input[name="output_mode"]');
   outputModeRadios.forEach((r) => {
     r.addEventListener("change", () => {
       const row = $("filenameFieldRow");
       if (row) row.style.display = r.checked && r.value === "split_by_plot" ? "block" : "none";
-      if (r.checked) { lastPreviewKey = ""; updatePreview(); }
+      if (r.checked) { syncModeSeg("output_mode"); lastPreviewKey = ""; updatePreview(); }
     });
   });
   const ff = $("filename_field");
@@ -2323,6 +2499,7 @@ async function init() {
     r.addEventListener("change", () => {
       const row = $("t_filenameFieldRow");
       if (row) row.style.display = r.checked && r.value === "split_by_plot" ? "block" : "none";
+      if (r.checked) syncModeSeg("t_output_mode");
     });
   });
 
@@ -2337,6 +2514,8 @@ async function init() {
     if (tf) tf.style.display = tMode === "split_by_plot" ? "block" : "none";
   }
   syncFilenameRows();
+  syncModeSeg("output_mode");
+  syncModeSeg("t_output_mode");
   bind("dropZoneTxt", () => importTxt());
   bind("btnClearT", () => clearAllFilesTxt());
   bind("out_btn", () => selectOutputDir());
@@ -2346,6 +2525,8 @@ async function init() {
   bind("btnResetDefaults", () => resetDefaults());
   bind("projSwitchToggle", () => { projMode === 'keep' ? openProjModal() : resetProjMode(); });
   bind("projSwitchLabel", () => openProjModal());
+  const ppToggle = $('projPrefixToggle');
+  if (ppToggle) ppToggle.addEventListener('change', toggleProjPrefix);
   bind("btnProjClose", () => closeProjModal());
   bind("btnProjCancel", () => closeProjModal());
   bind("btnProjApply", () => applyProjMode());

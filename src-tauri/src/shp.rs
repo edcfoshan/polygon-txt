@@ -385,6 +385,13 @@ pub fn read_prj(path: &Path) -> Result<(String, HashMap<String, String>), String
         .read_to_string(&mut buf)
         .map_err(|e| format!("读取 PRJ 失败: {}", e))?;
     let prj_text = buf.trim().to_string();
+    Ok((prj_text.clone(), parse_prj_text(&prj_text)))
+}
+
+/// 解析 PRJ / WKT 文本 → crs_info（c 坐标系 / j 投影 / u 单位 / b 分带 / z 带号 / cm 中央经线）。
+/// SHP 的 .prj 与 GDB 图层内嵌 srs_wkt 共用此解析。
+pub fn parse_prj_text(prj_text: &str) -> HashMap<String, String> {
+    let prj_text = prj_text.trim();
     let mut info = HashMap::new();
 
     if icontains(&prj_text, "CGCS2000")
@@ -413,8 +420,12 @@ pub fn read_prj(path: &Path) -> Result<(String, HashMap<String, String>), String
     }
 
     // 提取中央经线 → 带号
-    for needle in &["Central_Meridian", "Longitude_Of_Origin"] {
-        if let Some(pos) = prj_text.find(needle) {
+    // ESRI 命名约定：PROJCS 名 "GK_Zone_39" = 带带号版（坐标含前缀）；"GK_CM_117E" = 仅中央经线版（无带号，
+    // 坐标自然值）——CM 版不得写 z，否则前端「带号前缀」智能默认会把无带号坐标系误判为有带号。
+    // 参数名大小写不敏感：ArcGIS 导出为 CamelCase（Central_Meridian），部分工具为全小写（central_meridian）
+    let lower_prj = prj_text.to_lowercase();
+    for needle in &["central_meridian", "longitude_of_origin"] {
+        if let Some(pos) = lower_prj.find(needle) {
             let after = &prj_text[pos + needle.len()..];
             if let Some(num_start) = after.find(|c: char| c.is_ascii_digit() || c == '-') {
                 let num_str: String = after[num_start..]
@@ -422,17 +433,29 @@ pub fn read_prj(path: &Path) -> Result<(String, HashMap<String, String>), String
                     .take_while(|c| c.is_ascii_digit() || *c == '.')
                     .collect();
                 if let Ok(lon) = num_str.parse::<f64>() {
-                    let zone = (lon / 3.0).round() as i32;
-                    info.insert("z".into(), zone.to_string());
                     info.insert("cm".into(), lon.to_string());
                     info.insert("b".into(), "3".into());
+                    if !icontains(&prj_text, "GK_CM_") {
+                        let zone = zone_number_from_prj_name(&prj_text)
+                            .unwrap_or_else(|| (lon / 3.0).round() as i32);
+                        info.insert("z".into(), zone.to_string());
+                    }
                 }
             }
             break;
         }
     }
 
-    Ok((prj_text, info))
+    info
+}
+
+/// 从 PROJCS 名称提取显式带号（如 "GK_Zone_39" / "GK_3_Degree_Zone_39" → 39）；无则 None
+fn zone_number_from_prj_name(prj_text: &str) -> Option<i32> {
+    let lower = prj_text.to_lowercase();
+    let pos = lower.find("zone_")?;
+    let after = &prj_text[pos + "zone_".len()..];
+    let num: String = after.chars().take_while(|c| c.is_ascii_digit()).collect();
+    num.parse::<i32>().ok()
 }
 
 /// 根据路径基名查找配套的 .dbf、.prj 文件
@@ -774,4 +797,51 @@ fn write_dbf_manual(
     }
     buf.push(0x1A);
     std::fs::write(path, &buf).map_err(|e| format!("写 DBF 失败: {}", e))
+}
+
+#[cfg(test)]
+mod prj_tests {
+    use super::*;
+
+    fn write_tmp_prj(content: &str, tag: &str) -> std::path::PathBuf {
+        let p = std::env::temp_dir().join(format!("jisig_prj_test_{}.prj", tag));
+        std::fs::write(&p, content).unwrap();
+        p
+    }
+
+    const PRJ_BODY: &str = "GEOGCS[\"GCS_China_2000\",DATUM[\"D_China_2000\",SPHEROID[\"CGCS2000\",6378137.0,298.257222101]],PRIMEM[\"Greenwich\",0.0],UNIT[\"Degree\",0.0174532925199433]],PROJECTION[\"Gauss_Kruger\"],PARAMETER[\"False_Easting\",500000.0],PARAMETER[\"False_Northing\",0.0],PARAMETER[\"Central_Meridian\",117.0],PARAMETER[\"Scale_Factor\",1.0],PARAMETER[\"Latitude_Of_Origin\",0.0],UNIT[\"Meter\",1.0]]";
+
+    /// CM 版 PRJ（如 CGCS2000_3_Degree_GK_CM_117E）：无带号，z 必须缺失，
+    /// 否则前端「带号前缀」智能默认会把无带号坐标系误判为有带号
+    #[test]
+    fn read_prj_cm_version_has_no_zone() {
+        let p = write_tmp_prj(&format!("PROJCS[\"CGCS2000_3_Degree_GK_CM_117E\",{}]", PRJ_BODY), "cm");
+        let (_, info) = read_prj(&p).unwrap();
+        assert!(!info.contains_key("z"), "CM 版 PRJ 不应带带号: {:?}", info);
+        assert_eq!(info.get("cm").map(|s| s.as_str()), Some("117"));
+        assert_eq!(info.get("b").map(|s| s.as_str()), Some("3"));
+        assert_eq!(info.get("u").map(|s| s.as_str()), Some("米"));
+    }
+
+
+    /// 小写参数名 PRJ（QGIS 等工具导出）：central_meridian 小写也要能提取带号/CM
+    #[test]
+    fn read_prj_lowercase_params() {
+        let p = write_tmp_prj("PROJCS[\"CGCS2000_3_Degree_GK_Zone_38\",GEOGCS[\"GCS_China_Geodetic_Coordinate_System_2000\",DATUM[\"D_China_2000\",SPHEROID[\"CGCS2000\",6378137.0,298.257222101]],PRIMEM[\"Greenwich\",0.0],UNIT[\"Degree\",0.0174532925199433]],PROJECTION[\"Transverse_Mercator\"],PARAMETER[\"false_easting\",38500000.0],PARAMETER[\"false_northing\",0.0],PARAMETER[\"central_meridian\",114.0],PARAMETER[\"scale_factor\",1.0],PARAMETER[\"latitude_of_origin\",0.0],UNIT[\"Meter\",1.0]]", "lowercase");
+        let (_, info) = read_prj(&p).unwrap();
+        assert_eq!(info.get("c").map(|s| s.as_str()), Some("2000国家大地坐标系"));
+        assert_eq!(info.get("z").map(|s| s.as_str()), Some("38"), "小写 central_meridian 也要能推出带号: {:?}", info);
+        assert_eq!(info.get("cm").map(|s| s.as_str()), Some("114"));
+        assert_eq!(info.get("b").map(|s| s.as_str()), Some("3"));
+        assert_eq!(info.get("u").map(|s| s.as_str()), Some("米"));
+    }
+
+    /// Zone 版 PRJ（如 CGCS2000_3_Degree_GK_Zone_39）：z 取名称中的显式带号
+    #[test]
+    fn read_prj_zone_version_reads_zone_from_name() {
+        let p = write_tmp_prj(&format!("PROJCS[\"CGCS2000_3_Degree_GK_Zone_39\",{}]", PRJ_BODY), "zone");
+        let (_, info) = read_prj(&p).unwrap();
+        assert_eq!(info.get("z").map(|s| s.as_str()), Some("39"));
+        assert_eq!(info.get("cm").map(|s| s.as_str()), Some("117"));
+    }
 }

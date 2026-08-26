@@ -91,7 +91,7 @@ pub struct ShpToTxtOptions {
     /// 带类型：3 = 3 度带（默认），6 = 6 度带。仅 og 时有意义。
     #[serde(default = "default_zone_type")]
     pub zone_type: u8,
-    /// 动态投影模式："keep" = 不做转换（默认），"A"/"B"/"C"/"F"/"G" = 5 种转换
+    /// 动态投影模式："keep" = 不做投影（默认，仍可单独调带号前缀），"A"/"B"/"D"/"F"/"G"/"H"
     #[serde(default)]
     pub proj_mode: String,
     /// 用户在 modal 填的带号（仅 F/G 模式需要）
@@ -366,6 +366,18 @@ fn shp_files_to_txt_preview(
     ))
 }
 
+/// 仅调整带号前缀（前缀开关与投影正交）：coord = (北, 东)。
+/// 先剥掉实际存在的前缀取自然值，再按目标带号加回；no_prefix=true 保持自然值。
+fn adjust_zone_prefix(coord: &mut (f64, f64), zone_f: f64, no_prefix: bool) {
+    let e = coord.1;
+    if e.abs() >= 1_000_000.0 {
+        let natural = e - (e / 1_000_000.0).floor() * 1_000_000.0;
+        coord.1 = if no_prefix { natural } else { natural + zone_f };
+    } else if !no_prefix {
+        coord.1 = e + zone_f;
+    }
+}
+
 /// 动态投影 + 头表同步 wrapper（Task 6 完整化）
 pub fn apply_dynamic_projection_to_sources(
     sources: &mut Vec<ImportSource>,
@@ -373,6 +385,22 @@ pub fn apply_dynamic_projection_to_sources(
     options: &ShpToTxtOptions,
 ) -> Result<HeaderConfig, String> {
     if options.proj_mode.is_empty() || options.proj_mode == "keep" {
+        // 前缀与投影正交：keep 下 proj_zone 有值时仍单独调整带号前缀
+        if let Some(z) = options.proj_zone {
+            let zone_f = z as f64 * 1_000_000.0;
+            for src in sources.iter_mut() {
+                for pws in src.plots.iter_mut() {
+                    for coord in pws.plot.coords.iter_mut() {
+                        adjust_zone_prefix(coord, zone_f, options.proj_no_prefix);
+                    }
+                    for ring in pws.plot.rings.iter_mut() {
+                        for coord in ring.coords.iter_mut() {
+                            adjust_zone_prefix(coord, zone_f, options.proj_no_prefix);
+                        }
+                    }
+                }
+            }
+        }
         return Ok(header.clone());
     }
     let mode = options.proj_mode.clone();
@@ -390,7 +418,7 @@ pub fn apply_dynamic_projection_to_sources(
         "H" => src_band,
         _ => None,
     };
-    // F/G 模式：从源带号自动推算目标带号（3°zone↔6°zone 映射）；A/B/C：用户指定或沿用源带号
+    // F/G 模式：从源带号自动推算目标带号（3°zone↔6°zone 映射）；A/B：用户指定或沿用源带号
     let dst_zone = match mode.as_str() {
         "F" | "G" => compute_reband_dst_zone(src_band, src_zone, dst_band)
             .or(options.proj_zone)
@@ -406,7 +434,6 @@ pub fn apply_dynamic_projection_to_sources(
         &mode,
         dst_band,
         dst_zone,
-        src_band,
         src_zone,
         &header.attr("坐标系"),
     );
@@ -421,6 +448,20 @@ pub fn apply_dynamic_projection_to_plots(
     options: &ShpToTxtOptions,
 ) -> Result<HeaderConfig, String> {
     if options.proj_mode.is_empty() || options.proj_mode == "keep" {
+        // 前缀与投影正交：keep 下 proj_zone 有值时仍单独调整带号前缀
+        if let Some(z) = options.proj_zone {
+            let zone_f = z as f64 * 1_000_000.0;
+            for plot in plots.iter_mut() {
+                for coord in &mut plot.coords {
+                    adjust_zone_prefix(coord, zone_f, options.proj_no_prefix);
+                }
+                for ring in &mut plot.rings {
+                    for coord in &mut ring.coords {
+                        adjust_zone_prefix(coord, zone_f, options.proj_no_prefix);
+                    }
+                }
+            }
+        }
         return Ok(header.clone());
     }
     let mode = options.proj_mode.clone();
@@ -479,7 +520,6 @@ pub fn apply_dynamic_projection_to_plots(
         &mode,
         dst_band,
         dst_zone,
-        src_band,
         src_zone,
         &header.attr("坐标系"),
     );
@@ -525,18 +565,6 @@ fn transform_xy(
             let (ex, ny) = projection::gauss_kruger_forward(y, x, cm, datum);
             if no_prefix { (ex, ny) }
             else { let zone_f = zone as f64 * 1_000_000.0; ((ex + zone_f), ny) }
-        }
-        "C" => {
-            // 同带仅更新带号前缀，不做实际逆投影（避免把米坐标转成度）
-            let zone = dst_zone.or(src_zone).unwrap_or(38);
-            let zone_f = zone as f64 * 1_000_000.0;
-            if no_prefix {
-                // 不含带号：剥离已有前缀取自然值
-                if y.abs() >= 1_000_000.0 { (y % zone_f, x) } else { (y, x) }
-            } else {
-                // 含带号：自然值加前缀
-                if y.abs() < 1_000_000.0 { (y + zone_f, x) } else { (y, x) }
-            }
         }
         "D" => {
             // 投影→大地：逆投影，米坐标转回经纬度（度）
@@ -593,7 +621,6 @@ fn sync_header_crs_fields(
     mode: &str,
     dst_band: Option<u8>,
     dst_zone: Option<u32>,
-    src_band: Option<u8>,
     src_zone: Option<u32>,
     datum_name: &str,
 ) {
@@ -617,17 +644,6 @@ fn sync_header_crs_fields(
                 set_val(attrs, "带号", z.to_string());
             } else if let Some(sz) = src_zone {
                 set_val(attrs, "带号", sz.to_string());
-            }
-        }
-        "C" => {
-            // 同带仅更新前缀：输出仍为投影坐标
-            set_val(attrs, "形式", "投影（米）".to_string());
-            let bw = src_band.unwrap_or(3);
-            set_val(attrs, "几度分带", match bw { 3 => "3°带".to_string(), 6 => "6°带".to_string(), _ => "—".to_string() });
-            set_val(attrs, "投影类型", "高斯克吕格".to_string());
-            set_val(attrs, "计量单位", "米".to_string());
-            if let Some(z) = dst_zone.or(src_zone) {
-                set_val(attrs, "带号", z.to_string());
             }
         }
         "D" => {

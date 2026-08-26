@@ -409,6 +409,14 @@ fn import_gdb(app: tauri::AppHandle) -> Result<GdbImportResult, String> {
         let u = if x.abs() <= 360.0 && y.abs() <= 90.0 { "度" } else { "米" };
         crs_info.insert("u".to_string(), u.to_string());
     }
+    // 图层内嵌 srs_wkt（坐标系/分带/带号/中央经线）——比坐标采样推断更权威，非空覆盖
+    if let Some(wkt) = &info.srs_wkt {
+        for (k, v) in shp::parse_prj_text(wkt) {
+            if !v.is_empty() {
+                crs_info.insert(k, v);
+            }
+        }
+    }
 
     // 计算坐标范围
     let xs: Vec<f64> = all_features.iter()

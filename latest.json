@@ -1,43 +1,11 @@
 {
-  "version": "3.2.0",
-  "notes": "## 极思G界址点互转工具 v3.2.0\n\n### 下载说明\n- **Windows**: 下载 `.exe` 安装包或 `-portable.exe` 便携版\n- **macOS**: 下载 `.dmg` 安装包（arm64 = Apple Silicon, x64 = Intel）\n- **Linux**: 下载 `.AppImage` 或 `.deb`\n\n### 系统要求\n- Windows 10/11 (64位)\n- macOS 10.15+ (Catalina 或更新)\n- Linux (需安装 WebKit2GTK)\n\n### 更新日志\n请查看 [CHANGELOG.md](https://github.com/edcfoshan/polygon-txt/blob/master/CHANGELOG.md)",
-  "pub_date": "2026-08-26T06:12:50.610Z",
+  "version": "3.3.0",
+  "notes": "### 修复\r\n\r\n- **修复自动更新后打开仍是旧版本的问题**：v3.2 安装包误将新版本装到了另一个目录，桌面/开始菜单快捷方式仍指向旧位置，导致更新后重开是旧版、电脑里出现两份软件。本次更新会装回原目录，首次启动自动清理多余的旧副本和残留安装信息（无需任何操作）\r\n- 修复更新完成后快捷方式可能指向旧版本的问题：更新完成后自动把桌面和开始菜单快捷方式修正到最新版\r\n\r\n### 新增\r\n\r\n- 更新弹窗新增「创建桌面快捷方式」勾选项（默认勾选）：更新完成后确保桌面和开始菜单的快捷方式都指向新版本，桌面没有图标的会自动补建\r\n- 更新弹窗新增「保留安装包到桌面」勾选项：勾选后更新时会把安装包保留在桌面并自动打开所在位置，方便拷贝到其他电脑安装；安装包下载后经数字签名校验，校验通过才安装，失败会引导百度云手动下载",
+  "pub_date": "2026-09-01T08:09:29.333Z",
   "platforms": {
-    "darwin-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUd3RYL0ovejhtb0hiKzVKU0J3d2F3Y1orZFF0dXV1TVJ4NDVCZGsxVFZITVBMejdZVlI3aHdYdkxib05LZFJCc2Mrd0QvSkVXZHNEMExzUk1oKzJnZ1JEUjBMSGlERWc0PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg3NzI0NjI5CWZpbGU6cG9seWdvbi10eHQuYXBwLnRhci5negpPYk90RGo5MjF1aEtPN2o2MHhzRzVNQWU1aFJab2NmQ1kvc1FQRS9IRmxQbmx5YmkvQ2RkR3htR2o4VXE1UE5jUDMzM1ZVREpIZ3ZRUXBpZXl3ZERBQT09Cg==",
-      "url": "https://api.github.com/repos/edcfoshan/polygon-txt/releases/assets/530360246"
-    },
-    "darwin-x86_64-app": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUd3RYL0ovejhtb0hiKzVKU0J3d2F3Y1orZFF0dXV1TVJ4NDVCZGsxVFZITVBMejdZVlI3aHdYdkxib05LZFJCc2Mrd0QvSkVXZHNEMExzUk1oKzJnZ1JEUjBMSGlERWc0PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg3NzI0NjI5CWZpbGU6cG9seWdvbi10eHQuYXBwLnRhci5negpPYk90RGo5MjF1aEtPN2o2MHhzRzVNQWU1aFJab2NmQ1kvc1FQRS9IRmxQbmx5YmkvQ2RkR3htR2o4VXE1UE5jUDMzM1ZVREpIZ3ZRUXBpZXl3ZERBQT09Cg==",
-      "url": "https://api.github.com/repos/edcfoshan/polygon-txt/releases/assets/530360246"
-    },
-    "darwin-aarch64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUd3RYL0ovejhtb0FibjlLS1M4UGZsN3Y0K3EzK3BlM0Z0TGp0c1l4K2dtLzc4d0c1VjZZZk5uSTFDcXBSMHd5aDVMZFNXMWRqY2d4U1dGUnFodmNzQ3dRaEY1QmxSeWdRPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg3NzI0NjcyCWZpbGU6cG9seWdvbi10eHQuYXBwLnRhci5negpFNi9nZUthVWZHT3lBN3FrQnN4c3BXSVdjMGVra3d6QmllWkNrZG5yWGRoVFJqWHY2M1Z3b1ZyS01HMGJMYzdNZTE2YjlaMW1PejFzWlJzQ1NqckxBZz09Cg==",
-      "url": "https://api.github.com/repos/edcfoshan/polygon-txt/releases/assets/530360896"
-    },
-    "darwin-aarch64-app": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUd3RYL0ovejhtb0FibjlLS1M4UGZsN3Y0K3EzK3BlM0Z0TGp0c1l4K2dtLzc4d0c1VjZZZk5uSTFDcXBSMHd5aDVMZFNXMWRqY2d4U1dGUnFodmNzQ3dRaEY1QmxSeWdRPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg3NzI0NjcyCWZpbGU6cG9seWdvbi10eHQuYXBwLnRhci5negpFNi9nZUthVWZHT3lBN3FrQnN4c3BXSVdjMGVra3d6QmllWkNrZG5yWGRoVFJqWHY2M1Z3b1ZyS01HMGJMYzdNZTE2YjlaMW1PejFzWlJzQ1NqckxBZz09Cg==",
-      "url": "https://api.github.com/repos/edcfoshan/polygon-txt/releases/assets/530360896"
-    },
-    "linux-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUd3RYL0ovejhtb0lOQzdyNjdJVW8wbVdkb21IcnNFa2FSQVhzekJoY3RQbU9wZXBTYTFVRTBQWmFUUE0vSWhHZ241K3R4MC9aQkdLRWsxOFpHVndWN2Rla3Q4U1VoQndrPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg3NzI0NjgzCWZpbGU6cG9seWdvbi10eHRfMy4yLjBfYW1kNjQuQXBwSW1hZ2UKOUthNlJYOHkzNlY4OVNiN0x6M2ZsZEZXU3dGZEFyNWVrczkrc21LdTlUU0NGZk4wdnd2eWgrR0trdy9HWURwc3h0aWo5cFV3ditqV1ZRamVuVTFYRFE9PQo=",
-      "url": "https://api.github.com/repos/edcfoshan/polygon-txt/releases/assets/530361089"
-    },
-    "linux-x86_64-appimage": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUd3RYL0ovejhtb0lOQzdyNjdJVW8wbVdkb21IcnNFa2FSQVhzekJoY3RQbU9wZXBTYTFVRTBQWmFUUE0vSWhHZ241K3R4MC9aQkdLRWsxOFpHVndWN2Rla3Q4U1VoQndrPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg3NzI0NjgzCWZpbGU6cG9seWdvbi10eHRfMy4yLjBfYW1kNjQuQXBwSW1hZ2UKOUthNlJYOHkzNlY4OVNiN0x6M2ZsZEZXU3dGZEFyNWVrczkrc21LdTlUU0NGZk4wdnd2eWgrR0trdy9HWURwc3h0aWo5cFV3ditqV1ZRamVuVTFYRFE9PQo=",
-      "url": "https://api.github.com/repos/edcfoshan/polygon-txt/releases/assets/530361089"
-    },
-    "linux-x86_64-deb": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUd3RYL0ovejhtb05jL1RjRDFoWTBDUWsyZUdPOStla1hock95V2FCa1dmc3RweW1PQlNiYWxZTlgyY1RYYjFLSXVvNEgyelZHcy9rd05ueUkyd1NQZTlXMDRwdDRuRVE4PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg3NzI0NjgzCWZpbGU6cG9seWdvbi10eHRfMy4yLjBfYW1kNjQuZGViCm5hYTk2aGI1SWVmWURFWmF0cHhubVBPenR5RU43YkF3dnJ5RUFHOVR0VjNFTXl6V09aUjhNMS9nR25BRndnZEkxU1dhV3FzNzl0NW5qTHpaUlVBb0R3PT0K",
-      "url": "https://api.github.com/repos/edcfoshan/polygon-txt/releases/assets/530361072"
-    },
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUd3RYL0ovejhtb0ZQcWkzdWFLNkZRYmlBbzVpVXdTak9HSVN0dGJnY3RoQ3cwM0VDREJWZmwwZ2JEejIvcmxSNXdZMDlEWmhkbnF4MzlhbXpKMzBWZFZtNmRvdTU0Nnd3PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg3NzI0NzY3CWZpbGU6cG9seWdvbi10eHRfMy4yLjBfeDY0LXNldHVwLmV4ZQpnU3g5M1J6UnM1L2dlMmluSDRTV0h5Q1MrbWJUczhWS0tTbFpWN0wxaTFrd0tTTmxhSWVOMkV1by9wU0h5R3I4eWZnMFhCc0dZVWZTdjRxR2hUa25BZz09Cg==",
-      "url": "https://api.github.com/repos/edcfoshan/polygon-txt/releases/assets/530362472"
-    },
-    "windows-x86_64-nsis": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUd3RYL0ovejhtb0ZQcWkzdWFLNkZRYmlBbzVpVXdTak9HSVN0dGJnY3RoQ3cwM0VDREJWZmwwZ2JEejIvcmxSNXdZMDlEWmhkbnF4MzlhbXpKMzBWZFZtNmRvdTU0Nnd3PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg3NzI0NzY3CWZpbGU6cG9seWdvbi10eHRfMy4yLjBfeDY0LXNldHVwLmV4ZQpnU3g5M1J6UnM1L2dlMmluSDRTV0h5Q1MrbWJUczhWS0tTbFpWN0wxaTFrd0tTTmxhSWVOMkV1by9wU0h5R3I4eWZnMFhCc0dZVWZTdjRxR2hUa25BZz09Cg==",
-      "url": "https://api.github.com/repos/edcfoshan/polygon-txt/releases/assets/530362472"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUd3RYL0ovejhtb0FEUGtXLzMrMTFCZEoyVFZ3SXJXVzdlQjVGanRpQTk3Nm5vSDA0MlYxeGNHT1NFc2d0UTh6L3Y5UGFoWWozNGJPWERNYk1FelJTUFBvVVJvMFRsTXdJPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg4MjUwMTY1CWZpbGU65p6B5oCdR+eVjOWdgOeCueS6kui9rOW3peWFt18zLjMuMF94NjQtc2V0dXAuZXhlCmdmRzgxMGVsaFJhMTNqMUNGMlNWV3k4alVOdXBJTDZtOGRYZ0pZMk5MZVFPQWFRUFBqSzU1SnZ4VEpPQ2RFQVlWNjR0QzRVbXpyZkZOYjZMS2xyVkFnPT0K",
+      "url": "https://github.com/edcfoshan/polygon-txt/releases/download/v3.3.0/polygon-txt_3.3_x64-setup.exe"
     }
   }
 }

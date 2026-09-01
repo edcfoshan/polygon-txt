@@ -73,7 +73,8 @@ jobs:
       - name: Build frontend
         run: npm run build
 
-      # CI 配置处理：productName 改 ASCII 避免资产名中文损坏；按是否有私钥决定 updater 签名
+      # CI 配置处理：严禁改写 productName（NSIS 卸载键/安装目录/快捷方式名均派生自它，改写曾致 v3.2 更新安装目录漂移）；
+      # ASCII 产物名由下方构建后重命名步骤实现。此处仅按是否有私钥决定 updater 签名。
       - name: Patch Tauri config for CI
         shell: bash
         run: |
@@ -83,20 +84,12 @@ jobs:
               const fs = require('fs');
               const p = 'src-tauri/tauri.conf.json';
               const c = JSON.parse(fs.readFileSync(p, 'utf8'));
-              c.productName = 'polygon-txt';
               if (c.bundle) c.bundle.createUpdaterArtifacts = false;
               if (c.plugins && c.plugins.updater) delete c.plugins.updater.pubkey;
               fs.writeFileSync(p, JSON.stringify(c, null, 2) + '\n');
             "
           else
             echo "TAURI_SIGNING_PRIVATE_KEY 已配置，保留 updater 签名"
-            node -e "
-              const fs = require('fs');
-              const p = 'src-tauri/tauri.conf.json';
-              const c = JSON.parse(fs.readFileSync(p, 'utf8'));
-              c.productName = 'polygon-txt';
-              fs.writeFileSync(p, JSON.stringify(c, null, 2) + '\n');
-            "
           fi
 
       - name: Build and Release Tauri app
@@ -127,6 +120,24 @@ jobs:
           prerelease: false
           args: --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
 
+      # Windows：setup 产物名恢复中文（productName 恒定），ASCII 名改为构建后重命名；
+      # 顺序铁律：tauri-action → 重命名+生成 latest.json → upload clobber（覆盖 tauri-action 自动生成的 latest.json 与中文资产）
+      - name: Publish ASCII-named setup and latest.json (Windows only)
+        if: matrix.platform == 'windows-latest'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VER=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          SHORT=${VER%.*}
+          D="src-tauri/target/${{ matrix.target }}/release/bundle/nsis"
+          SETUP_SRC=$(ls "$D"/*_x64-setup.exe | head -1)
+          cp "$SETUP_SRC" "$D/polygon-txt_${SHORT}_x64-setup.exe"
+          cp "${SETUP_SRC}.sig" "$D/polygon-txt_${SHORT}_x64-setup.exe.sig"
+          node scripts/gen-latest-json.js --version "$VER" --tag "${{ github.ref_name }}" --nsis-dir "$D"
+          gh release upload "${{ github.ref_name }}" "$D/polygon-txt_${SHORT}_x64-setup.exe" "$D/polygon-txt_${SHORT}_x64-setup.exe.sig" latest.json --clobber
+          echo "已上传: polygon-txt_${SHORT}_x64-setup.exe(.sig) + latest.json"
+
       # Windows 便携版：复制裸 exe 并上传到 Release
       - name: Upload portable executable (Windows only)
         if: matrix.platform == 'windows-latest'
@@ -136,7 +147,7 @@ jobs:
         run: |
           VER=$(node -p "require('./src-tauri/tauri.conf.json').version")
           EXE="src-tauri/target/${{ matrix.target }}/release/jisig-bpoint-converter.exe"
-          PORTABLE="src-tauri/target/${{ matrix.target }}/release/bundle/nsis/polygon-txt_${VER}_x64-portable.exe"
+          PORTABLE="src-tauri/target/${{ matrix.target }}/release/bundle/nsis/polygon-txt_${VER%.*}_x64-portable.exe"
           cp "$EXE" "$PORTABLE"
           gh release upload "${{ github.ref_name }}" "$PORTABLE" --clobber
           echo "已上传便携版: $PORTABLE"

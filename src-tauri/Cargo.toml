@@ -1,6 +1,6 @@
 [package]
 name = "jisig-bpoint-converter"
-version = "3.2.0"
+version = "3.3.0"
 description = "界址点互转工具 — SHP/GDB ↔ TXT 双向转换"
 authors = ["极思G"]
 edition = "2021"
@@ -39,3 +39,10 @@ geonative-shapefile = "0.2"
 geo-types = "0.7"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 proj-core = "0.9"
+
+[target.'cfg(windows)'.dependencies]
+winreg = "0.52"
+windows = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Com", "Win32_UI_Shell", "Win32_Storage_FileSystem"] }
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
+minisign-verify = "0.2"
+base64 = "0.22"

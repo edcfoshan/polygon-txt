@@ -23,7 +23,8 @@ const version = args.version || JSON.parse(readFileSync(join(root, 'package.json
 const tag = args.tag || `v${version}`;
 const repo = 'edcfoshan/polygon-txt';
 
-const nsisDir = join(root, 'src-tauri/target/release/bundle/nsis');
+// 默认本地路径；CI 交叉构建时产物在 target/<triple>/release/...，用 --nsis-dir 指定
+const nsisDir = args['nsis-dir'] ? resolve(root, args['nsis-dir']) : join(root, 'src-tauri/target/release/bundle/nsis');
 if (!existsSync(nsisDir)) {
   console.error(`✗ 找不到 NSIS 产物目录：${nsisDir}`);
   console.error('  请先执行：npm run tauri build（并确保已设置 TAURI_SIGNING_PRIVATE_KEY）');
@@ -93,6 +94,7 @@ function parseArgs(argv) {
     if (a === '--version') out.version = argv[++i];
     else if (a === '--tag') out.tag = argv[++i];
     else if (a === '--notes') out.notes = argv[++i];
+    else if (a === '--nsis-dir') out['nsis-dir'] = argv[++i];
     else if (a === '--mirror') out.mirror = true;
   }
   return out;

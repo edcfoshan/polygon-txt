@@ -246,6 +246,9 @@ SHP 存储 (X, Y) = (东坐标, 北坐标)。TXT 存储 (Y, X) = (北坐标, 东
 - 前端逻辑：`src/main.js` 的 `checkAppUpdate` / `setUpdateBtnState` / `skipCurrentVersion` / `doUpdate`
 - 百度云兜底链接硬编码在 `main.js` 的 `BAIDU_PAN_URL`（about.md 同步）
 - **下载 url 走 GitHub releases 直连**（不用 ghproxy 镜像——1.3.0 实测已失效且无加速）
+- **严禁改写 productName**（v3.2 事故）：NSIS 的卸载注册表键（`Uninstall\{productName}`）、默认安装目录（`%LOCALAPPDATA%\{productName}`）、快捷方式名（`{productName}.lnk`）全部派生自 productName。v3.2 CI 曾为 ASCII 产物名把它改成 `polygon-txt`，导致 3.1 用户自动更新时安装目录漂移到 `%LOCALAPPDATA%\polygon-txt\`、快捷方式仍指旧目录（「更新后打开还是旧版」+ 双副本）。v3.3 起产物 ASCII 名由 `release.yml` 构建后重命名实现；CI 的 Patch 步骤只处理 updater 签名开关
+- **启动静默自愈（v3.3）**：`src-tauri/src/selfheal.rs` 每次 release 启动 2s 后静默执行：删残留安装目录（`polygon-txt` / 中文目录，仅当 ≠ 当前 exe 目录且含主 exe）、清残留 `Uninstall\polygon-txt` 键、修复指向旧目录的 .lnk（只修不建）。debug_assertions（dev）下跳过防误删。日志：`app_log_dir/selfheal.log`
+- **更新弹窗两勾选项（v3.3）**：`#updFixLnk` 创建桌面快捷方式（默认勾，存 `tg_upd_fixlnk`，更新后 `ensure_shortcuts` 修+补建）；`#updKeepSave` 保留安装包到桌面（默认不勾，存 `tg_upd_keepsave`，绕过插件自管下载 → `download_and_run_setup`（reqwest 阻塞流式 + minisign 验签 + explorer 定位 + `/S /R` 静默安装）→ 前端 `exitApp()`）。更新完成重启走 `restart_into_updated_app`（spawn 新装目录 exe）替代 `relaunch()`——漂移修复场景 relaunch 会重启旧目录旧 exe
 - **`gen-latest-json.js` 多 `.sig` 陷阱**：脚本扫 `src-tauri/target/release/bundle/nsis/*.sig` 取第一个。若该目录残留旧版本 `.sig`，会误把旧签名嵌入 latest.json（下载 URL 是新版、签名是旧版 → 自动更新验签必然失败）。发版前先删该目录下旧版本的 `*-setup.exe` + `.sig`
 - **jsDelivr `@master` 缓存滞后**：push 后 `cdn.jsdelivr.net/.../@master/latest.json` 可能数分钟~更久仍返回旧版本，`purge.jsdelivr.net` 不一定立即生效且有 throttle。updater 第一端点是 jsDelivr、拿到旧 JSON 就不会 fallback 到 GitHub 端点。发版当天必须复验 `@master` 已切到新版本号
 - **发版必须**：`scripts/build-signed.ps1`（交互输密码签名构建）+ 删旧 nsis `.sig` 后 `node scripts/gen-latest-json.js --tag vX.Y`（生成 latest.json）+ 提交进仓库根目录并上传 Release。完整流程见 [docs/RELEASE.md](docs/RELEASE.md) 和 `release` skill。

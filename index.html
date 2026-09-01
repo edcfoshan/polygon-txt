@@ -432,6 +432,9 @@ body::before{
 .modal-card[data-modal="update"] h3{font-size:14px;margin:0}
 .modal-card[data-modal="update"] .update-ver{color:var(--ok);font-weight:700}
 .update-progress-row{display:flex;align-items:center;gap:8px;margin:12px 0 4px}
+.upd-opts{display:flex;flex-direction:column;gap:5px;margin:10px 0 2px}
+.upd-opt{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--tx2);cursor:pointer;user-select:none}
+.upd-opt input{accent-color:var(--ac);width:14px;height:14px;cursor:pointer;flex:none;margin:0}
 .update-progress{flex:1;height:6px;-webkit-appearance:none;appearance:none;border:none;border-radius:3px;overflow:hidden}
 .update-progress::-webkit-progress-bar{background:var(--srf2);border-radius:3px}
 .update-progress::-webkit-progress-value{background:var(--ok);border-radius:3px;transition:width .2s ease}
@@ -1368,6 +1371,10 @@ J2,1,Y500.000,X301.000
     <button class="modal-close" id="btnCloseUpdate" aria-label="关闭">×</button>
     <h3>🎉 发现新版本 <span class="update-ver" id="updateVersion"></span></h3>
     <div class="modal-sub">下载完成后将自动安装并重启应用</div>
+    <div class="upd-opts">
+      <label class="upd-opt"><input type="checkbox" id="updFixLnk"> 创建桌面快捷方式</label>
+      <label class="upd-opt"><input type="checkbox" id="updKeepSave"> 保留安装包到桌面</label>
+    </div>
     <div class="modal-body" id="updateNotes"></div>
     <div class="update-progress-row" style="display:none">
       <progress class="update-progress" id="updateProgress" value="0" max="1"></progress>

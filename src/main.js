@@ -3,7 +3,8 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import { LogicalSize, LogicalPosition } from '@tauri-apps/api/dpi';
 import { open as shellOpen } from '@tauri-apps/plugin-shell';
 import { check as checkForUpdater } from '@tauri-apps/plugin-updater';
-import { relaunch } from '@tauri-apps/plugin-process';
+import { relaunch, exit as exitApp } from '@tauri-apps/plugin-process';
+import { listen } from '@tauri-apps/api/event';
 import { ask as dialogAsk } from '@tauri-apps/plugin-dialog';
 import { getVersion } from '@tauri-apps/api/app';
 import aboutContent from '../content/about.md?raw';
@@ -2132,6 +2133,11 @@ window.openUpdateModal = function () {
   if (nEl) nEl.innerHTML = renderMarkdown(pendingUpdate.body || "*（暂无更新说明）*");
   const prog = $("updateProgress");
   if (prog) { prog.value = 0; prog.parentElement.style.display = "none"; }
+  // 勾选项：记忆态（快捷方式修复默认勾、留包默认不勾）
+  const fixCk = $("updFixLnk");
+  if (fixCk) fixCk.checked = localStorage.getItem("tg_upd_fixlnk") !== "0";
+  const keepCk = $("updKeepSave");
+  if (keepCk) keepCk.checked = localStorage.getItem("tg_upd_keepsave") === "1";
   const doBtn = $("btnDoUpdate");
   if (doBtn) { doBtn.disabled = false; doBtn.textContent = "立即更新"; }
   // 已跳过态打开时（restored），隐藏"跳过此版本"按钮，置灰态不重复跳过
@@ -2156,7 +2162,8 @@ window.skipCurrentVersion = function () {
   toast("已跳过 " + pendingUpdate.version + "，下次有更新还会提醒");
 };
 
-// 下载并安装：监听进度 → 更新进度条 → relaunch。失败兜底百度云。
+// 下载并安装：监听进度 → 更新进度条 → 重启进新装目录。失败兜底百度云。
+// 「保留安装包到桌面」勾选时：绕过插件自管下载到桌面（验签 + 资源管理器定位 + 静默安装）。
 window.doUpdate = async function () {
   // restored 态（从 localStorage 恢复的）没有真实 update 对象，需重新检查拿真实句柄
   if (pendingUpdate?.__restored) {
@@ -2174,11 +2181,14 @@ window.doUpdate = async function () {
   const doBtn = $("btnDoUpdate");
   const prog = $("updateProgress");
   const pct = $("updatePct");
+  const fixLnk = $("updFixLnk") ? $("updFixLnk").checked : true;
+  const keepSave = $("updKeepSave") ? $("updKeepSave").checked : false;
   try {
     if (doBtn) { doBtn.disabled = true; doBtn.textContent = "下载中…"; }
     if (prog) { prog.parentElement.style.display = "block"; prog.value = 0; }
+    if (pct) pct.textContent = "0%";
     let downloaded = 0, total = 0;
-    await pendingUpdate.downloadAndInstall((event) => {
+    const onProg = (event) => {
       if (event.event === "Started" && event.data.contentLength) {
         total = event.data.contentLength;
       } else if (event.event === "Progress") {
@@ -2186,9 +2196,33 @@ window.doUpdate = async function () {
         if (prog && total > 0) prog.value = downloaded / total;
         if (pct && total > 0) pct.textContent = Math.round((downloaded / total) * 100) + "%";
       }
-    });
-    if (doBtn) doBtn.textContent = "安装完成，即将重启…";
-    await relaunch();
+    };
+    if (keepSave) {
+      // 留包模式：插件下载的是临时文件拿不到句柄，改为自管下载到桌面
+      const plat = pendingUpdate.rawJson?.platforms?.["windows-x86_64"];
+      if (!plat?.url || !plat?.signature) throw new Error("latest.json 缺少下载地址或签名");
+      const un = await listen("upd-dl-progress", (ev) => onProg(ev.payload));
+      try {
+        await tauriInvoke("download_and_run_setup", { url: plat.url, signature: plat.signature, version: pendingUpdate.version });
+      } finally {
+        un();
+      }
+      if (doBtn) doBtn.textContent = "安装已启动，即将退出…";
+      // 安装包已带 /R 参数自行拉起新版，这里退出让安装器接管
+      await exitApp();
+    } else {
+      await pendingUpdate.downloadAndInstall(onProg);
+      // 修复/补建快捷方式（失败不阻塞重启）
+      try { await tauriInvoke("ensure_shortcuts"); } catch (e) { console.warn("ensure_shortcuts:", e); }
+      if (doBtn) doBtn.textContent = "安装完成，即将重启…";
+      // 重启进刚装好的目录：relaunch 会重启旧 exe——更新装进不同目录时（漂移修复场景）用户会看到旧版
+      try {
+        await tauriInvoke("restart_into_updated_app", { fixLinks: fixLnk });
+      } catch (e) {
+        console.warn("restart_into_updated_app:", e);
+        await relaunch();
+      }
+    }
   } catch (e) {
     console.error("doUpdate:", e);
     isUpdating = false;
@@ -2572,6 +2606,10 @@ async function init() {
   bind("btnSkipUpdate", () => skipCurrentVersion());
   bind("btnCloseUpdate", () => closeUpdateModal());
   bind("btnCancelUpdate", () => closeUpdateModal());
+  const updFixCk = $("updFixLnk");
+  if (updFixCk) updFixCk.addEventListener("change", () => localStorage.setItem("tg_upd_fixlnk", updFixCk.checked ? "1" : "0"));
+  const updKeepCk = $("updKeepSave");
+  if (updKeepCk) updKeepCk.addEventListener("change", () => localStorage.setItem("tg_upd_keepsave", updKeepCk.checked ? "1" : "0"));
   const bdpan = $("bdpanLink");
   if (bdpan) bdpan.addEventListener("click", (e) => { e.preventDefault(); shellOpen(BAIDU_PAN_URL); });
   bind("btnCancelGdbSelect", () => closeGdbSelectModal());

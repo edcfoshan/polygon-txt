@@ -10,6 +10,7 @@ pub mod convert;
 pub mod gdb;
 pub mod geometry;
 pub mod projection;
+pub mod selfheal;
 
 use convert::{FieldMapping, HeaderConfig, ShpToTxtOptions, TxtToShpOptions};
 
@@ -788,6 +789,15 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .setup(|app| {
+            // 启动静默自愈：清漂移残留 + 修快捷方式（独立线程，不阻塞启动）
+            let handle = app.handle().clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(std::time::Duration::from_secs(2));
+                selfheal::silent_selfheal(&handle);
+            });
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             pick_shp_files,
             import_gdb,
@@ -803,6 +813,9 @@ pub fn run() {
             close_window,
             apply_dynamic_projection,
             toggle_maximize,
+            selfheal::ensure_shortcuts,
+            selfheal::restart_into_updated_app,
+            selfheal::download_and_run_setup,
         ])
         .run(tauri::generate_context!())
         .expect("启动失败");

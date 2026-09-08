@@ -1,11 +1,11 @@
 {
-  "version": "3.3.0",
-  "notes": "### 修复\r\n\r\n- **修复自动更新后打开仍是旧版本的问题**：v3.2 安装包误将新版本装到了另一个目录，桌面/开始菜单快捷方式仍指向旧位置，导致更新后重开是旧版、电脑里出现两份软件。本次更新会装回原目录，首次启动自动清理多余的旧副本和残留安装信息（无需任何操作）\r\n- 修复更新完成后快捷方式可能指向旧版本的问题：更新完成后自动把桌面和开始菜单快捷方式修正到最新版\r\n\r\n### 新增\r\n\r\n- 更新弹窗新增「创建桌面快捷方式」勾选项（默认勾选）：更新完成后确保桌面和开始菜单的快捷方式都指向新版本，桌面没有图标的会自动补建\r\n- 更新弹窗新增「保留安装包到桌面」勾选项：勾选后更新时会把安装包保留在桌面并自动打开所在位置，方便拷贝到其他电脑安装；安装包下载后经数字签名校验，校验通过才安装，失败会引导百度云手动下载",
-  "pub_date": "2026-09-01T08:09:29.333Z",
+  "version": "4.0.0",
+  "notes": "### 新增\r\n\r\n- 右栏新增「属性表」页签（面→TXT 模式）：表格查看每个地块的全部属性字段（源文件 + 序号 + 属性列），分页浏览（每页 100 条），点击行与地图双向联动高亮定位\r\n- 右栏新增「地图」页签（面→TXT 模式）：天地图影像叠加注记，画出全部地块边界；表格点行 → 地图飞行定位 + 红色高亮闪烁，地图点地块 → 表格滚动定位选中；断网时自动降级为灰底 + 纯地块轮廓\r\n- 新增筛选导出（所见即所得）：属性表上方结构化条件构建器，条件按行拆分、行间「且/或」连接（可混用，按行序组合）；运算符支持 `= != > < >= <= LIKE IN 为空`；**IN 多选复选弹层**（带搜索）、单值可从该字段数据值中点选；筛出来的行就是导出范围——TXT 预览与三种输出模式（一对一/按地块拆分/全合并）同步过滤；条件不完整/字段不存在即时标红并拦截导出；条件自动记忆、下次打开恢复\r\n- 修复部分 GDB/SHP 在地图上位置错误的问题：**带号以东坐标溢出时（如 37 带东侧点的东坐标达到 38,xxx,xxx）按数字前缀会误判为 38 带**，现优先采用 PRJ/图层空间参考声明的中央经线/带号做逆投影，东坐标按声明带号重贴 million 块；同时修复 6° 带数据（前缀块与 3° 带网格不同）在地图上无法正确反算的问题\r\n- 「按地块拆分」的文件名字段下拉从固定 4 项改为动态列出导入数据的全部字段（SHP 取多文件并集、GDB 取所选图层字段），不再受 DKMC/DKBH 限制\r\n- 地图天地图 key 支持多 key 自动轮换：主 key 不可用（如浏览器端 key 域名白名单拒绝桌面应用，DataServer 403）时自动切换备用 key 重试，全部不可用才降级灰底\r\n- 地图右下角署名改为灰色纯文字（原「Leaflet」为外链，应用内点击会把整个窗口导航到官网）\r\n- 修复首次导入后打开地图页签未自动缩放到数据范围的问题（面板刚显示时容器尺寸未就绪，现尺寸稳定后补一次定位）",
+  "pub_date": "2026-09-08T11:17:17.270Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUd3RYL0ovejhtb0FEUGtXLzMrMTFCZEoyVFZ3SXJXVzdlQjVGanRpQTk3Nm5vSDA0MlYxeGNHT1NFc2d0UTh6L3Y5UGFoWWozNGJPWERNYk1FelJTUFBvVVJvMFRsTXdJPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg4MjUwMTY1CWZpbGU65p6B5oCdR+eVjOWdgOeCueS6kui9rOW3peWFt18zLjMuMF94NjQtc2V0dXAuZXhlCmdmRzgxMGVsaFJhMTNqMUNGMlNWV3k4alVOdXBJTDZtOGRYZ0pZMk5MZVFPQWFRUFBqSzU1SnZ4VEpPQ2RFQVlWNjR0QzRVbXpyZkZOYjZMS2xyVkFnPT0K",
-      "url": "https://github.com/edcfoshan/polygon-txt/releases/download/v3.3.0/polygon-txt_3.3_x64-setup.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUd3RYL0ovejhtb01GOU9QQno0SzNJMGV2TE8zR3pvRnM0T1Bqa0h5QldHMWZkZTZXb01ERzBqb3J6OEJLdi9GUGpIUVQzeGdSVUwzMFh3WnhlM3JZNTBhRnQ2T0VlNkFJPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg4ODY2MjMyCWZpbGU65p6B5oCdR+eVjOWdgOeCueS6kui9rOW3peWFt180LjAuMF94NjQtc2V0dXAuZXhlClU2K1RwMkFEb09rbnVUWkZBV2tmd2NhMjZUZVJkODl4V3NCTkxBTzhiaHBDNUFGSGtHWkc1bElRc0k2ZHZuK2ZzV0QxaERoT1h0OE1qbjJ6bUNlbkF3PT0K",
+      "url": "https://github.com/edcfoshan/polygon-txt/releases/download/v4.0.0/polygon-txt_4.0_x64-setup.exe"
     }
   }
 }

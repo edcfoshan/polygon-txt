@@ -138,6 +138,18 @@ jobs:
           gh release upload "${{ github.ref_name }}" "$D/polygon-txt_${SHORT}_x64-setup.exe" "$D/polygon-txt_${SHORT}_x64-setup.exe.sig" latest.json --clobber
           echo "已上传: polygon-txt_${SHORT}_x64-setup.exe(.sig) + latest.json"
 
+      # Windows：用 CHANGELOG 具体更新内容替换 tauri-action 模板 notes（用户要求：Release 页直接展示更新内容）
+      - name: Update release notes from CHANGELOG (Windows only)
+        if: matrix.platform == 'windows-latest'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VER=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          node scripts/extract-changelog.js "$VER" > release-notes.md
+          gh release edit "${{ github.ref_name }}" --notes-file release-notes.md --repo ${{ github.repository }}
+          echo "Release notes 已更新为 CHANGELOG $VER 内容"
+
       # Windows 便携版：复制裸 exe 并上传到 Release
       - name: Upload portable executable (Windows only)
         if: matrix.platform == 'windows-latest'

@@ -50,7 +50,7 @@ fn real_shp_to_txt_custom_attr_descriptions() {
         oc: false,
         output_mode: "one_to_one".into(),
         filename_field: String::new(), og: false, zone_type: 3,
-            proj_no_prefix: false,
+            proj_no_prefix: false, plot_filter: None,
             proj_mode: "keep".to_string(),
         proj_zone: None,
 };

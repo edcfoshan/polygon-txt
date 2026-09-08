@@ -502,7 +502,7 @@ fn classic_inverse(
 /// 根据带宽和带号计算中央经线
 /// 3°带: CM = 3 * zone
 /// 6°带: CM = 6 * zone - 3
-fn cm_for_band(band: u8, zone: u32) -> f64 {
+pub fn cm_for_band(band: u8, zone: u32) -> f64 {
     match band {
         6 => zone as f64 * 6.0 - 3.0,
         _ => zone as f64 * 3.0,

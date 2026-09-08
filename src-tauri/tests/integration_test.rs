@@ -142,7 +142,7 @@ fn test_shp_to_txt_one_to_one() {
         proj_mode: "keep".to_string(),
         proj_zone: None,
         ox: false, oj: true, on: false, oo: true, oc: false,
-        output_mode: "one_to_one".into(), filename_field: String::new(), og: false, zone_type: 3, proj_no_prefix: false,
+        output_mode: "one_to_one".into(), filename_field: String::new(), og: false, zone_type: 3, proj_no_prefix: false, plot_filter: None,
     };
 
     let result = convert::convert_shp_to_txt(
@@ -176,7 +176,7 @@ fn test_shp_to_txt_xy_swap() {
         proj_mode: "keep".to_string(),
         proj_zone: None,
         ox: false, oj: true, on: false, oo: true, oc: false,
-        output_mode: "one_to_one".into(), filename_field: String::new(), og: false, zone_type: 3, proj_no_prefix: false,
+        output_mode: "one_to_one".into(), filename_field: String::new(), og: false, zone_type: 3, proj_no_prefix: false, plot_filter: None,
     };
     let dir_off = tempfile::tempdir().expect("temp dir");
     let _ = convert::convert_shp_to_txt(
@@ -190,7 +190,7 @@ fn test_shp_to_txt_xy_swap() {
         proj_mode: "keep".to_string(),
         proj_zone: None,
         ox: true, oj: true, on: false, oo: true, oc: false,
-        output_mode: "one_to_one".into(), filename_field: String::new(), og: false, zone_type: 3, proj_no_prefix: false,
+        output_mode: "one_to_one".into(), filename_field: String::new(), og: false, zone_type: 3, proj_no_prefix: false, plot_filter: None,
     };
     let dir_on = tempfile::tempdir().expect("temp dir");
     let _ = convert::convert_shp_to_txt(
@@ -245,7 +245,7 @@ fn test_shp_to_txt_merge_all() {
         proj_mode: "keep".to_string(),
         proj_zone: None,
         ox: false, oj: true, on: false, oo: true, oc: false,
-        output_mode: "merge_all".into(), filename_field: String::new(), og: false, zone_type: 3, proj_no_prefix: false,
+        output_mode: "merge_all".into(), filename_field: String::new(), og: false, zone_type: 3, proj_no_prefix: false, plot_filter: None,
     };
 
     let result = convert::convert_shp_to_txt(
@@ -280,7 +280,7 @@ fn test_shp_to_txt_split_by_plot() {
         proj_mode: "keep".to_string(),
         proj_zone: None,
         ox: false, oj: true, on: false, oo: true, oc: false,
-        output_mode: "split_by_plot".into(), filename_field: String::new(), og: false, zone_type: 3, proj_no_prefix: false,
+        output_mode: "split_by_plot".into(), filename_field: String::new(), og: false, zone_type: 3, proj_no_prefix: false, plot_filter: None,
     };
 
     let result = convert::convert_shp_to_txt(
@@ -765,7 +765,7 @@ fn test_shp_to_txt_full() {
         oo: false,
         oc: false,
         output_mode: "one_to_one".into(),
-        filename_field: String::new(), og: false, zone_type: 3, proj_no_prefix: false,
+        filename_field: String::new(), og: false, zone_type: 3, proj_no_prefix: false, plot_filter: None,
     };
 
     let result = convert::convert_shp_to_txt(
@@ -855,7 +855,7 @@ fn test_shp_txt_roundtrip() {
         oo: false,
         oc: false,
         output_mode: "one_to_one".into(),
-        filename_field: String::new(), og: false, zone_type: 3, proj_no_prefix: false,
+        filename_field: String::new(), og: false, zone_type: 3, proj_no_prefix: false, plot_filter: None,
     };
 
     let r2 = convert::convert_shp_to_txt(
@@ -923,7 +923,7 @@ fn test_preview() {
         oo: false,
         oc: false,
         output_mode: "one_to_one".into(),
-        filename_field: String::new(), og: false, zone_type: 3, proj_no_prefix: false,
+        filename_field: String::new(), og: false, zone_type: 3, proj_no_prefix: false, plot_filter: None,
     };
 
     let preview = convert::shp_to_txt_preview(
@@ -1079,7 +1079,7 @@ J1,2,30.000,30.000";
         oo: true,
         oc: false,
         output_mode: "one_to_one".into(),
-        filename_field: String::new(), og: false, zone_type: 3, proj_no_prefix: false,
+        filename_field: String::new(), og: false, zone_type: 3, proj_no_prefix: false, plot_filter: None,
     };
 
     let txt_result = convert::convert_shp_to_txt(
@@ -1169,7 +1169,7 @@ J1,2,2.000,2.000";
         oo: true,
         oc: false,
         output_mode: "one_to_one".into(),
-        filename_field: String::new(), og: false, zone_type: 3, proj_no_prefix: false,
+        filename_field: String::new(), og: false, zone_type: 3, proj_no_prefix: false, plot_filter: None,
     };
 
     let txt_result = convert::convert_shp_to_txt(
@@ -1218,7 +1218,7 @@ fn test_field_mapping_sentinels_area() {
         proj_mode: "keep".to_string(),
         proj_zone: None,
         ox: false, oj: true, on: false, oo: false, oc: false,
-        output_mode: "one_to_one".into(), filename_field: String::new(), og: false, zone_type: 3, proj_no_prefix: false,
+        output_mode: "one_to_one".into(), filename_field: String::new(), og: false, zone_type: 3, proj_no_prefix: false, plot_filter: None,
     };
 
     // 平方米（自动）：面积应为正数，2 位小数
@@ -1412,7 +1412,7 @@ fn test_shp_to_txt_proj_mode_a_forward() {
             ox: false, oj: false, on: false, oo: false, oc: false,
             output_mode: "one_to_one".into(), filename_field: String::new(),
             og: false, zone_type: 3,
-            proj_no_prefix: false,
+            proj_no_prefix: false, plot_filter: None,
             proj_mode: "A".to_string(), proj_zone: Some(38),
         },
         out_dir.path(),

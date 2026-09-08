@@ -90,7 +90,7 @@ fn adv_options() -> convert::ShpToTxtOptions {
         proj_zone: None,
         ox: false, oj: true, on: false, oo: true, oc: false,
         output_mode: "one_to_one".into(), filename_field: String::new(),
-        og: false, zone_type: 3, proj_no_prefix: false,
+        og: false, zone_type: 3, proj_no_prefix: false, plot_filter: None,
     }
 }
 

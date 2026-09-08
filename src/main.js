@@ -10,6 +10,14 @@ import { getVersion } from '@tauri-apps/api/app';
 import aboutContent from '../content/about.md?raw';
 import aboutQrImage from '../content/讨论群.jpg?inline';
 import sponsorQrImage from '../content/关注、赞赏码.png?inline';
+import { TV } from './tableview.js';
+import { MV } from './mapview.js';
+import { QB } from './querybuilder.js';
+
+// 右栏属性表/地图模块（HTML onclick 经 window.* 调用）
+window.TV = TV;
+window.MV = MV;
+window.QB = QB;
 
 // Tauri IPC 调用
 async function tauriInvoke(cmd, args) {
@@ -313,6 +321,8 @@ window.confirmGdbSelect = function () {
   if (firstSel && firstSel.field_names && firstSel.field_names.length) {
     autoMatchFields(firstSel.field_names);
   }
+  // 文件名字段下拉按所选图层的字段并集刷新
+  fillFilenameFieldOptions(selectedLayers.flatMap((ln) => gdbLayers.find((l) => l.name === ln)?.field_names || []));
   window.closeGdbSelectModal();
   renderLeftGdbSummary();
   toast(`已选定 ${selectedLayers.length}/${gdbLayers.length} 个要素类`);
@@ -994,10 +1004,21 @@ function refreshOgWarn() {
   warn.style.display = og.checked && nonStd && !og.disabled ? "block" : "none";
 }
 
+// 「按地块拆分」文件名字段下拉：动态列出导入数据的全部字段（序号/FID + 源字段并集）
+function fillFilenameFieldOptions(names) {
+  const sel = $("filename_field");
+  if (!sel) return;
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">序号</option><option value="FID">FID</option>'
+    + [...new Set(names)].map((n) => `<option value="${escAttr(n)}">${escAttr(n)}</option>`).join("");
+  if ([...sel.options].some((o) => o.value === cur)) sel.value = cur;
+}
+
 function processImport() {
   if (!loadedFiles.length) return;
   const first = loadedFiles[0];
   autoMatchFields(first.field_names || []);
+  fillFilenameFieldOptions(loadedFiles.flatMap((f) => f.field_names || []));
   if (first.crs_info) {
     // 合并 extent 信息到 crs_info
     if (first.xmin != null) first.crs_info.xmin = first.xmin;
@@ -1510,7 +1531,7 @@ function renderTxtParseLog() {
     : "等待导入 TXT 文件…";
 }
 
-window.clearAllFiles = function () { loadedFiles = []; sourceType = null; sourcePath = null; gdbLayers = []; selectedLayers = []; gdbTempSelected = []; window._gdbName = ""; syncOgGate(null); const fl = $("fl"); if (fl) fl.innerHTML = ""; const out = $("out_dir_s"); if (out) out.value = ""; updateProjButton(); toast("已清空"); };
+window.clearAllFiles = function () { loadedFiles = []; sourceType = null; sourcePath = null; gdbLayers = []; selectedLayers = []; gdbTempSelected = []; window._gdbName = ""; syncOgGate(null); const fl = $("fl"); if (fl) fl.innerHTML = ""; const out = $("out_dir_s"); if (out) out.value = ""; updateProjButton(); TV.reset(); MV.reset(); toast("已清空"); };
 window.clearAllFilesTxt = function () { txtFiles = []; const fl = $("flT"); if (fl) fl.innerHTML = ""; const pv = $("pvT"); if (pv) pv.textContent = "等待导入 TXT 文件…"; const out = $("out_dir"); if (out) out.value = ""; toast("已清空"); };
 
 // ═══ Preview ═══
@@ -1533,6 +1554,21 @@ function scheduleAutoSave() {
   autoSaveTimer = setTimeout(flushAutoSave, 400);
 }
 
+// 属性表/地图的结构化地块数据（全量口径，不吃筛选；预览/导出走 options.plot_filter）
+async function refreshPlotGeo(shpPaths, cfg, opt) {
+  try {
+    const geo = await tauriInvoke("read_plot_table_geo", { shpPaths, sourceType, sourcePath, headerCfg: cfg.h, fieldMapping: cfg.f, options: { ...opt, plot_filter: null }, selectedLayers: sourceType === "gdb" ? selectedLayers : [] });
+    TV.setData(geo);
+    MV.setData(geo);
+    // 字段下拉刷新 + 按当前条件重算筛选（字段列变了命中可能不同）
+    QB.setFields(TV.getFieldNames());
+    TV.applyFromBuilder(QB.getWhere());
+  } catch (e) {
+    console.error("plot geo error:", e);
+    toast("读取地块数据失败: " + (e?.message || e));
+  }
+}
+
 window.up = async function () {
   const hpi = $("hpi")?.value || "";
   const attrLines = collectAttrRows()
@@ -1550,8 +1586,10 @@ window.up = async function () {
     const spin = $('pvSpin');
     try {
       if (spin) spin.classList.add('on');
+      // 先发地块数据请求（不 await：与预览并行；预览失败也不影响属性表/地图）
+      const geoP = refreshPlotGeo(shpPaths, cfg, opt);
       const txt = await tauriInvoke("read_shp_to_txt_preview", { shpPaths, sourceType, sourcePath, headerCfg: cfg.h, fieldMapping: cfg.f, options: opt, selectedLayers: sourceType === "gdb" ? selectedLayers : [] });
-      if (txt) { const pv = $("pv"); if (pv) pv.textContent = txt; return; }
+      if (txt) { const pv = $("pv"); if (pv) pv.textContent = txt; await geoP; return; }
     } catch (e) { console.error("Preview error:", e); toast("预览失败: " + (e?.message || e)); }
     finally { if (spin) spin.classList.remove('on'); }
   }
@@ -1579,6 +1617,9 @@ window.runShpToTxt = async function () {
 
   const cfg = getConfig();
   const opt = getOptions();
+  const fr = TV.getFilterUids();
+  if (fr.error) { toast("筛选条件有误：" + fr.error.message); return; }
+  if (fr.empty) { toast("筛选结果为空，请调整筛选条件"); return; }
   try {
     const result = await tauriInvoke("run_shp_to_txt", { shpPaths, sourceType, sourcePath, headerCfg: cfg.h, fieldMapping: cfg.f, options: opt, outputDir: outDir, selectedLayers: sourceType === "gdb" ? selectedLayers : [] });
     toast("✓ " + result.message);
@@ -1651,6 +1692,8 @@ function getOptions() {
     proj_no_prefix: !!window._projNoPrefix,
     output_mode: outputMode,
     filename_field: filenameField,
+    // 地块级筛选（属性表求值）：预览/导出共用同一 uid 口径；语句有误时为 null（导出前另有拦截）
+    plot_filter: (window.TV && TV.getFilterUids ? TV.getFilterUids().uids : null),
   };
 }
 
@@ -1660,6 +1703,16 @@ window.sw = function (t) {
   const tab = document.querySelector(`[data-t="${t}"]`);
   if (tab) tab.classList.add("on");
   document.querySelector(".app").setAttribute("data-mode", t);
+};
+
+// 右栏三页签：TXT 预览 / 属性表 / 地图（仅面→TXT 模式）
+window.swPvTab = function (name) {
+  const ids = { pv: "ptabPv", tbl: "ptabTbl", map: "ptabMap" };
+  document.querySelectorAll(".ptab").forEach((b) => b.classList.toggle("on", b.id === ids[name]));
+  $("panePv")?.classList.toggle("on", name === "pv");
+  $("paneTbl")?.classList.toggle("on", name === "tbl");
+  $("paneMap")?.classList.toggle("on", name === "map");
+  if (name === "map") MV.ensureInit();
 };
 
 window.tg = function (h) {
@@ -2644,6 +2697,7 @@ async function init() {
 
   // All other inputs/selects trigger preview update
   document.querySelectorAll("input,select").forEach((el) => {
+    if (el.closest("#paneTbl")) return; // 属性表筛选工具条：TV 内部管理事件（防每次击键重拉预览）
     el.addEventListener("input", updatePreview);
     el.addEventListener("change", updatePreview);
   });
@@ -2711,6 +2765,19 @@ async function init() {
       } catch (err) { toast("拖放导入失败: " + err); }
     });
   }
+
+  // ─── 右栏属性表/地图（v4.0）：结构化筛选条件（querybuilder）+ 状态持久化 ───
+  TV.init();
+  QB.init(() => {
+    TV.applyFromBuilder(QB.getWhere());
+    try { localStorage.setItem("tg_flt2", JSON.stringify(QB.getRows())); } catch (e) {}
+    updatePreview();
+  });
+  try {
+    const savedRows = JSON.parse(localStorage.getItem("tg_flt2") || "null");
+    if (Array.isArray(savedRows)) QB.loadRows(savedRows);
+  } catch (e) {}
+  TV.reset();
 
   up();
 }

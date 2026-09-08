@@ -306,9 +306,10 @@ body::before{
 .copt.on{background:var(--acg);border-color:var(--ac);color:var(--tx);font-weight:600}
 
 /* ─── 三区字号缩放（CSS zoom，挂内容高度元素上防满高容器溢出） ─── */
+/* 地图面板（paneMap）不缩放：CSS zoom 会错位 Leaflet 鼠标坐标 */
 .titlebar,.tabbar,.modal-overlay,#toast{zoom:var(--za,1)}
-.acc,.ctr-ft{zoom:var(--zb,1)}
-.pv{zoom:var(--zc,1)}
+.acc,.ctr-ft,.pv-tabs{zoom:var(--zb,1)}
+#panePv,#paneTbl,.mode-t .pv{zoom:var(--zc,1)}
 
 /* ─── 设置面板：滚动内容区 + 字号滑块行 ─── */
 .set-body{overflow-y:auto;min-height:0;scrollbar-width:thin}
@@ -863,6 +864,82 @@ body::before{
   border-radius:0 0 1px 0;
 }
 
+/* ─── 右栏三页签：TXT 预览 / 属性表 / 地图（v3.4） ─── */
+.pv-tabs{display:flex;gap:2px;margin-bottom:8px;flex-shrink:0}
+.ptab{
+  padding:4px 12px;font-size:11px;font-weight:500;color:var(--tx3);
+  border:none;background:none;cursor:pointer;font-family:inherit;border-radius:4px;
+  position:relative;transition:color .2s;letter-spacing:.2px;
+}
+.ptab:hover{color:var(--tx2);background:var(--srf2)}
+.ptab:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
+.ptab.on{color:var(--ac);background:var(--acg)}
+.pv-pane{display:none;flex:1;min-height:0;flex-direction:column}
+.pv-pane.on{display:flex}
+/* 属性表 */
+.tbl-toolbar{display:flex;gap:6px;align-items:center;margin-bottom:6px;position:relative;flex-shrink:0;flex-wrap:wrap}
+.qb-lb{font-size:11.5px;font-weight:600;color:var(--tx2)}
+.qb-hint{margin-left:auto;font-size:10px;color:var(--tx3)}
+.qb-rows{display:flex;flex-direction:column;gap:4px;margin-bottom:6px;max-height:132px;overflow-y:auto;flex-shrink:0}
+.qb-rows::-webkit-scrollbar{width:6px}
+.qb-rows::-webkit-scrollbar-thumb{background:var(--brd);border-radius:3px}
+.qb-empty{padding:6px 2px;font-size:10.5px;color:var(--tx3)}
+.qb-row{display:flex;gap:5px;align-items:center}
+.qb-row.err .qb-f,.qb-row.err .qb-v{border-color:#e0533d}
+.qb-glue{width:52px;flex-shrink:0;padding:3px 2px;font-size:11px;border:1px solid var(--brd);border-radius:5px;background:var(--srf2);color:var(--ac);font-weight:600}
+.qb-f{flex:1.2;min-width:80px;padding:3px 2px;font-size:11px;border:1px solid var(--brd);border-radius:5px;background:var(--srf2);color:var(--tx)}
+.qb-op{width:78px;flex-shrink:0;padding:3px 2px;font-size:11px;border:1px solid var(--brd);border-radius:5px;background:var(--srf2);color:var(--tx)}
+.qb-v{flex:1.4;min-width:90px;display:flex;gap:4px;align-items:center;border:1px solid var(--brd);border-radius:5px;background:var(--srf2);padding:1px 3px;min-height:24px;box-sizing:border-box}
+.qb-vinp{flex:1;min-width:40px;border:none;background:none;color:var(--tx);font-size:11px;padding:3px 2px;font-family:inherit}
+.qb-vinp:focus{outline:none}
+.qb-vbtn{flex:1;border:none;background:none;color:var(--ac);font-size:11px;cursor:pointer;font-family:inherit;padding:3px 2px;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.qb-vpick{border:none;background:none;color:var(--tx3);cursor:pointer;font-size:10px;padding:0 3px}
+.qb-vpick:hover{color:var(--ac)}
+.qb-none{color:var(--tx3);font-size:11px;padding:0 4px}
+.qb-del{border:none;background:none;color:var(--tx3);cursor:pointer;font-size:11px;padding:2px 4px;flex-shrink:0}
+.qb-del:hover{color:#e0533d}
+.qb-pop{
+  position:fixed;z-index:2000;background:var(--srf);border:1px solid var(--brd);border-radius:6px;
+  box-shadow:0 6px 20px rgba(0,0,0,.22);display:flex;flex-direction:column;overflow:hidden;
+}
+.qb-pop-search{margin:5px;padding:4px 7px;border:1px solid var(--brd);border-radius:4px;background:var(--srf2);color:var(--tx);font-size:11px;font-family:inherit}
+.qb-pop-search:focus{outline:none;border-color:var(--ac)}
+.qb-pop-list{max-height:200px;overflow-y:auto;padding:2px 5px 5px}
+.qb-pop-item{
+  display:flex;align-items:center;gap:6px;width:100%;border:none;background:none;cursor:pointer;
+  color:var(--tx);font-size:11px;padding:3px 5px;border-radius:4px;font-family:inherit;text-align:left;
+}
+.qb-pop-item:hover{background:var(--srf2)}
+.qb-pop-item span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.qb-pop-item input{accent-color:var(--ac);flex-shrink:0}
+.qb-pop-empty{font-size:10.5px;color:var(--tx3);padding:6px 4px}
+.qb-pop-ok{
+  margin:0 5px 6px;padding:4px 0;border:1px solid var(--ac);border-radius:4px;background:var(--acg);
+  color:var(--ac);font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;
+}
+.tbl-scroll{flex:1;min-height:0;overflow:auto;border:1px solid var(--brd);border-radius:6px;background:var(--pv-bg)}
+.tbl{border-collapse:separate;border-spacing:0;width:max-content;min-width:100%;font-size:11px}
+.tbl th,.tbl td{
+  padding:4px 9px;text-align:left;border-bottom:1px solid var(--brd);border-right:1px solid var(--brd);
+  white-space:nowrap;max-width:260px;overflow:hidden;text-overflow:ellipsis;color:var(--tx);
+}
+.tbl thead th{
+  position:sticky;top:0;z-index:2;background:var(--srf2);color:var(--tx2);
+  font-weight:600;font-size:10.5px;
+}
+.tbl tbody tr{cursor:pointer}
+.tbl tbody tr:hover td{background:var(--srf2)}
+.tbl tbody tr.sel td{background:var(--acg);color:var(--tx);font-weight:500}
+.tbl-empty{padding:24px 12px;text-align:center;color:var(--tx3);font-size:11.5px}
+.tbl-pager{display:flex;gap:8px;align-items:center;margin-top:6px;flex-shrink:0;font-size:11px;color:var(--tx2)}
+.tbl-count{margin-left:auto;color:var(--tx3)}
+/* 地图 */
+.map-box{flex:1;min-height:0;border:1px solid var(--brd);border-radius:6px;background:var(--srf2);z-index:1}
+.map-note{padding:6px 10px;font-size:11px;color:var(--tx3)}
+.leaflet-container{background:var(--srf2);font-family:inherit}
+.plot-blink{animation:plotBlink .5s linear 3}
+@keyframes plotBlink{0%,100%{opacity:1}50%{opacity:.1}}
+
 /* Result tags */
 .rtags{display:flex;flex-wrap:wrap;gap:4px}
 .rtag{
@@ -1255,7 +1332,13 @@ body::before{
       <div class="mode-s ctr-inner">
         <div class="ctr-bd">
           <div class="pv-spin" id="pvSpin"></div>
-          <div class="pv" id="pv">请先导入 SHP 或 GDB 文件
+          <div class="pv-tabs">
+            <button type="button" class="ptab on" id="ptabPv" onclick="swPvTab('pv')">TXT 预览</button>
+            <button type="button" class="ptab" id="ptabTbl" onclick="swPvTab('tbl')">属性表</button>
+            <button type="button" class="ptab" id="ptabMap" onclick="swPvTab('map')">地图</button>
+          </div>
+          <div class="pv-pane on" id="panePv">
+            <div class="pv" id="pv">请先导入 SHP 或 GDB 文件
 
 输出示例格式：
 [属性描述]
@@ -1264,6 +1347,29 @@ body::before{
 1,1234.56,宗地A,面,,,100,1,J1,1,Y500.000,X300.000
 J2,1,Y500.000,X301.000
 ...</div>
+          </div>
+          <div class="pv-pane" id="paneTbl">
+            <div class="tbl-toolbar">
+              <span class="qb-lb">筛选条件</span>
+              <button type="button" class="btn" id="btnQbAdd" style="font-size:9.5px;padding:2px 8px">＋ 添加条件</button>
+              <button type="button" class="btn" id="btnQbClear" style="font-size:9.5px;padding:2px 8px">清空</button>
+              <span class="qb-hint">筛出的行 = 导出范围</span>
+            </div>
+            <div class="qb-rows" id="qbRows"></div>
+            <div class="tbl-scroll" id="tblScroll">
+              <table class="tbl" id="tbl"></table>
+            </div>
+            <div class="tbl-pager">
+              <button type="button" class="btn" id="pgPrev">上一页</button>
+              <span id="pgInfo">- / -</span>
+              <button type="button" class="btn" id="pgNext">下一页</button>
+              <span class="tbl-count" id="fltCount"></span>
+            </div>
+          </div>
+          <div class="pv-pane" id="paneMap">
+            <div class="map-box" id="mapDiv"></div>
+            <div class="map-note" id="mapNote" style="display:none"></div>
+          </div>
         </div>
         <div class="ctr-ft">
           <button class="btn-run" id="btnRunStt">开始转换</button>

@@ -10,6 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 窗口：默认 1100×800px（`minWidth:800/minHeight:540`，可自由拉伸/最大化），无边框（`decorations: false`），自定义标题栏
 - **窗口记忆（v3.0）**：前端 `main.js` 实现（`onResized`/`onMoved` → quickSave/fullSave → localStorage，恢复时 clamp 屏内防跑出屏幕；最大化不记），非 Rust 侧、非 window-state 插件
 - **v3.0 UI（方案A 折叠收纳式）**：三栏比例 1:1:1.3。左栏 = ①导入数据 + ②字段映射（高级开关在分组标题行）；中栏 = ③输出与选项（含输出目录）+ ④动态投影 + ⑤自定义表头；右栏预览。TXT→面 为 ①导入 TXT + ②输出设置。分组为手风琴卡（`togAcc`，默认全开），`.accs > .acc` 拉伸保证三栏底边齐平、超高卡内滚动。UI 原型在 docs/mockups/
+- **v3.4 右栏三页签（仅面→TXT）**：`swPvTab`（main.js）切「TXT 预览 | 属性表 | 地图」。**属性表**（`src/tableview.js`，手写表格+分页 100/页，0 表格库）+ **地图**（`src/mapview.js`，Leaflet preferCanvas + 天地图 img_w/cia_w XYZ）+ **筛选导出**（`src/querybuilder.js` 结构化条件构建器：条件行 + 行间且/或（按行序左折叠自动加括号）、IN 多选复选弹层、值候选点选、IS NULL；生成 WHERE 文本喂 `src/filterparser.js` 求值）。所见即所得：筛中的行 = 导出范围——前端求值得 `(si,pi)` uid 列表 → `ShpToTxtOptions.plot_filter` → `convert.rs` 在 `match output_mode` 前一处过滤（三模式全覆盖），预览同吃（预览=导出）；`read_plot_table_geo` IPC 回传全量结构化地块（attrs + WGS84 rings），属性表/地图不吃筛选。地图逐源推 CM，**优先级：crs_info 的 cm（直读，不依赖 b）→ z+band → 坐标前缀推断（无元数据兜底，有歧义）**；逆投影前东坐标按数据带号「重贴 million 块」（`e = x − Z_data×1e6 + round(cm/3)×1e6`）：处理「37 带东侧溢出到 38M」（如揭阳 38_057_383 = 37_500_000+557_383，floor(x/1e6) 会误判 38 带）与 6° 带前缀块 ≠ 3° 带网格两种情形；无前缀且无 crs_info → `degraded=true`（`rings:[]`，表格仍可用、地图灰底）。回归测试 `table_geo_zone37_spillover_easting` / `table_geo_band6_zone20`。uid 口径：si = SHP 文件下标 / GDB 产出 sources 下标（仅面状+选中图层），pi = index_in_source。共享态 `TV.getFilterUids()/getSelectedUid()/getFieldNames()/getDistinctValues()`；QB 条件存 `tg_flt2`（JSON rows）；CSS zoom C 区挂 `#panePv/#paneTbl`（**paneMap 不缩放**——zoom 错位 Leaflet 鼠标坐标）；CSP `img-src` 已放行 `https://*.tianditu.gov.cn`；tileerror 8s 内 ≥3 → **先轮换 `TKS[]` 下一个 key 重建瓦片层**（每 key 一轮），全败才灰底降级
 - **主题系统**：浅色/暗色（`html[data-t]`）× 8 色系（`html[data-c]`：normal 经典黑白默认/brass/green/blue/cyan/purple/orange/rose）独立组合；色系换全套配色（CSS 变量）；浅色模式预览字体统一黑色；持久化 `tg_theme` + `tg_color`。入口：标题栏 sun/moon 小按钮 = 一键明暗切换（`togTheme`）；完整设置在齿轮「设置」按钮 → `#settingsModal`
 - **设置面板（`#settingsModal`）**：外观（浅/暗 `.thopt` + 8 色系 `.copt`）+ 显示比例 + 三区字号滑块，统一收纳（v3.1 起取代旧 `#thMenu` 下拉与 `#ratioModal`）
 - **三区字号缩放**：CSS `zoom` 挂内容高度元素防满高容器溢出——A 区（标题栏/tabbar/弹窗/toast，`--za`）、B 区（折叠卡 `.acc` + `.ctr-ft`，`--zb`）、C 区（预览文本 `.pv`，`--zc`）。滑块 85–140% 步进 5% 即时生效，存 `tg_zma/tg_zmb/tg_zmc`。**注意**：`ld()` 配置集切换只洗 `#ch` 内的 chip（曾用全局 `.chip` 选择器误伤设置面板比例 chips 的选中态）；zoom 元素上 `getBoundingClientRect` 与 body 级 fixed 弹层（advSuggest）坐标系天然对齐（实测 1.3 倍 dx=0）
@@ -31,6 +32,7 @@ cargo test --test dynamic_projection_test          # 投影函数单元测试（
 cargo test --test dynamic_projection_pipeline_test # 动态投影管线测试（keep/A/B/C/F/G/H + header 同步 + 预览一致性）
 cargo test --test advanced_fields_test # 高级字段模式（模板解析/无列表行输出/往返/TXT→SHP FIELDn）
 cargo test --test realdata_attr_test  # 真实业务数据属性回归
+cargo test --test plot_table_filter_test # 属性表/地图结构化 IPC + plot_filter 筛选（三模式）
 cargo test --test debug_output_test  # 调试用：从 TXT 生成 SHP/GDB 输出验证
 cargo run --bin diag_read_gdb -- [gdb路径]  # 诊断：打印 GDB 图层/首尾坐标点，对照 arcpy（不传参走默认路径）
 ```
@@ -92,14 +94,15 @@ index.html (CSS 内联, Google Fonts CDN)
 - `og` 输出公里网：仅当输入为大地坐标系（度）时可用。与动态投影互斥（`proj_mode ≠ "keep"` 时前端强制 og=false 并置灰）
 - `proj_mode` 动态投影模式：`"keep"`（不投影，仍可单独调带号前缀）/ `"A"`（大地→3°投影）/ `"B"`（大地→6°投影）/ `"D"`（投影→大地，逆投影）/ `"F"`（3°→6°换带）/ `"G"`（6°→3°换带）/ `"H"`（同分带不同带号换带，如 3°带 38→39，目标分带沿用源分带）。`"C"` 已废除（v3.2）——同带调前缀改为 keep + `proj_zone`：4号卡片「带号前缀」开关与动态投影**正交**，keep 且 proj_zone 有值时 `adjust_zone_prefix`（convert.rs）单独加/剥前缀，不点亮动态投影开关；前端 `inferProjMode` 同带同号返回 null 由 `applyProjMode` 拦截 toast
 - `proj_zone`: 用户填的带号（null=自动推算），`proj_no_prefix`: 不含带号前缀（自然值）
-- `output_mode`（一对一/按地块拆分/全合并）、`filename_field`（拆分模式文件名字段）
+- `output_mode`（一对一/按地块拆分/全合并）、`filename_field`（拆分模式文件名字段，v3.4 起下拉动态列出全部导入字段）
+- `plot_filter`（v3.4）：`Option<Vec<[usize;2]>>` 命中 `(源下标,源内序号)` 列表；前端属性表筛选求值后注入（`getOptions`），筛 0 条后端报「筛选结果为空」。测试 `cargo test --test plot_table_filter_test`
 - 前端 `getOptions()` 收集 → `applyProjMode()` 写入全局变量 → `updatePreview()`/`runShpToTxt()` 发送 IPC
 
 ### Tauri IPC 命令
 
 文件选择：`pick_shp_files`、`import_gdb`、`pick_txt_files`、`pick_output_dir`
 拖放导入：`pick_shp_files_from_paths`、`pick_txt_files_from_paths`
-预览：`read_shp_to_txt_preview`、`read_txt_preview`
+预览：`read_shp_to_txt_preview`、`read_plot_table_geo`（属性表/地图结构化地块+WGS84 rings）、`read_txt_preview`
 转换：`run_shp_to_txt`、`run_txt_to_shp`
 投影：`apply_dynamic_projection`（独立 IPC，前端暂未使用；实际投影走 convert 管线）
 窗口控制：`minimize_window`、`toggle_maximize`、`close_window`
@@ -234,7 +237,7 @@ SHP 存储 (X, Y) = (东坐标, 北坐标)。TXT 存储 (Y, X) = (北坐标, 东
 - 单独 `npm run build` 稳定；用 **bash** `rm -rf node_modules/.vite dist` 清缓存（PowerShell `Remove-Item` 大目录后立即 build 反而易触发竞态）
 - **`npm run tauri build` 的 `beforeBuildCommand` 会确定性失败**（4/4），但单独 build 5/5 成功；TAURI_* env 不是元凶，疑为 tauri 子进程 cwd/shell 差异
 - **绕过方案**（已验证）：① 单独 `npm run build` 生成 dist → ② 临时清空 `tauri.conf.json` 的 `beforeBuildCommand`（改 `""`）→ ③ `npm run tauri build`（用现成 dist，cargo+NSIS 正常）→ ④ **务必恢复** `beforeBuildCommand: "npm run build"`
-- **纯前端改动后必须 `cargo clean -p jisig-bpoint-converter --release && cargo clean -p jisig_bpoint_converter_lib --release` 再 `npm run tauri build`**：前端资产由 tauri-build（build.rs）在 **build script 阶段**读 dist 嵌入 OUT_DIR，其 rerun-if-changed 触发源不含 frontendDist 目录、不含 Rust 源码——**touch tauri.conf.json / touch lib.rs 实测均无效**（增量构建仍不重嵌资产）→ **exe 嵌的还是上次的前端**（v3.1 三轮前端修复全部因此未进 exe，点 ✕ 无反应排查三轮才定位）。验证法：跑 exe 开「关于」看底部构建时间（v3.1+ `__BUILD_TS__`，vite.config.js `define` 注入）；exe 二进制 grep 无效（资产压缩嵌入无明文）
+- **纯前端改动后必须 `cargo clean -p jisig-bpoint-converter --release` 再 `npm run tauri build`**（单包双目标 lib+bin，一条 clean 即够）：前端资产由 tauri-build（build.rs）在 **build script 阶段**读 dist 嵌入 OUT_DIR，其 rerun-if-changed 触发源不含 frontendDist 目录、不含 Rust 源码——**touch tauri.conf.json / touch lib.rs 实测均无效**（增量构建仍不重嵌资产）→ **exe 嵌的还是上次的前端**（v3.1 三轮前端修复全部因此未进 exe，点 ✕ 无反应排查三轮才定位）。验证法：跑 exe 开「关于」看底部构建时间（v3.1+ `__BUILD_TS__`，vite.config.js `define` 注入）；exe 二进制 grep 无效（资产压缩嵌入无明文）
 
 ### 权限（capabilities/default.json）
 需要：`core:default`、`dialog:default/open/save`、`fs:default/read/write/exists/mkdir/remove/rename/stat`、`shell:allow-open`、`updater:default`、`process:allow-restart/exit`
@@ -261,6 +264,8 @@ SHP 存储 (X, Y) = (东坐标, 北坐标)。TXT 存储 (Y, X) = (北坐标, 东
 4. **Google Fonts**：需联网加载 Inter/Noto Sans SC/JetBrains Mono，离线回退系统字体
 5. **G 模式 (6°→3° 换带)**：`gauss_kruger_inverse` 对 6° 带源坐标的前缀剥离假定 3° 带号（`proj-core` 无 6° 带 EPSG 代码），proj-core + classic 均可能失败。测试标记 `#[ignore]`
 6. **`_projBand` 残骸已清理**；`om` 复选框残骸未清理（非动态投影范围）
+7. **TXT→SHP 文件名字段硬编码**（convert.rs ~1078）：split 模式文件名只认 `DKMC`→name / `FID`→fid 字面量，`DKBH` 等其余字段静默回退序号；t 模式 `#t_filename_field` 仍是固定选项（v3.4 只改了 s 模式 `#filename_field` 动态化）
+8. **动态投影多源带号限制**（既有）：`apply_dynamic_projection_to_sources`/`_to_plots` 的 src_zone 取首个源首坐标推断——多源不同带号时 F/G/H 换带会统一按第一个源算；地图视图（plot_table_geo）不受影响（自做逐源推 CM）。修复需逐源独立 transform，牵涉预览/导出双路径一致性，暂缓
 
 ## 依赖
 

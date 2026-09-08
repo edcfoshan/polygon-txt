@@ -14,6 +14,7 @@ fn make_test_source(coords: Vec<(f64, f64)>) -> ImportSource {
             index_in_source: 0,
             attributes: HashMap::new(),
         }],
+        crs_info: HashMap::new(),
     }
 }
 
@@ -32,7 +33,7 @@ fn shp_opts_test_default() -> ShpToTxtOptions {
         og: false, zone_type: 3,
         proj_mode: String::new(),
         proj_zone: None,
-        proj_no_prefix: false,
+        proj_no_prefix: false, plot_filter: None,
     }
 }
 

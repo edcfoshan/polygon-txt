@@ -4,7 +4,7 @@ use crate::projection;
 use crate::shp;
 use crate::txt;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 /// 判断几何类型字符串是否为面状（与 lib.rs::is_polygon_geometry_type 保持一致）
@@ -100,6 +100,10 @@ pub struct ShpToTxtOptions {
     /// 不含带号前缀（自然值）：true 时东坐标不加 zone×1,000,000
     #[serde(default)]
     pub proj_no_prefix: bool,
+    /// 地块级筛选：命中 (源下标, 源内序号) 列表；None = 不过滤。
+    /// 前端由属性表筛选语句求值后下发，预览与导出共用（所见即所得）。
+    #[serde(default)]
+    pub plot_filter: Option<Vec<[usize; 2]>>,
 }
 
 fn default_zone_type() -> u8 {
@@ -238,6 +242,8 @@ pub struct ImportSource {
     pub stem: String,
     /// 源内所有地块
     pub plots: Vec<PlotWithSource>,
+    /// 源坐标系信息（PRJ/srs_wkt 解析产物，键 c/j/u/b/z/cm）；GDB 无 WKT 时为空表
+    pub crs_info: HashMap<String, String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -695,6 +701,17 @@ pub fn convert_shp_to_txt(
     // Task 6 完整化：动态投影（mutates sources + returns updated header）
     let header_for_convert = apply_dynamic_projection_to_sources(&mut sources, header_cfg, options)?;
 
+    // 地块级筛选（与预览同一 uid 口径）：在 output_mode 分发前过滤，三种模式天然覆盖
+    if let Some(set) = plot_filter_set(options) {
+        for (si, src) in sources.iter_mut().enumerate() {
+            src.plots.retain(|p| set.contains(&(si, p.index_in_source)));
+        }
+        let total: usize = sources.iter().map(|s| s.plots.len()).sum();
+        if total == 0 {
+            return Err("筛选结果为空，请调整筛选条件".to_string());
+        }
+    }
+
     match options.output_mode.as_str() {
         "split_by_plot" => convert_split_by_plot(sources, &header_for_convert, options, output_dir),
         "merge_all" => convert_merge_all(sources, &header_for_convert, options, output_dir),
@@ -726,6 +743,162 @@ fn collect_import_sources(
         }
     }
     Ok(sources)
+}
+
+// ─── 属性表 + 地图视图：结构化地块数据（WGS84 环坐标） ───
+
+#[derive(Debug, Serialize)]
+pub struct PlotTableSource {
+    pub name: String,
+    /// 无法确定中央经线（无带号前缀且无 crs_info）→ 不可上图，表格仍可用
+    pub degraded: bool,
+    /// 源坐标为大地坐标（度），直接上图
+    pub geodetic: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PlotTablePlot {
+    /// 源下标（与导出/预览的 sources 口径一致）
+    pub si: usize,
+    /// 源内序号（0-based）
+    pub pi: usize,
+    /// 有序 (字段名, 值)；旧 8 字段格式合成固定 6 列
+    pub attrs: Vec<(String, String)>,
+    /// [lon, lat] 环坐标（6 位小数）；首环为外环，其余为洞
+    pub rings: Vec<Vec<[f64; 2]>>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PlotTableGeo {
+    pub sources: Vec<PlotTableSource>,
+    pub plots: Vec<PlotTablePlot>,
+}
+
+/// 为右栏属性表/地图视图返回结构化地块数据。
+/// 不做动态投影（地图显示真实地理位置）；og 公里网与预览/导出口径一致（含带号前缀，可正确逆推）。
+pub fn plot_table_geo(
+    shp_paths: &[PathBuf],
+    source_type: Option<&str>,
+    source_path: Option<&PathBuf>,
+    header_cfg: &HeaderConfig,
+    field_mapping: &FieldMapping,
+    options: &ShpToTxtOptions,
+    selected_layers: Option<&[String]>,
+) -> Result<PlotTableGeo, String> {
+    let proj_cfg = ProjectionConfig::from_options(options, header_cfg);
+    let sources = collect_import_sources(
+        shp_paths,
+        source_type,
+        source_path,
+        field_mapping,
+        options,
+        proj_cfg.as_ref(),
+        selected_layers,
+    )?;
+    let datum = parse_datum_for_proj(&header_cfg.attr("坐标系"));
+
+    let mut out = PlotTableGeo { sources: Vec::new(), plots: Vec::new() };
+    for (si, src) in sources.iter().enumerate() {
+        // PlotData.coords 为 TXT 序 (y, x) = (北, 东)
+        let sample: Option<(f64, f64)> = src
+            .plots
+            .first()
+            .and_then(|p| p.plot.coords.first())
+            .copied();
+        let geodetic = match sample {
+            Some((y, x)) => x.abs() <= 360.0 && y.abs() <= 90.0,
+            None => src.crs_info.get("u").map(|s| s == "度").unwrap_or(false),
+        };
+
+        // 中央经线推定优先级：crs_info 的中央经线/带号（PRJ/WKT 权威元数据）→ 坐标前缀推断（无元数据兜底）。
+        // 前缀推断有天然歧义：37 带东侧点的东坐标可溢出到 38M 块（如揭阳 38_057_383 = 37_500_000 + 557_383），
+        // floor(x/1e6) 会误判 38 带 —— 有元数据时绝不依赖前缀。
+        let band = src
+            .crs_info
+            .get("b")
+            .and_then(|s| s.trim().parse::<u8>().ok())
+            .filter(|b| *b == 3 || *b == 6);
+        let crs_zone = src
+            .crs_info
+            .get("z")
+            .and_then(|s| s.trim().parse::<u32>().ok())
+            .filter(|z| (1..=60).contains(z));
+        let crs_cm = src
+            .crs_info
+            .get("cm")
+            .and_then(|s| s.trim().parse::<f64>().ok());
+        let prefix_zone = sample.and_then(|(_, x)| {
+            let ax = x.abs();
+            if (10_000_000.0..100_000_000.0).contains(&ax) {
+                let z = (ax / 1_000_000.0) as u32;
+                if (13..=45).contains(&z) { Some(z) } else { None }
+            } else {
+                None
+            }
+        });
+        let (degraded, cm, zone_for_offset) = if geodetic {
+            (false, None, None)
+        } else if let Some(c) = crs_cm {
+            // cm 直读（不依赖 b——parse_prj_text 对 6° 带 WKT 也会写 b=3）
+            (false, Some(c), crs_zone.or(Some((c / 3.0).round() as u32)))
+        } else if let Some(z) = crs_zone {
+            (false, Some(projection::cm_for_band(band.unwrap_or(3), z)), Some(z))
+        } else if let Some(z) = prefix_zone {
+            (false, Some(projection::cm_for_band(band.unwrap_or(3), z)), Some(z))
+        } else {
+            (true, None, None)
+        };
+        out.sources.push(PlotTableSource { name: src.stem.clone(), degraded, geodetic });
+
+        for pws in &src.plots {
+            let ring_coords: Vec<&[(f64, f64)]> = if degraded {
+                Vec::new()
+            } else if pws.plot.rings.is_empty() {
+                vec![&pws.plot.coords[..]]
+            } else {
+                pws.plot.rings.iter().map(|r| &r.coords[..]).collect()
+            };
+            let mut rings = Vec::with_capacity(ring_coords.len());
+            for rc in ring_coords {
+                let mut ring = Vec::with_capacity(rc.len());
+                for &(y, x) in rc {
+                    let (lon, lat) = if geodetic {
+                        (x, y)
+                    } else {
+                        let cmv = cm.unwrap();
+                        // 东坐标块重贴：x 含前缀时从「数据带号块」改贴到「cm 对应 3° 带块」再交给逆投影。
+                        // proj-core 的 EPSG 假东偏 = round(cm/3)×1e6 + 500000，只要 easting 值符合该网格即正确：
+                        //  - 37 带东侧溢出（38_057_383 = 37_500_000+557_383）：z=37 → 原样（38e6−37e6+37e6）✓
+                        //  - 6° 带 20 带（20_500_000，cm117）：20e6−20e6+39e6 = 39_500_000 → EPSG39 网格 ✓
+                        //  - 自然值（x<1e6）：原样，逆投影按 round(cm/3) 自补前缀 ✓
+                        let e = match zone_for_offset {
+                            Some(z) if x >= 1_000_000.0 => {
+                                x - (z as f64) * 1_000_000.0 + (cmv / 3.0).round() * 1_000_000.0
+                            }
+                            _ => x,
+                        };
+                        projection::gauss_kruger_inverse(e, y, cmv, datum)
+                    };
+                    ring.push([(lon * 1e6).round() / 1e6, (lat * 1e6).round() / 1e6]);
+                }
+                rings.push(ring);
+            }
+            let attrs = if pws.plot.fields.is_empty() {
+                vec![
+                    ("地块编号".to_string(), pws.plot.fid.clone()),
+                    ("地块名称".to_string(), pws.plot.name.clone()),
+                    ("地块面积".to_string(), pws.plot.area.clone()),
+                    ("图幅号".to_string(), pws.plot.tfh.clone()),
+                    ("地块用途".to_string(), pws.plot.use_field.clone()),
+                    ("地类".to_string(), pws.plot.dlbm.clone()),
+                ]
+            } else {
+                pws.plot.fields.clone()
+            };
+            out.plots.push(PlotTablePlot { si, pi: pws.index_in_source, attrs, rings });
+        }
+    }
+    Ok(out)
 }
 
 /// 模式 1：一对一。SHP→每个文件一个 TXT；GDB→每个要素类一个 TXT。
@@ -1239,15 +1412,29 @@ fn txt_to_shp_merge_all(
     }
 }
 
+/// plot_filter 的 uid 集合（(源下标, 源内序号)）；None = 不筛。
+/// si 口径：SHP = shp_paths 下标；GDB = gdb_to_sources 产出列表下标（仅含面状+选中图层）。
+fn plot_filter_set(options: &ShpToTxtOptions) -> Option<HashSet<(usize, usize)>> {
+    options
+        .plot_filter
+        .as_ref()
+        .map(|v| v.iter().map(|p| (p[0], p[1])).collect())
+}
+
 fn shp_files_to_plots(
     shp_paths: &[PathBuf],
     field_mapping: &FieldMapping,
     options: &ShpToTxtOptions,
     proj_cfg: Option<&ProjectionConfig>,
 ) -> Result<Vec<txt::PlotData>, String> {
+    let filter = plot_filter_set(options);
     let mut all_plots = Vec::new();
-    for shp_path in shp_paths {
-        all_plots.extend(single_shp_to_plots(shp_path, field_mapping, options, proj_cfg)?);
+    for (si, shp_path) in shp_paths.iter().enumerate() {
+        let mut src = single_shp_to_source(shp_path, field_mapping, options, proj_cfg)?;
+        if let Some(f) = &filter {
+            src.plots.retain(|p| f.contains(&(si, p.index_in_source)));
+        }
+        all_plots.extend(src.plots.into_iter().map(|p| p.plot));
     }
     Ok(all_plots)
 }
@@ -1333,18 +1520,7 @@ fn single_shp_to_source(
         });
     }
 
-    Ok(ImportSource { stem, plots })
-}
-
-/// 保留旧 API：仅返回 PlotData 列表（预览用）
-fn single_shp_to_plots(
-    shp_path: &PathBuf,
-    field_mapping: &FieldMapping,
-    options: &ShpToTxtOptions,
-    proj_cfg: Option<&ProjectionConfig>,
-) -> Result<Vec<txt::PlotData>, String> {
-    let src = single_shp_to_source(shp_path, field_mapping, options, proj_cfg)?;
-    Ok(src.plots.into_iter().map(|p| p.plot).collect())
+    Ok(ImportSource { stem, plots, crs_info: info.crs_info.clone() })
 }
 
 fn gdb_features_to_plots(
@@ -1355,9 +1531,15 @@ fn gdb_features_to_plots(
     selected_layers: Option<&[String]>,
 ) -> Result<Vec<txt::PlotData>, String> {
     let sources = gdb_to_sources(info, field_mapping, options, proj_cfg, selected_layers)?;
+    let filter = plot_filter_set(options);
     let mut all_plots = Vec::new();
-    for src in sources {
+    for (si, src) in sources.into_iter().enumerate() {
         for p in src.plots {
+            if let Some(f) = &filter {
+                if !f.contains(&(si, p.index_in_source)) {
+                    continue;
+                }
+            }
             all_plots.push(p.plot);
         }
     }
@@ -1374,9 +1556,15 @@ fn gdb_to_sources(
 ) -> Result<Vec<ImportSource>, String> {
     let gdb_stem = info.name.clone();
     let mut sources = Vec::new();
-    // GDB 不带 crs_info：ellipsoid 默认 CGCS2000，is_geodetic 纯靠坐标采样判定
+    // GDB 的 ellipsoid 默认 CGCS2000，is_geodetic 纯靠坐标采样判定
     let ellipsoid = projection::Ellipsoid::CGCS2000;
     let empty_crs: HashMap<String, String> = HashMap::new();
+    // srs_wkt（首面状图层几何字段坐标系）解析成 crs_info，供地图视图逐源推带号
+    let gdb_crs_info: HashMap<String, String> = info
+        .srs_wkt
+        .as_deref()
+        .map(shp::parse_prj_text)
+        .unwrap_or_default();
 
     for (layer_idx, features) in info.all_features.iter().enumerate() {
         let layer_info = info.layers.get(layer_idx);
@@ -1447,7 +1635,7 @@ fn gdb_to_sources(
                 attributes: feat.attributes.clone(),
             });
         }
-        sources.push(ImportSource { stem, plots });
+        sources.push(ImportSource { stem, plots, crs_info: gdb_crs_info.clone() });
     }
 
     Ok(sources)

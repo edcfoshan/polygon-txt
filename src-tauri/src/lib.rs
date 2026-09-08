@@ -543,6 +543,31 @@ fn read_shp_to_txt_preview(
 }
 
 #[tauri::command]
+fn read_plot_table_geo(
+    shp_paths: Vec<String>,
+    source_type: Option<String>,
+    source_path: Option<String>,
+    header_cfg: HeaderConfig,
+    field_mapping: FieldMapping,
+    options: ShpToTxtOptions,
+    selected_layers: Option<Vec<String>>,
+) -> Result<convert::PlotTableGeo, String> {
+    let shp_bufs: Vec<PathBuf> = shp_paths.iter().map(PathBuf::from).collect();
+    let source_buf = source_path.as_ref().map(PathBuf::from);
+
+    convert::plot_table_geo(
+        &shp_bufs,
+        source_type.as_deref(),
+        source_buf.as_ref(),
+        &header_cfg,
+        &field_mapping,
+        &options,
+        selected_layers.as_deref(),
+    )
+    .map_err(|e| format!("读取地块数据失败: {}", e))
+}
+
+#[tauri::command]
 fn run_shp_to_txt(
     shp_paths: Vec<String>,
     source_type: Option<String>,
@@ -806,6 +831,7 @@ pub fn run() {
             pick_shp_files_from_paths,
             pick_txt_files_from_paths,
             read_shp_to_txt_preview,
+            read_plot_table_geo,
             read_txt_preview,
             run_shp_to_txt,
             run_txt_to_shp,

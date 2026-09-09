@@ -24,6 +24,9 @@ pub struct GdbFeature {
 pub struct GdbLayerInfo {
     pub name: String,
     pub field_names: Vec<String>,
+    /// 字段别名 (字段名, 别名)，取自图层字段区（ArcGIS 里设置的中文名），无别名的字段不收
+    #[serde(default)]
+    pub field_aliases: Vec<(String, String)>,
     pub num_features: usize,
     pub geometry_type: String,
 }
@@ -40,19 +43,51 @@ pub struct GdbFileInfo {
     pub srs_wkt: Option<String>,
 }
 
-/// 读取图层 .gdbtable 头部字段区，提取几何字段的坐标系 WKT。
+/// 读取图层 .gdbtable 头部字段区：坐标系 WKT + 字段别名 + OID 字段名。
 /// Layer::schema() 返回的 FieldDef 不携带 srs_wkt，需走底层字段区解析；只读文件头 64KB。
-fn read_table_srs_wkt(gdb_dir: &Path, info: &fgdb::LayerInfo) -> Option<String> {
+fn read_table_schema_meta(
+    gdb_dir: &Path,
+    info: &fgdb::LayerInfo,
+) -> (Option<String>, Vec<(String, String)>, Option<String>) {
     use std::io::Read;
-    let mut f = std::fs::File::open(info.table_path(gdb_dir)).ok()?;
+    let none: (Option<String>, Vec<(String, String)>, Option<String>) = (None, Vec::new(), None);
+    let mut f = match std::fs::File::open(info.table_path(gdb_dir)) {
+        Ok(f) => f,
+        Err(_) => return none,
+    };
     let mut head = vec![0u8; 64 * 1024];
     let n = f.read(&mut head).unwrap_or(0);
     head.truncate(n);
     let mut r = fgdb::bytes::LeReader::new(&head);
-    let hdr = fgdb::table::parse_table_header(&mut r).ok()?;
-    r.seek(hdr.field_desc_offset as usize).ok()?;
-    let fs = fgdb::table::parse_field_section(&mut r).ok()?;
-    schema_srs_wkt(&fs.fields)
+    let hdr = match fgdb::table::parse_table_header(&mut r) {
+        Ok(h) => h,
+        Err(_) => return none,
+    };
+    r.seek(hdr.field_desc_offset as usize);
+    let fs = match fgdb::table::parse_field_section(&mut r) {
+        Ok(fs) => fs,
+        Err(_) => return none,
+    };
+    let aliases = field_aliases_of(&fs.fields);
+    let oid_name = fs
+        .objectid_field_index()
+        .and_then(|i| fs.fields.get(i))
+        .map(|f| f.name.clone());
+    (schema_srs_wkt(&fs.fields), aliases, oid_name)
+}
+
+/// 从字段区字段列表收集别名 (字段名, 别名)，无别名/空别名的字段不收
+fn field_aliases_of(fields: &[fgdb::Field]) -> Vec<(String, String)> {
+    fields
+        .iter()
+        .filter_map(|f| {
+            f.alias
+                .as_ref()
+                .map(|a| a.trim())
+                .filter(|a| !a.is_empty())
+                .map(|a| (f.name.clone(), a.to_string()))
+        })
+        .collect()
 }
 
 /// 从图层字段区提取几何字段的坐标系 WKT（首个非空）
@@ -87,8 +122,14 @@ impl LayerEntry {
 
 // ─── 读取 ───
 
-/// 打开并读取 GDB（双层策略：库优先 → 手动回退）
+/// 打开并读取 GDB（双层策略：库优先 → 手动回退），读全部图层要素
 pub fn read_gdb(path: &Path) -> Result<GdbFileInfo, String> {
+    read_gdb_filtered(path, None)
+}
+
+/// 带图层过滤的读取：only_layers = Some(名单) 时，名单外的图层**跳过要素解码**
+/// （仍产出占位 layer_info 保持索引对齐），大幅加速多图层大库的按层预览/导出。
+pub fn read_gdb_filtered(path: &Path, only_layers: Option<&[String]>) -> Result<GdbFileInfo, String> {
     if !path.exists() {
         return Err(format!("GDB 路径不存在: {}", path.display()));
     }
@@ -101,7 +142,7 @@ pub fn read_gdb(path: &Path) -> Result<GdbFileInfo, String> {
 
     // 快速路径：优先使用 geonative-filegdb 库
     match fgdb::open(path) {
-        Ok(gdb) => read_gdb_via_library(gdb, path),
+        Ok(gdb) => read_gdb_via_library(gdb, path, only_layers),
         Err(e) => {
             let err_msg = e.to_string();
             // 若因 version / malformed 错误失败，回退到手动解析
@@ -110,7 +151,7 @@ pub fn read_gdb(path: &Path) -> Result<GdbFileInfo, String> {
                     "GDB 库打开失败({})，切换到手动解析回退方案…",
                     err_msg
                 );
-                read_gdb_fallback(path)
+                read_gdb_fallback(path, only_layers)
             } else {
                 Err(format!(
                     "打开 GDB 失败: {}。\n请确认 .gdb 目录完整且版本受支持（FGDB 10.x / ArcGIS Pro）。",
@@ -121,10 +162,81 @@ pub fn read_gdb(path: &Path) -> Result<GdbFileInfo, String> {
     }
 }
 
+/// 快速目录读取：仅解析目录 + 各图层文件头（40B）与字段区（头 64KB），
+/// **不解码任何要素**——导入弹窗所需（名称/要素数/几何类型/字段/别名/范围/坐标系）全部可得，
+/// 毫秒级。供 import_gdb 使用（此前全量解码所有图层要素，大库导入卡数十秒）。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GdbCatalogLayer {
+    pub name: String,
+    pub num_features: i64,
+    pub geometry_type: String,
+    pub field_names: Vec<String>,
+    pub field_aliases: Vec<(String, String)>,
+    /// 图层空间范围 [xmin, ymin, xmax, ymax]（字段区 GeomFieldMeta 自带）
+    pub extent_xy: Option<[f64; 4]>,
+    pub srs_wkt: Option<String>,
+}
+
+pub fn read_gdb_catalog(path: &Path) -> Result<Vec<GdbCatalogLayer>, String> {
+    if !path.exists() || !path.join("a00000001.gdbtable").exists() {
+        return Err(format!("不是有效的 FileGDB 目录: {}", path.display()));
+    }
+    let entries = parse_catalog_manual(path)?;
+    Ok(entries.iter().map(|e| read_layer_catalog_head(path, e)).collect())
+}
+
+fn read_layer_catalog_head(dir: &Path, e: &LayerEntry) -> GdbCatalogLayer {
+    let mut num_features = 0i64;
+    let mut geometry_type = String::new();
+    let mut field_names = Vec::new();
+    let mut field_aliases = Vec::new();
+    let mut extent_xy = None;
+    let mut srs_wkt = None;
+    // 只读文件头 64KB（字段区紧跟 40 字节头之后）
+    let mut head = vec![0u8; 64 * 1024];
+    if let Ok(mut f) = std::fs::File::open(e.table_path(dir)) {
+        use std::io::Read;
+        let n = f.read(&mut head).unwrap_or(0);
+        head.truncate(n);
+        let mut r = fgdb::bytes::LeReader::new(&head);
+        if let Ok(hdr) = fgdb::table::parse_table_header(&mut r) {
+            num_features = hdr.valid_record_count;
+            if r.seek(hdr.field_desc_offset as usize).is_ok() {
+                if let Ok(fs) = fgdb::table::parse_field_section(&mut r) {
+                    field_names = fs.fields.iter().map(|f| f.name.clone()).collect();
+                    field_aliases = field_aliases_of(&fs.fields);
+                    srs_wkt = schema_srs_wkt(&fs.fields);
+                    geometry_type = match fs.flags.geometry_type_code() {
+                        1 => "Point".into(),
+                        2 => "MultiPoint".into(),
+                        3 => "Polyline".into(),
+                        4 | 5 => "Polygon".into(),
+                        9 => "MultiPatch".into(),
+                        _ => String::new(),
+                    };
+                    if let Some(gf) = fs.fields.iter().find_map(|f| f.geometry.as_ref()) {
+                        extent_xy = Some(gf.extent_xy);
+                    }
+                }
+            }
+        }
+    }
+    GdbCatalogLayer {
+        name: e.name.clone(),
+        num_features,
+        geometry_type,
+        field_names,
+        field_aliases,
+        extent_xy,
+        srs_wkt,
+    }
+}
+
 /// 库路径：通过 geonative-filegdb 正常读取
 fn read_gdb_via_library(
     gdb: fgdb::Geodatabase,
     path: &Path,
+    only_layers: Option<&[String]>,
 ) -> Result<GdbFileInfo, String> {
     let layer_infos = gdb.layers();
 
@@ -148,14 +260,30 @@ fn read_gdb_via_library(
         match gdb.layer(&info.name) {
             Ok(layer) => {
                 let schema = layer.schema();
+                let (table_wkt, field_aliases, oid_name) = read_table_schema_meta(path, info);
                 if srs_wkt.is_none() {
-                    srs_wkt = read_table_srs_wkt(path, info);
+                    srs_wkt = table_wkt;
                 }
-                let field_names: Vec<String> =
+                // 库的 schema 把 OBJECTID 抽成 Feature.fid——展示字段表前置恢复，
+                // 使属性表源字段视图/别名/按 OID 排序与其他路径一致。
+                // 注意：feature.attributes 与 schema.fields 对齐（不含 OID），
+                // 解码必须按 schema 原名写入，再单独回填 OBJECTID，否则整行错位一格
+                let schema_names: Vec<String> =
                     schema.fields.iter().map(|f| f.name.clone()).collect();
+                let field_names: Vec<String> = oid_name
+                    .iter()
+                    .cloned()
+                    .chain(schema_names.iter().cloned())
+                    .collect();
+
+                // 图层过滤：名单外跳过要素解码（保留空 features 占位对齐索引）
+                let layer_selected = only_layers
+                    .map(|w| w.iter().any(|n| n == &info.name))
+                    .unwrap_or(true);
 
                 let mut features = Vec::new();
                 let mut hit_zm = false;
+                if layer_selected {
                 for result in layer.read() {
                     let feature = match result {
                         Ok(f) => f,
@@ -178,24 +306,28 @@ fn read_gdb_via_library(
                         surface: SurfaceGeometry::default(),
                         attributes: HashMap::new(),
                     };
+                    if let Some(oid) = feature.fid {
+                        gdb_feat.attributes.insert("OBJECTID".to_string(), oid.to_string());
+                    }
 
                     if let Some(ref geom) = feature.geometry {
                         gdb_feat.surface = extract_surface_geometry(geom);
                         extract_coords(geom, &mut gdb_feat.points);
                     }
                     for (i, val) in feature.attributes.iter().enumerate() {
-                        if i < field_names.len() {
+                        if i < schema_names.len() {
                             let attr_str = value_to_string(val);
                             gdb_feat
                                 .attributes
-                                .insert(field_names[i].clone(), attr_str);
+                                .insert(schema_names[i].clone(), attr_str);
                         }
                     }
                     features.push(gdb_feat);
                 }
+                }
 
                 // 库路径整层失败（Z/M）→ 用手动路径 + Z/M 剥离抢救该层
-                if hit_zm {
+                if hit_zm && layer_selected {
                     if let Some(entry) = find_entry(&info.name) {
                         eprintln!(
                             "图层 {} 含 Z/M 几何，切手动抢救路径…",
@@ -223,6 +355,7 @@ fn read_gdb_via_library(
                 layers.push(GdbLayerInfo {
                     name: info.name.clone(),
                     field_names: field_names.clone(),
+                    field_aliases,
                     num_features: features.len(),
                     geometry_type: geom_type.to_string(),
                 });
@@ -257,7 +390,7 @@ fn read_gdb_via_library(
 // ─── 手动回退路径 ───
 
 /// 回退路径：手动解析 catalog + 逐层安全打开
-fn read_gdb_fallback(path: &Path) -> Result<GdbFileInfo, String> {
+fn read_gdb_fallback(path: &Path, only_layers: Option<&[String]>) -> Result<GdbFileInfo, String> {
     let entries = parse_catalog_manual(path)?;
 
     if entries.is_empty() {
@@ -270,7 +403,29 @@ fn read_gdb_fallback(path: &Path) -> Result<GdbFileInfo, String> {
     let mut srs_wkt: Option<String> = None;
 
     for entry in &entries {
-        match read_layer_manual(path, entry) {
+        // 图层过滤：名单外跳过要素解码（空占位保持索引对齐）
+        let layer_selected = only_layers
+            .map(|w| w.iter().any(|n| n == &entry.name))
+            .unwrap_or(true);
+        let manual = if layer_selected {
+            read_layer_manual(path, entry)
+        } else {
+            // 轻量头读取：要素数/字段/别名照常拿，不解码要素
+            let head = read_layer_catalog_head(path, entry);
+            Ok((
+                GdbLayerInfo {
+                    name: head.name.clone(),
+                    field_names: head.field_names.clone(),
+                    field_aliases: head.field_aliases.clone(),
+                    num_features: head.num_features.max(0) as usize,
+                    geometry_type: head.geometry_type.clone(),
+                },
+                Vec::new(),
+                head.field_names.clone(),
+                head.srs_wkt.clone(),
+            ))
+        };
+        match manual {
             Ok((layer_info, features, field_names, wkt)) => {
                 layers.push(layer_info);
                 all_features.push(features);
@@ -392,17 +547,23 @@ fn read_layer_manual(
             }
         }
 
-        // 解码属性
+        // 解码属性（几何字段跳过；OBJECTID 保留——属性表源字段视图需要）
         for (i, val) in row.values.iter().enumerate() {
-            if Some(i) == geom_field_idx
-                || schema.fields[i].ty == fgdb::FieldTypeCode::ObjectId
-            {
+            if Some(i) == geom_field_idx {
                 continue;
             }
             let field_name = &schema.fields[i].name;
             gdb_feat
                 .attributes
                 .insert(field_name.clone(), value_to_string(val));
+        }
+        if let Some(oid_idx) = schema.objectid_field_index() {
+            if let Some(val) = row.values.get(oid_idx) {
+                gdb_feat
+                    .attributes
+                    .entry("OBJECTID".to_string())
+                    .or_insert_with(|| value_to_string(val));
+            }
         }
 
         features.push(gdb_feat);
@@ -413,6 +574,7 @@ fn read_layer_manual(
     let layer_info = GdbLayerInfo {
         name: entry.name.clone(),
         field_names: field_names.clone(),
+        field_aliases: field_aliases_of(&schema.fields),
         num_features: features.len(),
         geometry_type: geom_type.to_string(),
     };

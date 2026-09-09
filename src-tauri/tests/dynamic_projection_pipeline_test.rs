@@ -15,6 +15,8 @@ fn make_test_source(coords: Vec<(f64, f64)>) -> ImportSource {
             attributes: HashMap::new(),
         }],
         crs_info: HashMap::new(),
+        field_aliases: HashMap::new(),
+        field_names: Vec::new(),
     }
 }
 

@@ -323,6 +323,7 @@ window.confirmGdbSelect = function () {
   }
   // 文件名字段下拉按所选图层的字段并集刷新
   fillFilenameFieldOptions(selectedLayers.flatMap((ln) => gdbLayers.find((l) => l.name === ln)?.field_names || []));
+  resetFilterOnImport();
   window.closeGdbSelectModal();
   renderLeftGdbSummary();
   toast(`已选定 ${selectedLayers.length}/${gdbLayers.length} 个要素类`);
@@ -402,7 +403,7 @@ function renderLeftGdbSummary() {
   const name = window._gdbName || "GDB";
   const cntText = sel === 0 ? "待选择" : `选中 ${sel}/${total}`;
   // 单图层显示 库名.gdb\图层名（用户能看到具体导入了哪层）；多图层维持库名+计数
-  const dispName = sel === 1 ? `${name}.gdb\${selectedLayers[0]}` : `${name}.gdb`;
+  const dispName = sel === 1 ? `${name}.gdb\\` + selectedLayers[0] : `${name}.gdb`;
   fl.innerHTML = `<div class="gitem${sel === 0 ? " gitem-pending" : ""}" id="gdbSumRow" title="点击选择要素类">`
     + `<span class="gicon">◈</span>`
     + `<span class="gname" title="${dispName}">${dispName}</span>`
@@ -1028,6 +1029,7 @@ function processImport() {
     autoFillHeader(first.crs_info);
   }
   syncOgGate(first.crs_info);
+  resetFilterOnImport();
   updatePreview();
   updateProjButton();
   autoEnableProjPrefix();
@@ -1531,7 +1533,7 @@ function renderTxtParseLog() {
     : "等待导入 TXT 文件…";
 }
 
-window.clearAllFiles = function () { loadedFiles = []; sourceType = null; sourcePath = null; gdbLayers = []; selectedLayers = []; gdbTempSelected = []; window._gdbName = ""; syncOgGate(null); const fl = $("fl"); if (fl) fl.innerHTML = ""; const out = $("out_dir_s"); if (out) out.value = ""; updateProjButton(); TV.reset(); MV.reset(); toast("已清空"); };
+window.clearAllFiles = function () { loadedFiles = []; sourceType = null; sourcePath = null; gdbLayers = []; selectedLayers = []; gdbTempSelected = []; window._gdbName = ""; syncOgGate(null); const fl = $("fl"); if (fl) fl.innerHTML = ""; const out = $("out_dir_s"); if (out) out.value = ""; updateProjButton(); QB.clearRows(); try { localStorage.removeItem("tg_flt2"); } catch (e) {} TV.reset(); MV.reset(); toast("已清空"); };
 window.clearAllFilesTxt = function () { txtFiles = []; const fl = $("flT"); if (fl) fl.innerHTML = ""; const pv = $("pvT"); if (pv) pv.textContent = "等待导入 TXT 文件…"; const out = $("out_dir"); if (out) out.value = ""; toast("已清空"); };
 
 // ═══ Preview ═══
@@ -1552,6 +1554,14 @@ function flushAutoSave() {
 function scheduleAutoSave() {
   clearTimeout(autoSaveTimer);
   autoSaveTimer = setTimeout(flushAutoSave, 400);
+}
+
+// 导入新要素时清空筛选条件与选中状态（跨启动的「恢复上次筛选」不受影响）
+function resetFilterOnImport() {
+  QB.clearRows();
+  try { localStorage.removeItem("tg_flt2"); } catch (e) {}
+  TV.clearSelection();
+  TV.applyFromBuilder(QB.getWhere());
 }
 
 // 属性表/地图的结构化地块数据（全量口径，不吃筛选；预览/导出走 options.plot_filter）
@@ -2697,7 +2707,8 @@ async function init() {
 
   // All other inputs/selects trigger preview update
   document.querySelectorAll("input,select").forEach((el) => {
-    if (el.closest("#paneTbl")) return; // 属性表筛选工具条：TV 内部管理事件（防每次击键重拉预览）
+    // 属性表筛选工具条与地图工具条：各自模块内部管理事件（防勾选/击键误触发全量预览重取）
+    if (el.closest("#paneTbl") || el.closest("#paneMap")) return;
     el.addEventListener("input", updatePreview);
     el.addEventListener("change", updatePreview);
   });

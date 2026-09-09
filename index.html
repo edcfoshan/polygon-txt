@@ -934,6 +934,36 @@ body::before{
 .tbl-pager{display:flex;gap:8px;align-items:center;margin-top:6px;flex-shrink:0;font-size:11px;color:var(--tx2)}
 .tbl-count{margin-left:auto;color:var(--tx3)}
 /* 地图 */
+#paneMap{position:relative}
+.map-toolbar{
+  position:absolute;top:8px;left:52px;right:8px;z-index:1000;
+  display:flex;gap:8px;align-items:center;flex-wrap:wrap;pointer-events:none;
+}
+.map-toolbar .mini-ck,.map-toolbar .map-nav{pointer-events:auto}
+.mini-ck{
+  display:inline-flex;gap:4px;align-items:center;font-size:11px;color:var(--tx);
+  background:var(--srf);border:1px solid var(--brd);border-radius:5px;padding:3px 8px;
+  cursor:pointer;user-select:none;box-shadow:0 1px 4px rgba(0,0,0,.12);white-space:nowrap;
+}
+.mini-ck:hover{border-color:var(--ac)}
+.mini-ck input{accent-color:var(--ac);margin:0}
+.map-nav{
+  display:inline-flex;gap:4px;align-items:center;background:var(--srf);
+  border:1px solid var(--brd);border-radius:5px;padding:2px 6px;box-shadow:0 1px 4px rgba(0,0,0,.12);
+}
+.map-nav .btn{padding:2px 8px;font-size:11px}
+#mapNavPos{font-size:11px;color:var(--tx2);min-width:70px;text-align:center}
+.jlabel span{
+  display:inline-block;transform:translate(-50%,-60%);
+  background:#fff;color:#111;border:1px solid rgba(0,0,0,.5);border-radius:3px;
+  padding:0 3px;font-size:10px;font-weight:700;line-height:15px;white-space:nowrap;
+}
+/* 单元格完整值气泡（复用 qb-pop 视觉，内容可换行） */
+.cell-pop{
+  padding:7px 9px;font-size:11px;line-height:1.6;color:var(--tx);
+  white-space:normal;word-break:break-all;max-height:200px;overflow-y:auto;
+  font-family:"JetBrains Mono",Consolas,monospace;
+}
 .map-box{flex:1;min-height:0;border:1px solid var(--brd);border-radius:6px;background:var(--srf2);z-index:1}
 .map-note{padding:6px 10px;font-size:11px;color:var(--tx3)}
 .leaflet-container{background:var(--srf2);font-family:inherit}
@@ -1353,6 +1383,7 @@ J2,1,Y500.000,X301.000
               <span class="qb-lb">筛选条件</span>
               <button type="button" class="btn" id="btnQbAdd" style="font-size:9.5px;padding:2px 8px">＋ 添加条件</button>
               <button type="button" class="btn" id="btnQbClear" style="font-size:9.5px;padding:2px 8px">清空</button>
+              <label class="mini-ck"><input type="checkbox" id="tblAlias"><span>显示字段别名</span></label>
               <span class="qb-hint">筛出的行 = 导出范围</span>
             </div>
             <div class="qb-rows" id="qbRows"></div>
@@ -1367,6 +1398,16 @@ J2,1,Y500.000,X301.000
             </div>
           </div>
           <div class="pv-pane" id="paneMap">
+            <div class="map-toolbar">
+              <label class="mini-ck"><input type="checkbox" id="mapJpts"><span>显示界址点</span></label>
+              <span class="map-nav">
+                <button type="button" class="btn" id="navFirst" title="第一个">⏮</button>
+                <button type="button" class="btn" id="navPrev" title="上一个">◀</button>
+                <button type="button" class="btn" id="navNext" title="下一个">▶</button>
+                <button type="button" class="btn" id="navLast" title="最后一个">⏭</button>
+                <span id="mapNavPos">- / -</span>
+              </span>
+            </div>
             <div class="map-box" id="mapDiv"></div>
             <div class="map-note" id="mapNote" style="display:none"></div>
           </div>

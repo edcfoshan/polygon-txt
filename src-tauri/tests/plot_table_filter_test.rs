@@ -213,7 +213,7 @@ fn table_geo_projected_zone38_prefix() {
         tmp.path(), "z38",
         &[square(38_495_000.0, 3_795_000.0, 38_505_000.0, 3_805_000.0)],
     );
-    let geo = table_geo(&[shp]);
+    let geo = table_geo(&[shp.clone()]);
 
     assert_eq!(geo.sources.len(), 1);
     assert!(!geo.sources[0].geodetic, "38 带前缀源应为投影坐标");
@@ -226,6 +226,23 @@ fn table_geo_projected_zone38_prefix() {
     let (lon, lat) = (ring[0][0], ring[0][1]);
     assert!((113.9..=114.1).contains(&lon), "3°带 38 带号 CM=114，实际 lon={}", lon);
     assert!((34.2..=34.4).contains(&lat), "北坐标 380km≈纬度 34.3，实际 lat={}", lat);
+    // 界址点标签：与 TXT 输出同口径（oo=false 默认 → 闭合点被剥离，4 点 J1..J4）
+    let pts = &geo.plots[0].points;
+    assert_eq!(pts.len(), ring.len(), "点数应与环坐标数一致");
+    assert_eq!(pts[0].label, "J1");
+    assert_eq!(pts.last().unwrap().label, "J4", "oo=false 无闭合点");
+    assert!((pts[0].xy[0] - ring[0][0]).abs() < 1e-6, "点坐标应与环坐标一致");
+    assert!(geo.source_aliases.is_empty(), "SHP 源无别名");
+
+    // oo=true：闭合点保留 → 末点回环首号 J1
+    let geo_oo = convert::plot_table_geo(
+        std::slice::from_ref(&shp), None, None, &make_header(), &empty_mapping(),
+        &convert::ShpToTxtOptions { oo: true, ..opts("merge_all", None) }, None,
+    )
+    .unwrap();
+    let pts_oo = &geo_oo.plots[0].points;
+    assert_eq!(pts_oo.len(), 5, "oo=true 应含闭合点");
+    assert_eq!(pts_oo.last().unwrap().label, "J1", "闭合点回环首号");
 }
 
 /// 两源不同带号前缀（38/39）→ 各自落对应 3° 带经度区间（逐源推带号）
@@ -284,18 +301,14 @@ fn table_geo_degraded_without_zone() {
     assert!(geo.plots[0].rings.is_empty(), "降级源 rings 应为空");
 }
 
-/// 旧 8 字段格式（fields 空）→ attrs 合成固定 6 列
+/// 属性表 = 源字段视图：无 DBF 的 SHP attrs 为空（仅源/序号列）
 #[test]
-fn table_geo_legacy_attrs_six_columns() {
+fn table_geo_source_attrs_without_dbf() {
     let tmp = tempfile::tempdir().unwrap();
     let shp = three_feature_shp(tmp.path());
     let geo = table_geo(&[shp]);
-
-    let expect = ["地块编号", "地块名称", "地块面积", "图幅号", "地块用途", "地类"];
-    assert_eq!(geo.plots[0].attrs.len(), 6);
-    for (i, name) in expect.iter().enumerate() {
-        assert_eq!(geo.plots[0].attrs[i].0, *name, "第 {} 列应为 {}", i, name);
-    }
+    assert!(geo.plots[0].attrs.is_empty(), "无 DBF 时无源字段");
+    assert!(geo.source_aliases.is_empty());
 }
 
 const WKT_ZONE37: &str = r#"PROJCS["CGCS2000_3_Degree_GK_Zone_37",GEOGCS["GCS_China_Geodetic_Coordinate_System_2000",DATUM["D_China_2000",SPHEROID["CGCS2000",6378137.0,298.257222101]],PRIMEM["Greenwich",0.0],UNIT["Degree",0.0174532925199433]],PROJECTION["Gauss_Kruger"],PARAMETER["False_Easting",37500000.0],PARAMETER["False_Northing",0.0],PARAMETER["Central_Meridian",111.0],PARAMETER["Scale_Factor",1.0],PARAMETER["Latitude_Of_Origin",0.0],UNIT["Meter",1.0]]"#;
@@ -337,3 +350,92 @@ fn table_geo_band6_zone20() {
     assert!((23.3..=23.9).contains(&lat), "实际 lat={}", lat);
 }
 
+
+// ─── GDB 快速目录读取 + 图层过滤 ───
+
+fn gdb_test_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("repo root")
+        .join("test_arcpy")
+        .join("test.gdb")
+}
+
+/// read_gdb_catalog：层数/要素数/范围与全量读取一致（毫秒级，不解码要素）
+#[test]
+fn gdb_catalog_matches_full_read() {
+    let dir = gdb_test_dir();
+    if !dir.exists() {
+        println!("test.gdb 不存在，跳过");
+        return;
+    }
+    let catalog = jisig_bpoint_converter_lib::gdb::read_gdb_catalog(&dir).expect("catalog 读取失败");
+    let full = jisig_bpoint_converter_lib::gdb::read_gdb(&dir).expect("全量读取失败");
+    assert_eq!(catalog.len(), full.layers.len(), "层数应一致");
+    for (c, f) in catalog.iter().zip(full.layers.iter()) {
+        assert_eq!(c.name, f.name);
+        assert_eq!(c.num_features as usize, f.num_features, "层 {} 要素数应一致", c.name);
+        assert!(!c.field_names.is_empty(), "层 {} 应有字段", c.name);
+    }
+}
+
+/// read_gdb_filtered：单层过滤后索引对齐，未选层 features 为空
+#[test]
+fn gdb_filtered_read_aligns_indices() {
+    let dir = gdb_test_dir();
+    if !dir.exists() {
+        println!("test.gdb 不存在，跳过");
+        return;
+    }
+    let full = jisig_bpoint_converter_lib::gdb::read_gdb(&dir).expect("全量读取失败");
+    if full.layers.len() < 2 {
+        println!("test.gdb 少于 2 层，过滤用例退化为单层校验");
+    }
+    // 只取第一层
+    let first = full.layers[0].name.clone();
+    let filtered = jisig_bpoint_converter_lib::gdb::read_gdb_filtered(
+        &dir,
+        Some(&[first.clone()]),
+    )
+    .expect("过滤读取失败");
+    assert_eq!(filtered.layers.len(), full.layers.len(), "层索引必须对齐");
+    for (i, layer) in filtered.layers.iter().enumerate() {
+        if layer.name == first {
+            assert_eq!(layer.num_features, full.layers[i].num_features, "选中层要素数一致");
+            assert_eq!(filtered.all_features[i].len(), full.all_features[i].len(), "选中层要素已解码");
+        } else {
+            assert!(filtered.all_features[i].is_empty(), "未选层应跳过要素解码");
+        }
+    }
+}
+
+/// GDB 属性与字段表对齐：OBJECTID 存在且为整数（字段值错位时它会变成其他字段的小数）
+#[test]
+fn gdb_attrs_align_with_field_names() {
+    let dir = gdb_test_dir();
+    if !dir.exists() {
+        println!("test.gdb 不存在，跳过");
+        return;
+    }
+    let info = jisig_bpoint_converter_lib::gdb::read_gdb(&dir).expect("读取失败");
+    for (li, feats) in info.all_features.iter().enumerate() {
+        let names = &info.layers[li].field_names;
+        for f in feats.iter().take(5) {
+            for n in names {
+                assert!(
+                    f.attributes.contains_key(n),
+                    "层 {} 属性缺失字段 {}（字段值与字段名错位）",
+                    info.layers[li].name,
+                    n
+                );
+            }
+            if let Some(v) = f.attributes.get("OBJECTID") {
+                assert!(
+                    v.trim().parse::<i64>().is_ok(),
+                    "OBJECTID 应为整数，实际 {}（疑似字段值错位）",
+                    v
+                );
+            }
+        }
+    }
+}

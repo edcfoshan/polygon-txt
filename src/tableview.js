@@ -4,10 +4,23 @@ import { FP } from './filterparser.js';
 
 const PAGE_SIZE = 100;
 
+// 常见字段别名（SHP/DBF 无别名元数据，按国土行业惯例内置；GDB 文件别名优先级更高）
+const BUILTIN_ALIASES = {
+  'DKMC': '地块名称', 'DKBH': '地块编号', 'MJ': '面积', 'DKMJ': '地块面积',
+  'DKYT': '地块用途', 'TFH': '图幅号', 'DLBM': '地类编码', 'DL': '地类',
+  'DKLX': '地块类型', 'DKJJ': '地块价格', 'BZ': '备注', 'LXR': '联系人', 'LXDH': '联系电话',
+  'SJXZQMC': '省级名称', 'SJXZQDM': '省级代码', 'XJXZQMC': '县级名称', 'XJXZQDM': '县级代码',
+  'ZYYT': '主要用途', 'TDZL': '土地坐落', 'RJLXX': '容积率下限', 'RJLSX': '容积率上限',
+  'JZMDXX': '建筑密度下限', 'JZMDSX': '建筑密度上限', 'JZXG': '建筑限高',
+  'SHAPE_Length': '形状长度', 'SHAPE_Area': '形状面积', 'SHAPE_Leng': '形状长度',
+};
+
 const state = {
   sources: [],   // [{name, degraded, geodetic}]
   rows: [],      // [{uid:'si:pi', si, pi, cells:{col:value}}]
   columns: [],   // ['源','序号', ...属性字段（首次出现序）]
+  aliasMap: {},  // 字段名 → 别名（文件别名覆盖内置字典）
+  aliasVisible: false,
   filtered: null, // 命中行数组；null = 未筛选（全量）
   uids: null,    // 命中 [si,pi] 数组；null = 无筛选/条件有误
   error: null,   // {pos,message}
@@ -24,6 +37,16 @@ export const TV = {
   init() {
     if (bound) return;
     bound = true;
+    state.aliasVisible = localStorage.getItem('tg_tbl_alias') === '1';
+    const aliasCk = $('tblAlias');
+    if (aliasCk) {
+      aliasCk.checked = state.aliasVisible;
+      aliasCk.addEventListener('change', () => TV.setAliasVisible(aliasCk.checked));
+    }
+    document.addEventListener('click', (e) => {
+      const pop = $('cellPop');
+      if (pop && !pop.contains(e.target) && e.target.closest('.tbl td') === null) pop.remove();
+    });
     $('pgPrev')?.addEventListener('click', () => { if (state.page > 0) { state.page--; render(); } });
     $('pgNext')?.addEventListener('click', () => {
       const total = (state.filtered || state.rows).length;
@@ -46,12 +69,28 @@ export const TV = {
       return { uid: `${p.si}:${p.pi}`, si: p.si, pi: p.pi, cells };
     });
     state.columns = cols;
+    state.aliasMap = { ...BUILTIN_ALIASES };
+    for (const [k, v] of geo.source_aliases || []) {
+      if (v) state.aliasMap[k] = v; // 文件别名覆盖内置字典
+    }
     state.filtered = null;
     state.uids = null;
     state.error = null;
     state.empty = false;
     state.page = 0;
     render();
+  },
+
+  // 表头显示别名（无别名回退原名）
+  setAliasVisible(v) {
+    state.aliasVisible = !!v;
+    try { localStorage.setItem('tg_tbl_alias', v ? '1' : '0'); } catch (e) {}
+    renderTable();
+  },
+
+  // 全部地块 uid（导航遍历的「无筛选=全部」口径）
+  getAllUids() {
+    return state.rows.map((r) => [r.si, r.pi]);
   },
 
   reset() {
@@ -69,6 +108,12 @@ export const TV = {
   // 当前选中行 uid（地图页签打开时补高亮用）
   getSelectedUid() {
     return state.selUid;
+  },
+
+  // 清除选中（导入新数据时旧 uid 不应残留）
+  clearSelection() {
+    state.selUid = null;
+    renderSelection(false);
   },
 
   // 属性字段名（查询器字段下拉用）
@@ -170,8 +215,14 @@ function renderTable() {
   const htr = document.createElement('tr');
   for (const c of state.columns) {
     const th = document.createElement('th');
-    th.textContent = c;
-    th.title = c;
+    const alias = state.aliasMap[c];
+    if (state.aliasVisible && alias && c !== '源' && c !== '序号') {
+      th.textContent = alias;
+      th.title = `${c}（${alias}）`;
+    } else {
+      th.textContent = c;
+      th.title = c;
+    }
     htr.appendChild(th);
   }
   thead.appendChild(htr);
@@ -188,6 +239,7 @@ function renderTable() {
       const td = document.createElement('td');
       td.textContent = r.cells[c] ?? '';
       td.title = r.cells[c] ?? '';
+      td.addEventListener('click', () => showCellPop(td));
       tr.appendChild(td);
     }
     tr.addEventListener('click', () => TV.setUid(r.uid, 'table'));
@@ -224,6 +276,24 @@ function renderPager() {
   if (state.page >= pages) state.page = pages - 1;
   const info = $('pgInfo');
   if (info) info.textContent = `${state.page + 1} / ${pages} 页`;
+}
+
+// 单元格内容被截断时，点击弹出完整值气泡（复用 qb-pop 视觉）
+function showCellPop(td) {
+  const old = $('cellPop');
+  if (old) old.remove();
+  if (td.scrollWidth <= td.clientWidth + 2) return; // 未截断不弹
+  const pop = document.createElement('div');
+  pop.className = 'qb-pop cell-pop';
+  pop.id = 'cellPop';
+  pop.textContent = td.textContent;
+  document.body.appendChild(pop);
+  const r = td.getBoundingClientRect();
+  const w = Math.min(380, window.innerWidth - 16);
+  pop.style.width = `${w}px`;
+  pop.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - w - 8))}px`;
+  pop.style.top = `${Math.min(r.bottom + 4, window.innerHeight - pop.offsetHeight - 8)}px`;
+  pop.addEventListener('click', (e) => e.stopPropagation());
 }
 
 function renderToolbarState() {

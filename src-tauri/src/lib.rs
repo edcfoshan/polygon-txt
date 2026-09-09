@@ -61,6 +61,9 @@ struct GdbImportResult {
 struct GdbLayerItem {
     name: String,
     field_names: Vec<String>,
+    /// 字段别名 (字段名, 别名)，取自图层字段区
+    #[serde(default)]
+    field_aliases: Vec<(String, String)>,
     num_features: usize,
     geometry_type: String,
 }
@@ -346,7 +349,9 @@ fn import_gdb(app: tauri::AppHandle) -> Result<GdbImportResult, String> {
         return Err("请选择 .gdb 文件夹".to_string());
     }
 
-    let info = gdb::read_gdb(&gdb_path)?;
+    // 快速目录读取：只解析目录 + 各图层文件头/字段区，**不解码要素**（大库导入秒出）。
+    // 要素在用户选定图层后的预览/导出管线（collect_import_sources）才按所选图层解码。
+    let catalog = gdb::read_gdb_catalog(&gdb_path)?;
     let name = gdb_path
         .file_stem()
         .map(|s| s.to_string_lossy().to_string())
@@ -354,14 +359,10 @@ fn import_gdb(app: tauri::AppHandle) -> Result<GdbImportResult, String> {
 
     // 按几何类型过滤：仅保留面状图层，非面状（点/线/注记等）跳过
     let mut skipped = Vec::new();
-    let mut filtered_layers: Vec<gdb::GdbLayerInfo> = Vec::new();
-    let mut all_field_names: Vec<Vec<String>> = Vec::new();
-    let mut all_features: Vec<Vec<gdb::GdbFeature>> = Vec::new();
-    for (li, layer) in info.layers.iter().enumerate() {
+    let mut filtered: Vec<&gdb::GdbCatalogLayer> = Vec::new();
+    for layer in &catalog {
         if is_polygon_geometry_type(&layer.geometry_type) {
-            filtered_layers.push(layer.clone());
-            all_field_names.push(info.all_field_names[li].clone());
-            all_features.push(info.all_features[li].clone());
+            filtered.push(layer);
         } else {
             skipped.push(format!("{}（{}）", layer.name, layer.geometry_type));
             eprintln!(
@@ -372,46 +373,44 @@ fn import_gdb(app: tauri::AppHandle) -> Result<GdbImportResult, String> {
     }
 
     // 仅当面状图层全部被过滤掉时才报错
-    if filtered_layers.is_empty() {
+    if filtered.is_empty() {
         return Err(format!(
             "该 GDB 没有面状要素类（共 {} 个图层均为非面状），无法导入",
-            info.layers.len()
+            catalog.len()
         ));
     }
 
-    let field_names = all_field_names.first().cloned().unwrap_or_default();
-    let num_features: usize = filtered_layers.iter().map(|l| l.num_features).sum();
-    let layers = filtered_layers
+    let field_names = filtered.first().map(|l| l.field_names.clone()).unwrap_or_default();
+    let num_features: usize = filtered.iter().map(|l| l.num_features.max(0) as usize).sum();
+    let layers = filtered
         .iter()
         .map(|l| GdbLayerItem {
             name: l.name.clone(),
             field_names: l.field_names.clone(),
-            num_features: l.num_features,
+            field_aliases: l.field_aliases.clone(),
+            num_features: l.num_features.max(0) as usize,
             geometry_type: l.geometry_type.clone(),
         })
         .collect();
 
-    // 采样坐标：反推带号 + 判定单位（度/米，用于前端 og 按钮门禁）
-    let first_pt = all_features
-        .iter()
-        .flat_map(|feats| feats.iter())
-        .flat_map(|f| f.points.iter())
-        .next()
-        .copied();
-    let eastings: Vec<f64> = all_features
-        .iter()
-        .flat_map(|feats| feats.iter())
-        .flat_map(|f| f.points.iter())
-        .map(|(easting, _)| *easting)
-        .collect();
-    let zone = derive_zone_from_eastings(&eastings);
+    // 带号：优先 srs_wkt 权威声明，无 WKT 时用范围东坐标兜底
+    let srs_wkt = filtered.iter().find_map(|l| l.srs_wkt.clone());
+    let zone = if srs_wkt.is_none() {
+        filtered
+            .iter()
+            .find_map(|l| l.extent_xy)
+            .and_then(|e| derive_zone_from_eastings(&[e[3]]))
+    } else {
+        None
+    };
     let mut crs_info = HashMap::new();
-    if let Some((x, y)) = first_pt {
-        let u = if x.abs() <= 360.0 && y.abs() <= 90.0 { "度" } else { "米" };
+    // 单位（度/米，前端 og 门禁用）：无 WKT 时由范围量级粗判；有 WKT 时 parse_prj_text 会给出
+    if let Some(e) = filtered.iter().find_map(|l| l.extent_xy) {
+        let u = if e[2].abs() <= 360.0 && e[1].abs() <= 90.0 { "度" } else { "米" };
         crs_info.insert("u".to_string(), u.to_string());
     }
     // 图层内嵌 srs_wkt（坐标系/分带/带号/中央经线）——比坐标采样推断更权威，非空覆盖
-    if let Some(wkt) = &info.srs_wkt {
+    if let Some(wkt) = &srs_wkt {
         for (k, v) in shp::parse_prj_text(wkt) {
             if !v.is_empty() {
                 crs_info.insert(k, v);
@@ -419,22 +418,11 @@ fn import_gdb(app: tauri::AppHandle) -> Result<GdbImportResult, String> {
         }
     }
 
-    // 计算坐标范围
-    let xs: Vec<f64> = all_features.iter()
-        .flat_map(|feats| feats.iter())
-        .flat_map(|f| f.points.iter())
-        .map(|(easting, _)| *easting)
-        .collect();
-    let ys: Vec<f64> = all_features.iter()
-        .flat_map(|feats| feats.iter())
-        .flat_map(|f| f.points.iter())
-        .map(|(_, northing)| *northing)
-        .collect();
-    let xmin = xs.iter().cloned().fold(f64::INFINITY, f64::min);
-    let xmax = xs.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
-    let ymin = ys.iter().cloned().fold(f64::INFINITY, f64::min);
-    let ymax = ys.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
-    let (xmin, ymin, xmax, ymax) = if xs.is_empty() { (None, None, None, None) } else { (Some(xmin), Some(ymin), Some(xmax), Some(ymax)) };
+    // 坐标范围：字段区 GeomFieldMeta.extent_xy（首个面状图层），无需解码要素
+    let (xmin, ymin, xmax, ymax) = match filtered.iter().find_map(|l| l.extent_xy) {
+        Some([a, b, c, d]) => (Some(a), Some(b), Some(c), Some(d)),
+        None => (None, None, None, None),
+    };
 
     Ok(GdbImportResult {
         path: gdb_path.to_string_lossy().to_string(),

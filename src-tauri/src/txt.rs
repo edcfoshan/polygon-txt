@@ -280,6 +280,42 @@ fn format_coord(val: f64, decimals: u32) -> String {
     format!("{:.prec$}", val, prec = decimals as usize)
 }
 
+/// 单地块界址点编号（与 generate_txt 输出口径完全一致，地图标注复用）：
+/// rings 空时 coords 整体当单环；每地块从 1 起跨环（外环/洞/多部件）连续递增；
+/// 闭合点（末点与环首点重合，仅 oo=true 时存在）oc=false 用环首号不占号、oc=true 续编；
+/// oj=true 标签带 "J" 前缀。返回 (标签, part_index, y北, x东) 列表。
+pub fn number_plot_points(plot: &PlotData, oj: bool, oc: bool) -> Vec<(String, u32, f64, f64)> {
+    let plot_rings = if plot.rings.is_empty() {
+        vec![IndexedRing {
+            part_index: 1,
+            coords: plot.coords.clone(),
+        }]
+    } else {
+        plot.rings.clone()
+    };
+    let mut out = Vec::new();
+    let mut counter: u32 = 1;
+    for ring in &plot_rings {
+        let ring_start = counter;
+        for (i, (y, x)) in ring.coords.iter().enumerate() {
+            let is_closing = i > 0
+                && i == ring.coords.len() - 1
+                && (y - ring.coords[0].0).abs() < 1e-9
+                && (x - ring.coords[0].1).abs() < 1e-9;
+            let seq = if is_closing && !oc {
+                ring_start
+            } else {
+                let s = counter;
+                counter += 1;
+                s
+            };
+            let label = if oj { format!("J{}", seq) } else { seq.to_string() };
+            out.push((label, ring.part_index, *y, *x));
+        }
+    }
+    out
+}
+
 /// 生成 TXT 内容
 pub fn generate_txt(
     project_info: &str,
@@ -320,15 +356,9 @@ pub fn generate_txt(
     // 高级格式不输出字段名列表行（用户需求：接收系统按约定列序解析）；
     // 解析侧仍识别外部文件自带的【...,@】列表行（parse_txt）
     for plot in features {
-        let plot_rings = if plot.rings.is_empty() {
-            vec![IndexedRing {
-                part_index: 1,
-                coords: plot.coords.clone(),
-            }]
-        } else {
-            plot.rings.clone()
-        };
-        let point_count: usize = plot_rings.iter().map(|ring| ring.coords.len()).sum();
+        // 编号与点序列统一走 number_plot_points（地图界址点标注共用同一套口径）
+        let numbered = number_plot_points(plot, oj, oc);
+        let point_count = numbered.len();
         let meta = if !plot.fields.is_empty() {
             // 高级格式：按列顺序输出；__count__ 列（value==哨兵，与字段名无关）强制用本块实际点数
             let vals: Vec<String> = plot
@@ -357,43 +387,14 @@ pub fn generate_txt(
             )
         };
         out.push_str(&meta);
-        // J 界址点序号在单个地块内跨环（外环/洞/多部件）连续递增；
-        // 每个地块从 J1 起。闭合点（与首点重合的末点，仅 oo=true 时存在）：
-        //   oc=false（回到环首点，默认）→ 序号 = ring_start，不消耗 counter
-        //   oc=true （续编）              → 序号 = counter，消耗一个号
-        let mut counter: u32 = 1;
-        for ring in &plot_rings {
-            let ring_start = counter;
-            for (i, (y, x)) in ring.coords.iter().enumerate() {
-                let is_closing = i > 0
-                    && i == ring.coords.len() - 1
-                    && (y - ring.coords[0].0).abs() < 1e-9
-                    && (x - ring.coords[0].1).abs() < 1e-9;
-                let seq = if is_closing && !oc {
-                    ring_start
-                } else {
-                    let s = counter;
-                    counter += 1;
-                    s
-                };
-                if oj {
-                    out.push_str(&format!(
-                        "J{},{},{},{}\n",
-                        seq,
-                        ring.part_index,
-                        format_coord(*y, decimals),
-                        format_coord(*x, decimals),
-                    ));
-                } else {
-                    out.push_str(&format!(
-                        "{},{},{},{}\n",
-                        seq,
-                        ring.part_index,
-                        format_coord(*y, decimals),
-                        format_coord(*x, decimals),
-                    ));
-                }
-            }
+        for (label, part_index, y, x) in &numbered {
+            out.push_str(&format!(
+                "{},{},{},{}\n",
+                label,
+                part_index,
+                format_coord(*y, decimals),
+                format_coord(*x, decimals),
+            ));
         }
     }
 
@@ -402,7 +403,7 @@ pub fn generate_txt(
 
 #[cfg(test)]
 mod tests {
-    use super::{generate_txt, parse_txt, AttrRow, PlotData};
+    use super::{generate_txt, number_plot_points, parse_txt, AttrRow, PlotData};
     use crate::geometry::IndexedRing;
 
     #[test]
@@ -442,6 +443,99 @@ J1,2,30.000,30.000";
             "第二个部件的 part index 应被保留且 J 序号跨环连续（首点 J4），实际输出为:\n{}",
             generated
         );
+    }
+
+    fn two_closed_rings_plot() -> PlotData {
+        PlotData {
+            point_count: 8,
+            area: "100".into(),
+            fid: "F1".into(),
+            name: "标注地块".into(),
+            geom_type: "面".into(),
+            tfh: "".into(),
+            use_field: "".into(),
+            dlbm: "".into(),
+            coords: vec![],
+            rings: vec![
+                IndexedRing {
+                    part_index: 1,
+                    coords: vec![(10.0, 10.0), (10.0, 20.0), (20.0, 20.0), (10.0, 10.0)],
+                },
+                IndexedRing {
+                    part_index: 2,
+                    coords: vec![(30.0, 30.0), (30.0, 40.0), (40.0, 40.0), (30.0, 30.0)],
+                },
+            ],
+            fields: vec![],
+        }
+    }
+
+    #[test]
+    fn number_plot_points_matches_generate_txt() {
+        // 与 generate_txt 编号口径完全一致（oc=false 闭合点回到环首号）
+        let plot = two_closed_rings_plot();
+        let labels: Vec<String> = number_plot_points(&plot, true, false)
+            .into_iter()
+            .map(|(l, _, _, _)| l)
+            .collect();
+        assert_eq!(
+            labels,
+            vec!["J1", "J2", "J3", "J1", "J4", "J5", "J6", "J4"],
+            "跨环连续 + 闭合点回到环首号"
+        );
+        // generate_txt 输出中逐行点号与 number_plot_points 一致
+        let attrs = vec![AttrRow { k: "精度".into(), v: "0.001".into() }];
+        let out = generate_txt("", &attrs, &[plot.clone()], true, false);
+        let txt_labels: Vec<String> = out
+            .lines()
+            .filter(|l| l.contains(',') && !l.starts_with('[') && !l.ends_with(",@") && !l.ends_with("@"))
+            .filter_map(|l| l.split(',').next())
+            .map(|s| s.to_string())
+            .collect();
+        assert_eq!(labels, txt_labels, "编号函数与 generate_txt 输出必须一致");
+    }
+
+    #[test]
+    fn number_plot_points_oc_continue() {
+        let plot = two_closed_rings_plot();
+        let labels: Vec<String> = number_plot_points(&plot, true, true)
+            .into_iter()
+            .map(|(l, _, _, _)| l)
+            .collect();
+        assert_eq!(labels, vec!["J1", "J2", "J3", "J4", "J5", "J6", "J7", "J8"]);
+    }
+
+    #[test]
+    fn number_plot_points_without_oj() {
+        let plot = two_closed_rings_plot();
+        let labels: Vec<String> = number_plot_points(&plot, false, false)
+            .into_iter()
+            .map(|(l, _, _, _)| l)
+            .collect();
+        assert_eq!(labels[0], "1", "oj=false 无 J 前缀");
+        assert_eq!(labels[3], "1", "闭合点回环首号");
+    }
+
+    #[test]
+    fn number_plot_points_coords_fallback_single_ring() {
+        let plot = PlotData {
+            point_count: 3,
+            area: String::new(),
+            fid: String::new(),
+            name: String::new(),
+            geom_type: "面".into(),
+            tfh: String::new(),
+            use_field: String::new(),
+            dlbm: String::new(),
+            coords: vec![(1.0, 2.0), (3.0, 4.0), (1.0, 2.0)],
+            rings: vec![],
+            fields: vec![],
+        };
+        let numbered = number_plot_points(&plot, true, false);
+        assert_eq!(numbered.len(), 3);
+        assert_eq!(numbered[0].0, "J1");
+        assert_eq!(numbered[2].0, "J1", "闭合点回环首号");
+        assert_eq!(numbered[0].1, 1, "part_index 兜底为 1");
     }
 
     #[test]

@@ -244,6 +244,10 @@ pub struct ImportSource {
     pub plots: Vec<PlotWithSource>,
     /// 源坐标系信息（PRJ/srs_wkt 解析产物，键 c/j/u/b/z/cm）；GDB 无 WKT 时为空表
     pub crs_info: HashMap<String, String>,
+    /// 字段别名 (字段名 → 别名)；仅 GDB 图层字段区自带，SHP 为空表
+    pub field_aliases: HashMap<String, String>,
+    /// 源字段名（按数据内顺序）——属性表按此展示源字段全集
+    pub field_names: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -733,7 +737,11 @@ fn collect_import_sources(
     match source_type {
         Some("gdb") => {
             let path = source_path.ok_or_else(|| "缺少 GDB 路径".to_string())?;
-            let info = gdb::read_gdb(path)?;
+            // 按所选图层过滤：未勾选的图层跳过要素解码（多图层大库预览/导出提速）
+            let info = gdb::read_gdb_filtered(
+                path,
+                selected_layers.filter(|l| !l.is_empty()),
+            )?;
             sources = gdb_to_sources(&info, field_mapping, options, proj_cfg, selected_layers)?;
         }
         _ => {
@@ -766,12 +774,24 @@ pub struct PlotTablePlot {
     pub attrs: Vec<(String, String)>,
     /// [lon, lat] 环坐标（6 位小数）；首环为外环，其余为洞
     pub rings: Vec<Vec<[f64; 2]>>,
+    /// 界址点标签（与 generate_txt 编号口径一致，oj/oc 生效），坐标同 rings 管线
+    pub points: Vec<PlotPointLabel>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PlotPointLabel {
+    /// [lon, lat]（6 位小数）
+    pub xy: [f64; 2],
+    /// 点号标签（oj=true 为 "J1" 形态，false 为 "1"）
+    pub label: String,
 }
 
 #[derive(Debug, Serialize)]
 pub struct PlotTableGeo {
     pub sources: Vec<PlotTableSource>,
     pub plots: Vec<PlotTablePlot>,
+    /// 字段别名 (字段名, 别名)，跨源合并（GDB 图层字段区自带）；SHP 为空
+    pub source_aliases: Vec<(String, String)>,
 }
 
 /// 为右栏属性表/地图视图返回结构化地块数据。
@@ -797,7 +817,19 @@ pub fn plot_table_geo(
     )?;
     let datum = parse_datum_for_proj(&header_cfg.attr("坐标系"));
 
-    let mut out = PlotTableGeo { sources: Vec::new(), plots: Vec::new() };
+    let mut out = PlotTableGeo {
+        sources: Vec::new(),
+        plots: Vec::new(),
+        source_aliases: Vec::new(),
+    };
+    let mut alias_seen = HashSet::new();
+    for src in sources.iter() {
+        for (k, v) in &src.field_aliases {
+            if alias_seen.insert(k.clone()) {
+                out.source_aliases.push((k.clone(), v.clone()));
+            }
+        }
+    }
     for (si, src) in sources.iter().enumerate() {
         // PlotData.coords 为 TXT 序 (y, x) = (北, 东)
         let sample: Option<(f64, f64)> = src
@@ -850,6 +882,26 @@ pub fn plot_table_geo(
         };
         out.sources.push(PlotTableSource { name: src.stem.clone(), degraded, geodetic });
 
+        // 投影坐标 → WGS84（rings 与界址点标签共用）：degraded 源 cm 为 None，不调用
+        let to_wgs84 = |y: f64, x: f64| -> (f64, f64) {
+            if geodetic {
+                return (x, y);
+            }
+            let cmv = cm.unwrap();
+            // 东坐标块重贴：x 含前缀时从「数据带号块」改贴到「cm 对应 3° 带块」再交给逆投影。
+            // proj-core 的 EPSG 假东偏 = round(cm/3)×1e6 + 500000，只要 easting 值符合该网格即正确：
+            //  - 37 带东侧溢出（38_057_383 = 37_500_000+557_383）：z=37 → 原样（38e6−37e6+37e6）✓
+            //  - 6° 带 20 带（20_500_000，cm117）：20e6−20e6+39e6 = 39_500_000 → EPSG39 网格 ✓
+            //  - 自然值（x<1e6）：原样，逆投影按 round(cm/3) 自补前缀 ✓
+            let e = match zone_for_offset {
+                Some(z) if x >= 1_000_000.0 => {
+                    x - (z as f64) * 1_000_000.0 + (cmv / 3.0).round() * 1_000_000.0
+                }
+                _ => x,
+            };
+            projection::gauss_kruger_inverse(e, y, cmv, datum)
+        };
+
         for pws in &src.plots {
             let ring_coords: Vec<&[(f64, f64)]> = if degraded {
                 Vec::new()
@@ -862,40 +914,37 @@ pub fn plot_table_geo(
             for rc in ring_coords {
                 let mut ring = Vec::with_capacity(rc.len());
                 for &(y, x) in rc {
-                    let (lon, lat) = if geodetic {
-                        (x, y)
-                    } else {
-                        let cmv = cm.unwrap();
-                        // 东坐标块重贴：x 含前缀时从「数据带号块」改贴到「cm 对应 3° 带块」再交给逆投影。
-                        // proj-core 的 EPSG 假东偏 = round(cm/3)×1e6 + 500000，只要 easting 值符合该网格即正确：
-                        //  - 37 带东侧溢出（38_057_383 = 37_500_000+557_383）：z=37 → 原样（38e6−37e6+37e6）✓
-                        //  - 6° 带 20 带（20_500_000，cm117）：20e6−20e6+39e6 = 39_500_000 → EPSG39 网格 ✓
-                        //  - 自然值（x<1e6）：原样，逆投影按 round(cm/3) 自补前缀 ✓
-                        let e = match zone_for_offset {
-                            Some(z) if x >= 1_000_000.0 => {
-                                x - (z as f64) * 1_000_000.0 + (cmv / 3.0).round() * 1_000_000.0
-                            }
-                            _ => x,
-                        };
-                        projection::gauss_kruger_inverse(e, y, cmv, datum)
-                    };
+                    let (lon, lat) = to_wgs84(y, x);
                     ring.push([(lon * 1e6).round() / 1e6, (lat * 1e6).round() / 1e6]);
                 }
                 rings.push(ring);
             }
-            let attrs = if pws.plot.fields.is_empty() {
-                vec![
-                    ("地块编号".to_string(), pws.plot.fid.clone()),
-                    ("地块名称".to_string(), pws.plot.name.clone()),
-                    ("地块面积".to_string(), pws.plot.area.clone()),
-                    ("图幅号".to_string(), pws.plot.tfh.clone()),
-                    ("地块用途".to_string(), pws.plot.use_field.clone()),
-                    ("地类".to_string(), pws.plot.dlbm.clone()),
-                ]
+            // 界址点标签：与 generate_txt 编号口径一致（oj/oc 生效）；degraded 源无坐标不标
+            let points = if degraded {
+                Vec::new()
             } else {
-                pws.plot.fields.clone()
+                txt::number_plot_points(&pws.plot, options.oj, options.oc)
+                    .into_iter()
+                    .map(|(label, _part, y, x)| {
+                        let (lon, lat) = to_wgs84(y, x);
+                        PlotPointLabel {
+                            xy: [(lon * 1e6).round() / 1e6, (lat * 1e6).round() / 1e6],
+                            label,
+                        }
+                    })
+                    .collect()
             };
-            out.plots.push(PlotTablePlot { si, pi: pws.index_in_source, attrs, rings });
+            // 属性表 = 源数据字段全集（按字段区顺序，含 OBJECTID/Shape_* 等），
+            // 而非 TXT 输出列——GIS 用户按源表查看/筛选，别名切换也基于源字段名
+            let attrs: Vec<(String, String)> = src
+                .field_names
+                .iter()
+                .map(|name| {
+                    let v = pws.attributes.get(name).cloned().unwrap_or_default();
+                    (name.clone(), v)
+                })
+                .collect();
+            out.plots.push(PlotTablePlot { si, pi: pws.index_in_source, attrs, rings, points });
         }
     }
     Ok(out)
@@ -1520,7 +1569,13 @@ fn single_shp_to_source(
         });
     }
 
-    Ok(ImportSource { stem, plots, crs_info: info.crs_info.clone() })
+    Ok(ImportSource {
+        stem,
+        plots,
+        crs_info: info.crs_info.clone(),
+        field_aliases: HashMap::new(),
+        field_names: info.field_names.clone(),
+    })
 }
 
 fn gdb_features_to_plots(
@@ -1635,7 +1690,32 @@ fn gdb_to_sources(
                 attributes: feat.attributes.clone(),
             });
         }
-        sources.push(ImportSource { stem, plots, crs_info: gdb_crs_info.clone() });
+        let mut aliases = HashMap::new();
+        if let Some(li) = layer_info {
+            for (k, v) in &li.field_aliases {
+                aliases.insert(k.clone(), v.clone());
+            }
+        }
+        let field_names = layer_info.map(|li| li.field_names.clone()).unwrap_or_default();
+        // GDB 层按 OBJECTID 升序排序（属性表展示顺序 = 导出顺序），重排序号保持口径一致
+        plots.sort_by(|a, b| {
+            let ka = a.attributes.get("OBJECTID").and_then(|v| v.trim().parse::<i64>().ok());
+            let kb = b.attributes.get("OBJECTID").and_then(|v| v.trim().parse::<i64>().ok());
+            match (ka, kb) {
+                (Some(x), Some(y)) => x.cmp(&y),
+                _ => std::cmp::Ordering::Equal,
+            }
+        });
+        for (i, pws) in plots.iter_mut().enumerate() {
+            pws.index_in_source = i;
+        }
+        sources.push(ImportSource {
+            stem,
+            plots,
+            crs_info: gdb_crs_info.clone(),
+            field_aliases: aliases,
+            field_names,
+        });
     }
 
     Ok(sources)

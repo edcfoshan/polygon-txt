@@ -32,7 +32,19 @@ const state = {
   tkIdx: 0,
   rotated: false,
   fitted: true,        // true=当前数据已完成首次定位；'pending'=待容器尺寸就绪后再 fit 一次
+  jptsEnabled: false,  // 「显示界址点」开关
+  pointCache: new Map(),   // uid → [{latlng, label}]（与 TXT 编号口径一致的界址点）
+  selLabels: new Map(),    // 选中地块的标签 markers
+  viewLabels: new Map(),   // 深缩放时视口内地块的标签 markers
+  selectedUid: null,
+  toolbarBound: false,
+  lastSig: null,   // 数据集签名（数量+全部 uid）
+  refit: true,     // 新数据集待定位
+  everBuilt: false,
 };
+
+const JPTS_ZOOM = 17;    // 全量标注的最低缩放级别
+const JPTS_MAX = 2000;   // 视口内标签数上限（超出提示继续放大）
 
 function $(id) { return document.getElementById(id); }
 
@@ -47,12 +59,134 @@ function ensureMap() {
   L.control.attribution({ prefix: false }).addTo(state.map);
   state.svgRenderer = L.svg({ padding: 0.5 });
   addTiles();
+  bindToolbar();
   state.map.on('resize', () => state.map.invalidateSize());
+  state.map.on('zoomend moveend', updateViewportLabels);
+}
+
+// ── 地图工具条：显示界址点 + 地块导航 ──
+
+function bindToolbar() {
+  if (state.toolbarBound) return;
+  state.toolbarBound = true;
+  const jpts = $('mapJpts');
+  if (jpts) {
+    // 每次启动默认不显示界址点：勾选状态不跨启动记忆，避免意外带出标注
+    jpts.checked = false;
+    state.jptsEnabled = false;
+    jpts.addEventListener('change', () => MV.setJptsEnabled(jpts.checked));
+  }
+  $('navFirst')?.addEventListener('click', () => nav('first'));
+  $('navPrev')?.addEventListener('click', () => nav('prev'));
+  $('navNext')?.addEventListener('click', () => nav('next'));
+  $('navLast')?.addEventListener('click', () => nav('last'));
+}
+
+// 导航遍历列表：筛选命中集（无筛选 = 全部），与导出口径一致
+function navList() {
+  const tv = window.TV;
+  if (!tv) return [];
+  const fr = tv.getFilterUids ? tv.getFilterUids() : null;
+  const uids = (fr && fr.uids) || (tv.getAllUids ? tv.getAllUids() : []);
+  return uids.map(([si, pi]) => `${si}:${pi}`);
+}
+
+function nav(dir) {
+  const list = navList();
+  if (!list.length) return;
+  const cur = window.TV?.getSelectedUid?.();
+  let idx = cur ? list.indexOf(cur) : -1;
+  if (idx === -1) {
+    idx = dir === 'prev' || dir === 'last' ? list.length : -1;
+  }
+  let target;
+  if (dir === 'first') target = 0;
+  else if (dir === 'last') target = list.length - 1;
+  else if (dir === 'next') target = (idx + 1) % list.length;
+  else target = (idx - 1 + list.length) % list.length;
+  // 'table' 来源：表格滚动选中 + 地图飞行高亮一次性全联动
+  window.TV?.setUid?.(list[target], 'table');
+}
+
+function updateNavPos() {
+  const el = $('mapNavPos');
+  if (!el) return;
+  const list = navList();
+  if (!list.length) { el.textContent = '- / -'; return; }
+  const cur = window.TV?.getSelectedUid?.();
+  const idx = cur ? list.indexOf(cur) : -1;
+  el.textContent = idx >= 0 ? `第 ${idx + 1} / ${list.length} 个` : `共 ${list.length} 个`;
+}
+
+// ── 界址点标签（黑字白底，与 TXT 编号口径一致） ──
+
+function makeJptMarker(pt) {
+  return L.marker(pt.latlng, {
+    icon: L.divIcon({
+      className: 'jlabel',
+      html: `<span>${pt.label}</span>`,
+      iconSize: null,
+    }),
+    interactive: false,
+    keyboard: false,
+  });
+}
+
+// 选中地块：始终标注（开关开启时）
+function renderSelJptLabels(uid) {
+  for (const m of state.selLabels.values()) state.map.removeLayer(m);
+  state.selLabels.clear();
+  if (!state.jptsEnabled) return;
+  const pts = state.pointCache.get(uid);
+  if (!pts) return;
+  const group = new Map();
+  for (const pt of pts) {
+    const m = makeJptMarker(pt);
+    m.addTo(state.map);
+    group.set(pt.label + pt.latlng.join(','), m);
+  }
+  state.selLabels = group;
+}
+
+// 深缩放：视口内全部地块标注（视口裁剪 + 数量上限）
+function updateViewportLabels() {
+  if (!state.inited || !state.jptsEnabled) return;
+  for (const [, arr] of state.viewLabels) for (const m of arr) state.map.removeLayer(m);
+  state.viewLabels.clear();
+  if (state.map.getZoom() < JPTS_ZOOM) return;
+  const view = state.map.getBounds().pad(0.15);
+  let count = 0;
+  for (const [uid, pts] of state.pointCache) {
+    if (uid === state.selectedUid) continue; // 选中地块已有常驻标注
+    const layer = state.layers.get(uid);
+    if (!layer || !view.intersects(layer.getBounds())) continue;
+    const inView = pts.filter((pt) => view.contains(pt.latlng));
+    if (!inView.length) continue;
+    count += inView.length;
+    if (count > JPTS_MAX) {
+      note('当前视野标注点过多，请继续放大后查看');
+      return;
+    }
+    state.viewLabels.set(uid, inView.map(makeJptMarker));
+    for (const m of state.viewLabels.get(uid)) m.addTo(state.map);
+  }
+  const el = $('mapNote');
+  if (el && el.textContent.startsWith('当前视野标注点过多')) note('');
+}
+
+function clearAllJptLabels() {
+  if (state.inited && state.map) {
+    for (const m of state.selLabels.values()) state.map.removeLayer(m);
+    for (const [, arr] of state.viewLabels) for (const m of arr) state.map.removeLayer(m);
+  }
+  state.selLabels.clear();
+  state.viewLabels.clear();
 }
 
 function addTiles() {
   const tk = TKS[state.tkIdx];
-  const opts = { subdomains: '01234567', maxZoom: 18 };
+  // maxNativeZoom=18：天地图原始瓦片到 18 级；maxZoom=20 允许继续放大（瓦片放大显示，略模糊）
+  const opts = { subdomains: '01234567', maxZoom: 20, maxNativeZoom: 18 };
   const img = L.tileLayer(`https://t{s}.tianditu.gov.cn/DataServer?T=img_w&x={x}&y={y}&l={z}&tk=${tk}`, opts);
   const cia = L.tileLayer(`https://t{s}.tianditu.gov.cn/DataServer?T=cia_w&x={x}&y={y}&l={z}&tk=${tk}`, { ...opts, pane: 'overlayPane', interactive: false, attribution: '© 天地图' });
   img.addTo(state.map);
@@ -143,8 +277,17 @@ function rebuild() {
   if (drawn === 0) note('所选数据源缺少投影信息（无带号前缀且无 PRJ），无法上图；属性表仍可用');
   else note('');
   applyFilterStyle();
-  fitAll();
-  state.fitted = 'pending';
+  // 仅新数据集/首次绘制重新定位；同数据刷新保持用户当前缩放与中心
+  if (state.refit || !state.everBuilt) {
+    fitAll();
+    state.refit = false;
+    state.everBuilt = true;
+    state.fitted = 'pending'; // 容器尺寸就绪后 ensureInit 兜底再 fit 一次
+  }
+  if (state.jptsEnabled) {
+    if (state.selectedUid) renderSelJptLabels(state.selectedUid);
+    updateViewportLabels();
+  }
 }
 
 function fitAll() {
@@ -181,7 +324,24 @@ export const MV = {
   // 新数据到来即标记待定位：下次地图可见且尺寸就绪时自动 fit 到数据范围
   setData(geo) {
     state.data = geo;
-    state.fitted = 'pending';
+    // 数据集签名：仅内容变化（新导入/换文件）时才重新定位；
+    // 同数据刷新（预览防抖/选项变更/勾选触发的重取）保持用户当前视图
+    const sig = geo && geo.plots
+      ? `${geo.plots.length}|${geo.plots.map((p) => `${p.si}:${p.pi}`).join(',')}`
+      : '';
+    if (sig !== state.lastSig) {
+      state.refit = true;
+      state.lastSig = sig;
+    }
+    state.pointCache.clear();
+    for (const p of (geo && geo.plots) || []) {
+      if (!p.points || !p.points.length) continue;
+      state.pointCache.set(
+        `${p.si}:${p.pi}`,
+        p.points.map((pt) => ({ latlng: [pt.xy[1], pt.xy[0]], label: pt.label })),
+      );
+    }
+    clearAllJptLabels();
     if (state.inited) rebuild();
   },
 
@@ -189,12 +349,26 @@ export const MV = {
     state.data = null;
     state.filterUids = null;
     state.fitted = true;
+    state.pointCache.clear();
+    clearAllJptLabels();
     if (state.inited) rebuild();
   },
 
   setFilter(uids) {
     state.filterUids = uids ? new Set(uids.map(([si, pi]) => `${si}:${pi}`)) : null;
     if (state.inited) applyFilterStyle();
+    updateNavPos();
+  },
+
+  // 「显示界址点」开关：开 → 选中地块立即标注 + 触发一次视口标注；关 → 全清。
+  // 勾选状态不持久化（每次启动默认关）
+  setJptsEnabled(v) {
+    state.jptsEnabled = !!v;
+    clearAllJptLabels();
+    if (state.jptsEnabled && state.inited) {
+      if (state.selectedUid) renderSelJptLabels(state.selectedUid);
+      updateViewportLabels();
+    }
   },
 
   // 表格行 → 地图：飞行定位 + 红色高亮闪烁
@@ -202,9 +376,12 @@ export const MV = {
     if (!state.inited) return;
     const layer = state.layers.get(uid);
     clearHighlight();
+    state.selectedUid = uid;
+    renderSelJptLabels(uid);
+    updateNavPos();
     if (!layer) return;
     const bounds = layer.getBounds();
-    state.map.flyToBounds(bounds, { padding: [40, 40], maxZoom: 18, duration: 0.5 });
+    state.map.flyToBounds(bounds, { padding: [40, 40], maxZoom: 20, duration: 0.5 });
     state.hlLayer = L.polygon(layer.getLatLngs(), { ...STYLE_HL, renderer: state.svgRenderer, interactive: false, className: 'plot-blink' });
     state.hlLayer.addTo(state.map);
     // 闪烁 3 次后移除动画类，保留红色描边表示当前选中
@@ -234,6 +411,18 @@ export const MV = {
 
   invalidate() {
     if (state.map) setTimeout(() => state.map.invalidateSize(), 60);
+  },
+
+  // 调试/测试用：当前缩放与中心
+  getMapState() {
+    if (!state.map) return null;
+    const c = state.map.getCenter();
+    return { zoom: state.map.getZoom(), lat: +c.lat.toFixed(6), lng: +c.lng.toFixed(6) };
+  },
+
+  // 调试/测试用：直接访问 map 实例（不要在业务代码使用）
+  _map() {
+    return state.map;
   },
 };
 

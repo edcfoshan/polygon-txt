@@ -9,6 +9,23 @@ pub const MAIN_BINARY: &str = "jisig-bpoint-converter.exe";
 // tauri.conf.json plugins.updater.pubkey（base64 的 minisign 公钥文件），留包验签用
 const UPDATER_PUBKEY_B64: &str = "dW50cnVzdGVkIGNvbWU6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEEwMjYzRkZGQzk3RkI1RjAKUldUd3RYL0ovejhtb05aR2YxeFIrNHNTZDNMdlE0Q01kY2dxMXUvaktBdnlka0VhV2dyTkV2YWUK";
 
+/// latest.json 的 signature 字段 → minisign .sig 原文。
+/// tauri 的 signature 是 .sig 文件内容的 base64（插件路径内部自行解码）；
+/// 留包路径此前直接把 base64 喂给 Signature::decode 导致必失败（v4.0.1 修复），两种形态均兼容。
+fn signature_minisign_str(signature: &str) -> Result<String, String> {
+    use base64::Engine;
+    let s = signature.trim();
+    if s.starts_with("untrusted comment") {
+        return Ok(s.replace("\r\n", "\n"));
+    }
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(s)
+        .map_err(|e| format!("签名 base64 解码失败：{e}"))?;
+    String::from_utf8(bytes)
+        .map_err(|e| format!("签名不是合法 UTF-8：{e}"))
+        .map(|t| t.replace("\r\n", "\n"))
+}
+
 // ── Tauri 命令 ──
 
 #[tauri::command]
@@ -369,7 +386,8 @@ mod imp {
             .map_err(|e| e.to_string())?;
         let pem = String::from_utf8(pem).map_err(|e| e.to_string())?;
         let pk = PublicKey::decode(&pem).map_err(|e| format!("公钥解析失败：{e}"))?;
-        let sig = Signature::decode(signature).map_err(|e| format!("签名解析失败：{e}"))?;
+        let sig_text = super::signature_minisign_str(signature)?;
+        let sig = Signature::decode(&sig_text).map_err(|e| format!("签名解析失败：{e}"))?;
         let data = std::fs::read(file).map_err(|e| e.to_string())?;
         pk.verify(&data, &sig, false)
             .map_err(|e| format!("安装包验签失败：{e}"))
@@ -395,5 +413,42 @@ mod imp {
         _version: String,
     ) -> Result<String, String> {
         Err("仅支持 Windows".into())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::signature_minisign_str;
+
+    // v4.0.0 CI 产出的 latest.json signature（.sig 文件内容的 base64），公开数据
+    const CI_SIG_B64: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUd3RYL0ovejhtb01GOU9QQno0SzNJMGV2TE8zR3pvRnM0T1Bqa0h5QldHMWZkZTZXb01ERzBqb3J6OEJLdi9GUGpIUVQzeGdSVUwzMFh3WnhlM3JZNTBhRnQ2T0VlNkFJPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg4ODY2MjMyCWZpbGU65p6B5oCdR+eVjOWdgOeCueS6kui9rOW3peWFt180LjAuMF94NjQtc2V0dXAuZXhlClU2K1RwMkFEb09rbnVUWkZBV2tmd2NhMjZUZVJkODl4V3NCTkxBTzhiaHBDNUFGSGtHWkc1bElRc0k2ZHZuK2ZzV0QxaERoT1h0OE1qbjJ6bUNlbkF3PT0K";
+
+    #[test]
+    fn signature_base64_form_normalizes() {
+        let text = signature_minisign_str(CI_SIG_B64).expect("base64 形态应规范化成功");
+        assert!(text.starts_with("untrusted comment: signature from tauri secret key"), "应以 minisign 注释行开头: {text}");
+        assert!(text.contains("trusted comment: timestamp:"), "应含 trusted comment 行");
+        // 规范化结果必须是 minisign-verify 可解析的签名
+        minisign_verify::Signature::decode(&text).expect("规范化结果应可被 Signature::decode 解析");
+    }
+
+    #[test]
+    fn signature_raw_form_passthrough() {
+        let raw = "untrusted comment: signature from tauri secret key\nRWw2+f8P5gS7testdata=\ntrusted comment: timestamp:1\tfile:x\nAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\n";
+        let text = signature_minisign_str(raw).expect("原文形态应原样通过");
+        // 函数会 trim 首尾空白（对 minisign 行解析无影响），正文逐行应保持一致
+        assert_eq!(text, raw.trim());
+    }
+
+    #[test]
+    fn signature_crlf_normalized() {
+        let raw = "untrusted comment: x\r\nQUJD\r\n";
+        let text = signature_minisign_str(raw).unwrap();
+        assert!(!text.contains('\r'), "CRLF 应被归一为 LF");
+    }
+
+    #[test]
+    fn signature_invalid_base64_rejected() {
+        assert!(signature_minisign_str("!!不是base64!!").is_err());
     }
 }

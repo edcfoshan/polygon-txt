@@ -1,6 +1,6 @@
 {
   "version": "4.2.0",
-  "notes": "## 极思G界址点互转工具 v4.2.0\n\n### 下载说明\n- **Windows**: 下载 `.exe` 安装包或 `-portable.exe` 便携版\n- **macOS**: 下载 `.dmg` 安装包（arm64 = Apple Silicon, x64 = Intel）\n- **Linux**: 下载 `.AppImage` 或 `.deb`\n\n### 系统要求\n- Windows 10/11 (64位)\n- macOS 10.15+ (Catalina 或更新)\n- Linux (需安装 WebKit2GTK)\n\n### 更新日志\n请查看 [CHANGELOG.md](https://github.com/edcfoshan/polygon-txt/blob/master/CHANGELOG.md)",
+  "notes": "### 修复\n\n- **修复 37 带东侧数据换带/带号前缀开关坐标错误**（揭阳类数据：带号 37、CM111，东侧点东坐标 38,057,383 = 37_500_000+557_383，以 38 开头）：换带与前缀开关按东坐标百万位推断带号会误判为 38 带。现以 PRJ/空间参考声明的带号（37）为权威，东坐标按声明带号剥/贴 million 块，换带、加前缀、剥前缀、换号全部正确\n- **TXT→SHP 带号判定改为「TXT 声明 > 坐标前缀推断 > 表单值」**：旧逻辑「提取值优先」在上述溢出数据上会覆盖正确的声明带号，导致 TXT 回转 SHP 时 PRJ 写错带号、位置漂移数百公里\n- **修复 TXT→SHP 分带传参**：\"6°带\" 文字直传写 PRJ 函数会解析失败并默认 3°，现统一规范化为数字\n- **预览与导出合并为同一条管线**：删除双路径实现，预览文本与导出文件从源头保证一致，并继承逐源权威带号修复\n- 修复 GDB 导入不自动填写表头的问题：确认图层后按「勾选的第一个图层」的坐标系（PRJ 权威）自动填写 坐标系/几度分带/投影类型/计量单位/带号（此前一直停留在上次保存值）\n\n### 新增\n\n- **TXT→SHP 往返范围一致性回归测试**：37 带溢出数据经 keep/前缀开/前缀剥/换带（F/H）转换后，TXT 回转 SHP 的 WGS84 范围与原始一致（容差约 5 米）\n- 图层选择确认时，若所选图层坐标系声明不一致会明确警告（如 ZSDK=37 带与 ZSDK38=38 带混选）\n\n---\n\n### 下载说明\n- **Windows**：`.exe` 安装包或 `-portable.exe` 便携版（更新推荐走应用内自动更新）\n- **macOS**：`.dmg`（arm64 = Apple Silicon，x64 = Intel）\n- **Linux**：`.AppImage` 或 `.deb`\n\n### 系统要求\n- Windows 10/11 (64位) · macOS 10.15+ · Linux (WebKit2GTK)",
   "pub_date": "2026-09-10T02:01:18.417Z",
   "platforms": {
     "windows-x86_64": {

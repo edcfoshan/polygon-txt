@@ -133,6 +133,27 @@ impl ProjectionConfig {
     }
 }
 
+/// 从 crs_info 提取权威带号/分带（z 优先；无 z 时由中央经线 ÷ 分带推算）
+fn authoritative_zone_band(crs_info: &HashMap<String, String>) -> (Option<u32>, Option<u8>) {
+    let band = crs_info
+        .get("b")
+        .and_then(|s| s.trim().parse::<u8>().ok())
+        .filter(|b| *b == 3 || *b == 6);
+    let zone = crs_info
+        .get("z")
+        .and_then(|s| s.trim().parse::<u32>().ok())
+        .filter(|z| (1..=60).contains(z));
+    let zone = match zone {
+        Some(z) => Some(z),
+        None => crs_info
+            .get("cm")
+            .and_then(|s| s.trim().parse::<f64>().ok())
+            .map(|cm| (cm / band.unwrap_or(3) as f64).round() as u32)
+            .filter(|z| (1..=60).contains(z)),
+    };
+    (zone, band)
+}
+
 /// 判定是否为大地坐标系（度）。优先坐标采样（PRJ 误标时仍可靠），回退 crs_info 的单位声明。
 fn sample_is_geodetic(sample: Option<(f64, f64)>, crs_info: &HashMap<String, String>) -> bool {
     if let Some((x, y)) = sample {
@@ -248,6 +269,10 @@ pub struct ImportSource {
     pub field_aliases: HashMap<String, String>,
     /// 源字段名（按数据内顺序）——属性表按此展示源字段全集
     pub field_names: Vec<String>,
+    /// 权威带号（PRJ/srs_wkt 声明）：带号前缀/换带以此为准，不猜 x 百万位
+    pub source_zone: Option<u32>,
+    /// 权威分带
+    pub source_band: Option<u8>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -335,57 +360,52 @@ pub fn shp_to_txt_preview(
     };
     let proj_cfg = ProjectionConfig::from_options(options, header_cfg);
 
-    let result = match source_type {
-        Some("gdb") => {
-            let path = source_path.ok_or_else(|| "缺少 GDB 路径".to_string())?;
-            let info = gdb::read_gdb(path)?;
-            let mut plots =
-                gdb_features_to_plots(&info, field_mapping, options, proj_cfg.as_ref(), selected_layers)?;
-            // 动态投影：在 generate_txt 之前应用（预览路径直接操作 PlotData 坐标）
-            let header_for_txt = apply_dynamic_projection_to_plots(&mut plots, header_cfg, options)?;
-            txt::generate_txt(
-                &header_for_txt.project_info,
-                &header_for_txt.attrs,
-                &plots,
-                options.oj,
-                options.oc,
-            )
-        }
-        _ => shp_files_to_txt_preview(shp_paths, header_cfg, field_mapping, options, proj_cfg.as_ref())?,
-    };
-
-    Ok(result.lines().take(2000).collect::<Vec<_>>().join("\n"))
-}
-
-fn shp_files_to_txt_preview(
-    shp_paths: &[PathBuf],
-    header_cfg: &HeaderConfig,
-    field_mapping: &FieldMapping,
-    options: &ShpToTxtOptions,
-    proj_cfg: Option<&ProjectionConfig>,
-) -> Result<String, String> {
-    let mut plots = shp_files_to_plots(shp_paths, field_mapping, options, proj_cfg)?;
-    // 动态投影：在 generate_txt 之前应用
-    let header_for_txt = apply_dynamic_projection_to_plots(&mut plots, header_cfg, options)?;
-    Ok(txt::generate_txt(
+    // 预览与导出走同一条管线：collect → 筛选 → 动态投影（权威带号）→ generate，
+    // 保证预览文本与导出文件字节级一致（旧双路径已删）
+    let mut sources = collect_import_sources(
+        shp_paths,
+        source_type,
+        source_path,
+        field_mapping,
+        options,
+        proj_cfg.as_ref(),
+        selected_layers,
+    )?;
+    apply_plot_filter_to_sources(&mut sources, options)?;
+    let header_for_txt = apply_dynamic_projection_to_sources(&mut sources, header_cfg, options)?;
+    let plots: Vec<txt::PlotData> = sources
+        .iter()
+        .flat_map(|s| s.plots.iter().map(|p| p.plot.clone()))
+        .collect();
+    let result = txt::generate_txt(
         &header_for_txt.project_info,
         &header_for_txt.attrs,
         &plots,
         options.oj,
         options.oc,
-    ))
+    );
+
+    Ok(result.lines().take(2000).collect::<Vec<_>>().join("\n"))
 }
 
 /// 仅调整带号前缀（前缀开关与投影正交）：coord = (北, 东)。
 /// 先剥掉实际存在的前缀取自然值，再按目标带号加回；no_prefix=true 保持自然值。
-fn adjust_zone_prefix(coord: &mut (f64, f64), zone_f: f64, no_prefix: bool) {
+fn adjust_zone_prefix(coord: &mut (f64, f64), zone_f: f64, no_prefix: bool, data_zone_f: Option<f64>) {
     let e = coord.1;
-    if e.abs() >= 1_000_000.0 {
-        let natural = e - (e / 1_000_000.0).floor() * 1_000_000.0;
-        coord.1 = if no_prefix { natural } else { natural + zone_f };
-    } else if !no_prefix {
-        coord.1 = e + zone_f;
-    }
+    // 自然值判定：声明带块剥出结果落在高斯自然东坐标合理区间（约 -100km~+1_100km）才算「带前缀」；
+    // 否则 x 本身已是自然值（37 带剥后自然值 1_057_383 也会 ≥1e6）
+    let natural = if e.abs() >= 1_000_000.0 {
+        match data_zone_f {
+            Some(dz) => {
+                let stripped = e - dz;
+                if stripped > -100_000.0 && stripped <= 1_100_000.0 { stripped } else { e }
+            }
+            None => e - (e / 1_000_000.0).floor() * 1_000_000.0,
+        }
+    } else {
+        e
+    };
+    coord.1 = if no_prefix { natural } else { natural + zone_f };
 }
 
 /// 动态投影 + 头表同步 wrapper（Task 6 完整化）
@@ -395,17 +415,20 @@ pub fn apply_dynamic_projection_to_sources(
     options: &ShpToTxtOptions,
 ) -> Result<HeaderConfig, String> {
     if options.proj_mode.is_empty() || options.proj_mode == "keep" {
-        // 前缀与投影正交：keep 下 proj_zone 有值时仍单独调整带号前缀
+        // 前缀与投影正交：keep 下 proj_zone 有值时仍单独调整带号前缀。
+        // 剥前缀按「数据声明带号」（PRJ 权威）——37 带东侧溢出数据 x 以 38 开头，
+        // 按 floor(x/1e6) 剥会剥错块。
+        let data_zone_f = sources.first().and_then(|s| s.source_zone).map(|z| z as f64 * 1_000_000.0);
         if let Some(z) = options.proj_zone {
             let zone_f = z as f64 * 1_000_000.0;
             for src in sources.iter_mut() {
                 for pws in src.plots.iter_mut() {
                     for coord in pws.plot.coords.iter_mut() {
-                        adjust_zone_prefix(coord, zone_f, options.proj_no_prefix);
+                        adjust_zone_prefix(coord, zone_f, options.proj_no_prefix, data_zone_f);
                     }
                     for ring in pws.plot.rings.iter_mut() {
                         for coord in ring.coords.iter_mut() {
-                            adjust_zone_prefix(coord, zone_f, options.proj_no_prefix);
+                            adjust_zone_prefix(coord, zone_f, options.proj_no_prefix, data_zone_f);
                         }
                     }
                 }
@@ -416,10 +439,16 @@ pub fn apply_dynamic_projection_to_sources(
     let mode = options.proj_mode.clone();
     let (src_band, header_zone) = extract_band_zone(header);
     let band_for_infer = src_band.unwrap_or(3);
+    // src 带号：PRJ/srs_wkt 权威声明优先（跟随勾选的第一个图层）；坐标前缀推断在
+    // 「东侧溢出」（37 带 x 以 38 开头）时不可靠，仅作无元数据兜底
     let src_zone = sources.first()
-        .and_then(|s| s.plots.first())
-        .and_then(|pws| pws.plot.coords.first())
-        .and_then(|c| projection::infer_zone_from_x(c.1, band_for_infer))
+        .and_then(|s| s.source_zone)
+        .or_else(|| {
+            sources.first()
+                .and_then(|s| s.plots.first())
+                .and_then(|pws| pws.plot.coords.first())
+                .and_then(|c| projection::infer_zone_from_x(c.1, band_for_infer))
+        })
         .or(header_zone);
     let datum = parse_datum_for_proj(&header.attr("坐标系"));
     let dst_band: Option<u8> = match mode.as_str() {
@@ -438,92 +467,6 @@ pub fn apply_dynamic_projection_to_sources(
     transform_sources_dynamic(
         sources, &mode, src_band, src_zone, dst_band, dst_zone, datum, options.proj_no_prefix,
     ).map_err(|e| format!("动态投影失败: {}", e))?;
-    let mut new_header = header.clone();
-    sync_header_crs_fields(
-        &mut new_header.attrs,
-        &mode,
-        dst_band,
-        dst_zone,
-        src_zone,
-        &header.attr("坐标系"),
-    );
-    Ok(new_header)
-}
-
-/// 预览路径的动态投影：直接操作 Vec<PlotData>（坐标为 TXT 格式 Y,X = 北,东）。
-/// 逻辑与 apply_dynamic_projection_to_sources 一致，但操作对象是 PlotData 而非 ImportSource。
-pub fn apply_dynamic_projection_to_plots(
-    plots: &mut Vec<txt::PlotData>,
-    header: &HeaderConfig,
-    options: &ShpToTxtOptions,
-) -> Result<HeaderConfig, String> {
-    if options.proj_mode.is_empty() || options.proj_mode == "keep" {
-        // 前缀与投影正交：keep 下 proj_zone 有值时仍单独调整带号前缀
-        if let Some(z) = options.proj_zone {
-            let zone_f = z as f64 * 1_000_000.0;
-            for plot in plots.iter_mut() {
-                for coord in &mut plot.coords {
-                    adjust_zone_prefix(coord, zone_f, options.proj_no_prefix);
-                }
-                for ring in &mut plot.rings {
-                    for coord in &mut ring.coords {
-                        adjust_zone_prefix(coord, zone_f, options.proj_no_prefix);
-                    }
-                }
-            }
-        }
-        return Ok(header.clone());
-    }
-    let mode = options.proj_mode.clone();
-    let (src_band, header_zone) = extract_band_zone(header);
-    let band_for_infer = src_band.unwrap_or(3);
-    let src_zone = plots.first()
-        .and_then(|p| p.coords.first())
-        .and_then(|c| projection::infer_zone_from_x(c.1, band_for_infer))
-        .or(header_zone);
-    let datum = parse_datum_for_proj(&header.attr("坐标系"));
-    let dst_band: Option<u8> = match mode.as_str() {
-        "A" | "G" => Some(3),
-        "B" | "F" => Some(6),
-        "H" => src_band,
-        _ => None,
-    };
-    let dst_zone = match mode.as_str() {
-        "F" | "G" => compute_reband_dst_zone(src_band, src_zone, dst_band)
-            .or(options.proj_zone)
-            .or(src_zone),
-        _ => options.proj_zone.or(src_zone),
-    };
-    eprintln!(
-        "[preview proj] mode={}, src_band={:?}, src_zone={:?}, dst_band={:?}, dst_zone={:?}, no_prefix={}",
-        mode, src_band, src_zone, dst_band, dst_zone, options.proj_no_prefix
-    );
-    if let Some(first_plot) = plots.first() {
-        if let Some(first_coord) = first_plot.coords.first() {
-            eprintln!("[preview proj] first coord before: ({:.6}, {:.6})", first_coord.0, first_coord.1);
-        }
-    }
-    for plot in plots.iter_mut() {
-        for coord in &mut plot.coords {
-            let (x, y) = *coord;
-            let (nx, ny) = transform_xy(x, y, &mode, src_band, src_zone, dst_band, dst_zone, datum, options.proj_no_prefix);
-            // coord = (Y, X) = (北坐标, 东坐标) TXT 格式，与 transform_sources_dynamic 保持一致
-            *coord = (ny, nx);
-        }
-        // 同步更新 rings：generate_txt 优先使用 plot.rings，必须同步变换
-        for ring in &mut plot.rings {
-            for coord in &mut ring.coords {
-                let (x, y) = *coord;
-                let (nx, ny) = transform_xy(x, y, &mode, src_band, src_zone, dst_band, dst_zone, datum, options.proj_no_prefix);
-                *coord = (ny, nx);
-            }
-        }
-    }
-    if let Some(first_plot) = plots.first() {
-        if let Some(first_coord) = first_plot.coords.first() {
-            eprintln!("[preview proj] first coord after:  ({:.6}, {:.6})", first_coord.0, first_coord.1);
-        }
-    }
     let mut new_header = header.clone();
     sync_header_crs_fields(
         &mut new_header.attrs,
@@ -706,15 +649,7 @@ pub fn convert_shp_to_txt(
     let header_for_convert = apply_dynamic_projection_to_sources(&mut sources, header_cfg, options)?;
 
     // 地块级筛选（与预览同一 uid 口径）：在 output_mode 分发前过滤，三种模式天然覆盖
-    if let Some(set) = plot_filter_set(options) {
-        for (si, src) in sources.iter_mut().enumerate() {
-            src.plots.retain(|p| set.contains(&(si, p.index_in_source)));
-        }
-        let total: usize = sources.iter().map(|s| s.plots.len()).sum();
-        if total == 0 {
-            return Err("筛选结果为空，请调整筛选条件".to_string());
-        }
-    }
+    apply_plot_filter_to_sources(&mut sources, options)?;
 
     match options.output_mode.as_str() {
         "split_by_plot" => convert_split_by_plot(sources, &header_for_convert, options, output_dir),
@@ -888,17 +823,20 @@ pub fn plot_table_geo(
                 return (x, y);
             }
             let cmv = cm.unwrap();
-            // 东坐标块重贴：x 含前缀时从「数据带号块」改贴到「cm 对应 3° 带块」再交给逆投影。
-            // proj-core 的 EPSG 假东偏 = round(cm/3)×1e6 + 500000，只要 easting 值符合该网格即正确：
-            //  - 37 带东侧溢出（38_057_383 = 37_500_000+557_383）：z=37 → 原样（38e6−37e6+37e6）✓
-            //  - 6° 带 20 带（20_500_000，cm117）：20e6−20e6+39e6 = 39_500_000 → EPSG39 网格 ✓
-            //  - 自然值（x<1e6）：原样，逆投影按 round(cm/3) 自补前缀 ✓
-            let e = match zone_for_offset {
-                Some(z) if x >= 1_000_000.0 => {
-                    x - (z as f64) * 1_000_000.0 + (cmv / 3.0).round() * 1_000_000.0
+            // 东坐标块重贴：先按「数据声明带号」剥出自然值（带可用性守卫——剥后须落在
+            // 高斯自然东坐标合理区间，否则 x 已是自然值），再贴到「cm 对应 3° 带块」。
+            //  - 37 带东侧溢出（38_057_383 = 37_500_000+557_383）：剥 37e6 得 1_057_383，
+            //    加 37e6 还原 → EPSG37 网格 ✓
+            //  - 6° 带 20 带（20_500_000，cm117）：剥 20e6 得 500_000，加 39e6 → EPSG39 ✓
+            //  - 自然值：跳过剥块，逆投影按 round(cm/3) 自补前缀 ✓
+            let natural = match zone_for_offset {
+                Some(z) => {
+                    let stripped = x - (z as f64) * 1_000_000.0;
+                    if stripped > -100_000.0 && stripped <= 1_100_000.0 { stripped } else { x }
                 }
-                _ => x,
+                None => x,
             };
+            let e = natural + (cmv / 3.0).round() * 1_000_000.0;
             projection::gauss_kruger_inverse(e, y, cmv, datum)
         };
 
@@ -1177,27 +1115,24 @@ fn txt_to_shp_one_to_one(
             .map(|s| s.to_string_lossy().to_string())
             .unwrap_or_else(|| "output".to_string());
 
-        // 带号优先级：坐标提取值 > 表单值 > 无（跳过）
-        // 东坐标的 8 位前缀就是带号本身，比人工填的声明值可靠；矛盾时以坐标为准并记提示。
+        // 带号优先级：TXT 声明 > 坐标前缀推断 > 无（跳过）。
+        // 37 带东侧点的东坐标会溢出到下一百万块（x=38_057_383 = 37_500_000+557_383），
+        // 数字前缀不等于带号——声明值由导出方按数据真实带号写定，视为权威；
+        // 无声明时才用前缀推断兜底，矛盾时记提示。
         let extracted = extract_zone_from_coords(&parsed.plots);
         let declared = parsed.attrs.get("带号").map(|s| s.as_str());
-        let final_zone = match (extracted, header_cfg.attr("带号").as_str()) {
-            (Some(z), _) => {
-                // 检测与 TXT 声明带号的矛盾
-                if let Some(d) = declared {
-                    if let Ok(dz) = d.trim().parse::<i32>() {
-                        if dz != z {
-                            warnings.push(format!(
-                                "{}：声明带号{}与坐标提取{}不一致，已用提取值",
-                                stem, dz, z
-                            ));
-                        }
-                    }
-                }
-                z.to_string()
-            }
-            (None, fz) if !fz.is_empty() => fz.to_string(),
-            (None, _) => {
+        let declared_zone = declared
+            .and_then(|d| d.trim().parse::<i32>().ok())
+            .filter(|z| (1..=60).contains(z));
+        let final_zone = match resolve_txt_zone(
+            extracted,
+            declared,
+            &header_cfg.attr("带号"),
+            &stem,
+            &mut warnings,
+        ) {
+            Some(z) => z,
+            None => {
                 skipped_count += 1;
                 continue;
             }
@@ -1216,7 +1151,7 @@ fn txt_to_shp_one_to_one(
                 &geometries,
                 &attributes,
                 &header_cfg.attr("坐标系"),
-                &header_cfg.attr("几度分带"),
+                &normalized_band_str(parsed.attrs.get("几度分带").map(|s| s.as_str()), &header_cfg.attr("几度分带")),
                 &final_zone,
             )?;
             output_files.extend(shp_files);
@@ -1263,25 +1198,18 @@ fn txt_to_shp_split_by_plot(
             .map(|s| s.to_string_lossy().to_string())
             .unwrap_or_else(|| "output".to_string());
 
-        // 带号优先级：坐标提取值 > 表单值 > 无（跳过）
+        // 带号判定：TXT 声明 > 坐标前缀推断 > 表单值（37 带东侧溢出时前缀≠带号，声明权威）
         let extracted = extract_zone_from_coords(&parsed.plots);
         let declared = parsed.attrs.get("带号").map(|s| s.as_str());
-        let final_zone = match (extracted, header_cfg.attr("带号").as_str()) {
-            (Some(z), _) => {
-                if let Some(d) = declared {
-                    if let Ok(dz) = d.trim().parse::<i32>() {
-                        if dz != z {
-                            warnings.push(format!(
-                                "{}：声明带号{}与坐标提取{}不一致，已用提取值",
-                                txt_stem, dz, z
-                            ));
-                        }
-                    }
-                }
-                z.to_string()
-            }
-            (None, fz) if !fz.is_empty() => fz.to_string(),
-            (None, _) => {
+        let final_zone = match resolve_txt_zone(
+            extracted,
+            declared,
+            &header_cfg.attr("带号"),
+            &txt_stem,
+            &mut warnings,
+        ) {
+            Some(z) => z,
+            None => {
                 skipped_count += 1;
                 continue;
             }
@@ -1327,7 +1255,7 @@ fn txt_to_shp_split_by_plot(
                 &geometries,
                 &attributes,
                 &header_cfg.attr("坐标系"),
-                &header_cfg.attr("几度分带"),
+                &normalized_band_str(parsed.attrs.get("几度分带").map(|s| s.as_str()), &header_cfg.attr("几度分带")),
                 &final_zone,
             )?;
             output_files.extend(shp_files);
@@ -1366,16 +1294,26 @@ fn txt_to_shp_merge_all(
     header_cfg: &HeaderConfig,
     output_dir: &Path,
 ) -> Result<ConvertResult, String> {
-    // 逐文件提取带号，检测冲突：merge_all 要求所有 TXT 带号一致，冲突直接拒绝
+    // 逐文件确定带号（声明 > 提取 > 表单），检测冲突：merge_all 要求所有 TXT 带号一致
     let mut zones: Vec<Option<i32>> = Vec::new();
+    let mut first_band: Option<String> = None;
     for txt_path in txt_paths {
         let text = txt::read_text_file(txt_path)?;
         let parsed = txt::parse_txt(&text);
-        let z = extract_zone_from_coords(&parsed.plots);
-        if let Some(zv) = z {
+        if first_band.is_none() {
+            first_band = parsed.attrs.get("几度分带").cloned();
+        }
+        let extracted = extract_zone_from_coords(&parsed.plots);
+        let declared_zone = parsed
+            .attrs
+            .get("带号")
+            .and_then(|d| d.trim().parse::<i32>().ok())
+            .filter(|z| (1..=60).contains(z));
+        let effective = declared_zone.or(extracted);
+        if let Some(zv) = effective {
             zones.push(Some(zv));
         } else if !header_cfg.attr("带号").is_empty() {
-            // 提取失败时回退表单值（后续统一用表单值，此处只用于冲突检测）
+            // 两者皆无时回退表单值（后续统一用表单值，此处只用于冲突检测）
             zones.push(None);
         } else {
             return Err(format!(
@@ -1412,7 +1350,7 @@ fn txt_to_shp_merge_all(
                 if let Ok(dz) = d.trim().parse::<i32>() {
                     if dz != z {
                         warnings.push(format!(
-                            "{}：声明带号{}与坐标提取{}不一致，已用提取值",
+                            "{}：声明带号{}与坐标前缀推断{}不一致（东侧溢出属正常现象），以声明为准",
                             txt_path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default(),
                             dz, z
                         ));
@@ -1437,7 +1375,7 @@ fn txt_to_shp_merge_all(
             &all_geometries,
             &all_attributes,
             &header_cfg.attr("坐标系"),
-            &header_cfg.attr("几度分带"),
+            &normalized_band_str(first_band.as_deref(), &header_cfg.attr("几度分带")),
             &final_zone,
         )?;
         output_files.extend(shp_files);
@@ -1470,22 +1408,18 @@ fn plot_filter_set(options: &ShpToTxtOptions) -> Option<HashSet<(usize, usize)>>
         .map(|v| v.iter().map(|p| (p[0], p[1])).collect())
 }
 
-fn shp_files_to_plots(
-    shp_paths: &[PathBuf],
-    field_mapping: &FieldMapping,
-    options: &ShpToTxtOptions,
-    proj_cfg: Option<&ProjectionConfig>,
-) -> Result<Vec<txt::PlotData>, String> {
-    let filter = plot_filter_set(options);
-    let mut all_plots = Vec::new();
-    for (si, shp_path) in shp_paths.iter().enumerate() {
-        let mut src = single_shp_to_source(shp_path, field_mapping, options, proj_cfg)?;
-        if let Some(f) = &filter {
-            src.plots.retain(|p| f.contains(&(si, p.index_in_source)));
+/// 地块级筛选：按 (源下标, 源内序号) 集合过滤；筛 0 条报错
+fn apply_plot_filter_to_sources(sources: &mut [ImportSource], options: &ShpToTxtOptions) -> Result<(), String> {
+    if let Some(set) = plot_filter_set(options) {
+        for (si, src) in sources.iter_mut().enumerate() {
+            src.plots.retain(|p| set.contains(&(si, p.index_in_source)));
         }
-        all_plots.extend(src.plots.into_iter().map(|p| p.plot));
+        let total: usize = sources.iter().map(|s| s.plots.len()).sum();
+        if total == 0 {
+            return Err("筛选结果为空，请调整筛选条件".to_string());
+        }
     }
-    Ok(all_plots)
+    Ok(())
 }
 
 /// 把单个 SHP 文件解析为一个 ImportSource（保留每个地块的完整属性）
@@ -1569,36 +1503,16 @@ fn single_shp_to_source(
         });
     }
 
+    let (source_zone, source_band) = authoritative_zone_band(&info.crs_info);
     Ok(ImportSource {
         stem,
         plots,
         crs_info: info.crs_info.clone(),
         field_aliases: HashMap::new(),
         field_names: info.field_names.clone(),
+        source_zone,
+        source_band,
     })
-}
-
-fn gdb_features_to_plots(
-    info: &gdb::GdbFileInfo,
-    field_mapping: &FieldMapping,
-    options: &ShpToTxtOptions,
-    proj_cfg: Option<&ProjectionConfig>,
-    selected_layers: Option<&[String]>,
-) -> Result<Vec<txt::PlotData>, String> {
-    let sources = gdb_to_sources(info, field_mapping, options, proj_cfg, selected_layers)?;
-    let filter = plot_filter_set(options);
-    let mut all_plots = Vec::new();
-    for (si, src) in sources.into_iter().enumerate() {
-        for p in src.plots {
-            if let Some(f) = &filter {
-                if !f.contains(&(si, p.index_in_source)) {
-                    continue;
-                }
-            }
-            all_plots.push(p.plot);
-        }
-    }
-    Ok(all_plots)
 }
 
 /// 把 GDB 解析为多个 ImportSource（每个要素类一个源）
@@ -1697,6 +1611,11 @@ fn gdb_to_sources(
             }
         }
         let field_names = layer_info.map(|li| li.field_names.clone()).unwrap_or_default();
+        // 本图层自身 CRS（多图层可能各不相同），权威带号从本层取
+        let layer_crs: HashMap<String, String> = layer_info
+            .map(|li| li.crs_info.clone())
+            .filter(|m| !m.is_empty())
+            .unwrap_or_else(|| gdb_crs_info.clone());
         // GDB 层按 OBJECTID 升序排序（属性表展示顺序 = 导出顺序），重排序号保持口径一致
         plots.sort_by(|a, b| {
             let ka = a.attributes.get("OBJECTID").and_then(|v| v.trim().parse::<i64>().ok());
@@ -1709,13 +1628,28 @@ fn gdb_to_sources(
         for (i, pws) in plots.iter_mut().enumerate() {
             pws.index_in_source = i;
         }
+        let (source_zone, source_band) = authoritative_zone_band(&layer_crs);
         sources.push(ImportSource {
             stem,
             plots,
-            crs_info: gdb_crs_info.clone(),
+            crs_info: layer_crs,
             field_aliases: aliases,
             field_names,
+            source_zone,
+            source_band,
         });
+    }
+
+    // 用户勾选顺序 = 「导入软件的第一个图层」语义：src 带号推断/表头自动填都跟
+    // 随勾选的第一个图层，因此 sources 按勾选顺序重排（未列出的保持库内顺序垫底）
+    if let Some(sel) = selected_layers {
+        if !sel.is_empty() {
+            sources.sort_by_key(|s| {
+                sel.iter()
+                    .position(|n| s.stem.ends_with(&format!("_{}", n)))
+                    .unwrap_or(usize::MAX)
+            });
+        }
     }
 
     Ok(sources)
@@ -2035,6 +1969,57 @@ fn resolve_columns_map(
         })
         .collect()
 }
+/// TXT 分带值规范化："3"/"6"/"3°带"/"6°带" → "3"/"6"；无法识别返回空。
+/// TXT→SHP 写 PRJ 时 band 必须是数字（write_prj 解析失败会默认 3°，"6°带"直传会错）。
+fn normalized_band_str(txt_band: Option<&str>, header_band: &str) -> String {
+    let norm = |s: &str| {
+        let t = s.trim().trim_end_matches("°带").trim();
+        if t == "3" || t == "6" { t.to_string() } else { String::new() }
+    };
+    if let Some(t) = txt_band {
+        let n = norm(t);
+        if !n.is_empty() {
+            return n;
+        }
+    }
+    let n = norm(header_band);
+    if n.is_empty() { "3".to_string() } else { n }
+}
+
+/// TXT→SHP 带号判定：TXT 声明 > 坐标前缀推断 > 表单值 > None（跳过）。
+/// 37 带东侧点 x 溢出到下一百万块（前缀≠带号），声明值由导出方按数据真实带号写定视为权威。
+fn resolve_txt_zone(
+    extracted: Option<i32>,
+    declared: Option<&str>,
+    header_band: &str,
+    stem_for_log: &str,
+    warnings: &mut Vec<String>,
+) -> Option<String> {
+    let declared_zone = declared
+        .and_then(|d| d.trim().parse::<i32>().ok())
+        .filter(|z| (1..=60).contains(z));
+    match declared_zone {
+        Some(dz) => {
+            if let Some(z) = extracted {
+                if z as i32 != dz {
+                    warnings.push(format!(
+                        "{}：声明带号{}与坐标前缀推断{}不一致（东侧溢出属正常现象），以声明为准",
+                        stem_for_log, dz, z
+                    ));
+                }
+            }
+            Some(dz.to_string())
+        }
+        None => {
+            if let Some(z) = extracted {
+                return Some(z.to_string());
+            }
+            let fz = header_band.trim();
+            if fz.is_empty() { None } else { Some(fz.to_string()) }
+        }
+    }
+}
+
 /// 从坐标点列表中提取高斯-克吕格带号。
 /// 扫描所有地块的所有点，找第一个整数部分为 8 位的 X 值（东坐标），
 /// 取其前两位作为带号，若前两位落在 13-45 区间则返回，否则继续扫描。

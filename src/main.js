@@ -278,6 +278,7 @@ window.importGdb = async function () {
     if (result.xmax != null) crsWithExtent.xmax = result.xmax;
     if (result.ymax != null) crsWithExtent.ymax = result.ymax;
     syncOgGate(crsWithExtent);
+    window._gdbImportResult = result; // 供确认图层后取「勾选第一个图层」的权威 CRS
     autoSetOutputDirS(result.path);
     toast(`已读取 GDB: ${result.name}（${result.layers.length} 个面状要素类），请在弹窗中勾选`);
     renderLeftGdbSummary();     // 左栏先显示"待选择"占位行
@@ -323,8 +324,35 @@ window.confirmGdbSelect = function () {
   }
   // 文件名字段下拉按所选图层的字段并集刷新
   fillFilenameFieldOptions(selectedLayers.flatMap((ln) => gdbLayers.find((l) => l.name === ln)?.field_names || []));
+  // 表头 CRS 行按「用户勾选的第一个图层」自动填写（导入的第一个 = 勾选的第一个）
+  const firstSelLayer = gdbLayers.find((l) => l.name === selectedLayers[0]);
+  headerManual = {}; // 新数据导入：CRS 相关行以数据为准覆盖旧值
+  if (firstSelLayer?.crs_info && Object.keys(firstSelLayer.crs_info).length) {
+    autoFillHeader(firstSelLayer.crs_info);
+  }
+  // 所选图层间坐标系不一致 → 明确警告
+  const zones = selectedLayers
+    .map((ln) => {
+      const l = gdbLayers.find((x) => x.name === ln);
+      const z = l?.crs_info?.z || (l?.crs_info?.cm ? `CM${Math.round(parseFloat(l.crs_info.cm))}` : "?");
+      return `${ln}(${z})`;
+    });
+  const uniq = [...new Set(zones)];
+  if (uniq.length > 1) {
+    toast(`⚠ 所选图层坐标系不一致：${zones.join("、")}，请分开处理`);
+  }
   resetFilterOnImport();
   window.closeGdbSelectModal();
+  // 识别行/带号前缀智能默认改随「勾选的第一个图层」的权威 CRS
+  if (window._gdbImportResult && firstSelLayer?.crs_info) {
+    const selCrs = { ...firstSelLayer.crs_info };
+    const r = window._gdbImportResult;
+    if (r.xmin != null) selCrs.xmin = r.xmin;
+    if (r.ymin != null) selCrs.ymin = r.ymin;
+    if (r.xmax != null) selCrs.xmax = r.xmax;
+    if (r.ymax != null) selCrs.ymax = r.ymax;
+    syncOgGate(selCrs);
+  }
   renderLeftGdbSummary();
   toast(`已选定 ${selectedLayers.length}/${gdbLayers.length} 个要素类`);
   autoEnableProjPrefix();
@@ -1026,6 +1054,7 @@ function processImport() {
     if (first.ymin != null) first.crs_info.ymin = first.ymin;
     if (first.xmax != null) first.crs_info.xmax = first.xmax;
     if (first.ymax != null) first.crs_info.ymax = first.ymax;
+    headerManual = {}; // 新数据导入：CRS 相关行以数据为准
     autoFillHeader(first.crs_info);
   }
   syncOgGate(first.crs_info);

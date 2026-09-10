@@ -95,6 +95,7 @@ index.html (CSS 内联, Google Fonts CDN)
 - `proj_mode` 动态投影模式：`"keep"`（不投影，仍可单独调带号前缀）/ `"A"`（大地→3°投影）/ `"B"`（大地→6°投影）/ `"D"`（投影→大地，逆投影）/ `"F"`（3°→6°换带）/ `"G"`（6°→3°换带）/ `"H"`（同分带不同带号换带，如 3°带 38→39，目标分带沿用源分带）。`"C"` 已废除（v3.2）——同带调前缀改为 keep + `proj_zone`：4号卡片「带号前缀」开关与动态投影**正交**，keep 且 proj_zone 有值时 `adjust_zone_prefix`（convert.rs）单独加/剥前缀，不点亮动态投影开关；前端 `inferProjMode` 同带同号返回 null 由 `applyProjMode` 拦截 toast
 - `proj_zone`: 用户填的带号（null=自动推算），`proj_no_prefix`: 不含带号前缀（自然值）
 - `output_mode`（一对一/按地块拆分/全合并）、`filename_field`（拆分模式文件名字段，v3.4 起下拉动态列出全部导入字段）
+- **TXT→SHP 带号判定（v4.2）**：`resolve_txt_zone`——TXT 声明 > 坐标前缀推断 > 表单值（旧「提取值优先」在 37 带东侧溢出数据上会覆盖正确声明）；分带经 `normalized_band_str` 规范化（"6°带"→"6"，write_prj 数字解析失败会默认 3°）
 - `plot_filter`（v3.4）：`Option<Vec<[usize;2]>>` 命中 `(源下标,源内序号)` 列表；前端属性表筛选求值后注入（`getOptions`），筛 0 条后端报「筛选结果为空」。测试 `cargo test --test plot_table_filter_test`
 - 前端 `getOptions()` 收集 → `applyProjMode()` 写入全局变量 → `updatePreview()`/`runShpToTxt()` 发送 IPC
 
@@ -268,7 +269,7 @@ SHP 存储 (X, Y) = (东坐标, 北坐标)。TXT 存储 (Y, X) = (北坐标, 东
 5. **G 模式 (6°→3° 换带)**：`gauss_kruger_inverse` 对 6° 带源坐标的前缀剥离假定 3° 带号（`proj-core` 无 6° 带 EPSG 代码），proj-core + classic 均可能失败。测试标记 `#[ignore]`
 6. **`_projBand` 残骸已清理**；`om` 复选框残骸未清理（非动态投影范围）
 7. **TXT→SHP 文件名字段硬编码**（convert.rs ~1078）：split 模式文件名只认 `DKMC`→name / `FID`→fid 字面量，`DKBH` 等其余字段静默回退序号；t 模式 `#t_filename_field` 仍是固定选项（v3.4 只改了 s 模式 `#filename_field` 动态化）
-8. **动态投影多源带号限制**（既有）：`apply_dynamic_projection_to_sources`/`_to_plots` 的 src_zone 取首个源首坐标推断——多源不同带号时 F/G/H 换带会统一按第一个源算；地图视图（plot_table_geo）不受影响（自做逐源推 CM）。修复需逐源独立 transform，牵涉预览/导出双路径一致性，暂缓
+8. **动态投影多源带号限制**（v4.2 部分修复）：src_zone 现在**权威带号优先**（ImportSource.source_zone ← PRJ/srs_wkt 的 z/cm），坐标前缀推断降为无元数据兜底；`adjust_zone_prefix` 剥前缀同样按声明带号带可用性守卫（剥出结果须落在 -100km~+1_100km 自然区间，否则 x 已是自然值）。**仍存在的限制**：多源不同带号混选时 transform 仍统一用第一个源的 src/dst（用户勾选顺序 = sources 顺序，gdb_to_sources 按 selected_layers 重排）；`classic_inverse` 回退对溢出形态（剥后 ≥1e6）计算不正确（proj-core 正常时不触发）。预览与导出已合并同一条管线（`apply_dynamic_projection_to_plots`/`shp_files_to_plots`/`gdb_features_to_plots` 已删）
 
 ## 依赖
 

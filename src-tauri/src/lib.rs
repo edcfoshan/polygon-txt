@@ -64,6 +64,9 @@ struct GdbLayerItem {
     /// 字段别名 (字段名, 别名)，取自图层字段区
     #[serde(default)]
     field_aliases: Vec<(String, String)>,
+    /// 本图层自身坐标系（srs_wkt 解析）
+    #[serde(default)]
+    crs_info: HashMap<String, String>,
     num_features: usize,
     geometry_type: String,
 }
@@ -388,6 +391,12 @@ fn import_gdb(app: tauri::AppHandle) -> Result<GdbImportResult, String> {
             name: l.name.clone(),
             field_names: l.field_names.clone(),
             field_aliases: l.field_aliases.clone(),
+            crs_info: l
+                .srs_wkt
+                .as_deref()
+                .filter(|w| !w.trim().is_empty())
+                .map(shp::parse_prj_text)
+                .unwrap_or_default(),
             num_features: l.num_features.max(0) as usize,
             geometry_type: l.geometry_type.clone(),
         })

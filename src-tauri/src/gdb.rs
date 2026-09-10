@@ -27,6 +27,9 @@ pub struct GdbLayerInfo {
     /// 字段别名 (字段名, 别名)，取自图层字段区（ArcGIS 里设置的中文名），无别名的字段不收
     #[serde(default)]
     pub field_aliases: Vec<(String, String)>,
+    /// 本图层自身坐标系（srs_wkt 解析，键 c/j/u/b/z/cm）——多图层 CRS 可能不同
+    #[serde(default)]
+    pub crs_info: HashMap<String, String>,
     pub num_features: usize,
     pub geometry_type: String,
 }
@@ -261,6 +264,11 @@ fn read_gdb_via_library(
             Ok(layer) => {
                 let schema = layer.schema();
                 let (table_wkt, field_aliases, oid_name) = read_table_schema_meta(path, info);
+                let layer_crs: HashMap<String, String> = table_wkt
+                    .as_deref()
+                    .filter(|w| !w.trim().is_empty())
+                    .map(crate::shp::parse_prj_text)
+                    .unwrap_or_default();
                 if srs_wkt.is_none() {
                     srs_wkt = table_wkt;
                 }
@@ -356,6 +364,7 @@ fn read_gdb_via_library(
                     name: info.name.clone(),
                     field_names: field_names.clone(),
                     field_aliases,
+                    crs_info: layer_crs,
                     num_features: features.len(),
                     geometry_type: geom_type.to_string(),
                 });
@@ -410,13 +419,19 @@ fn read_gdb_fallback(path: &Path, only_layers: Option<&[String]>) -> Result<GdbF
         let manual = if layer_selected {
             read_layer_manual(path, entry)
         } else {
-            // 轻量头读取：要素数/字段/别名照常拿，不解码要素
+            // 轻量头读取：要素数/字段/别名/本层 CRS 照常拿，不解码要素
             let head = read_layer_catalog_head(path, entry);
             Ok((
                 GdbLayerInfo {
                     name: head.name.clone(),
                     field_names: head.field_names.clone(),
                     field_aliases: head.field_aliases.clone(),
+                    crs_info: head
+                        .srs_wkt
+                        .as_deref()
+                        .filter(|w| !w.trim().is_empty())
+                        .map(crate::shp::parse_prj_text)
+                        .unwrap_or_default(),
                     num_features: head.num_features.max(0) as usize,
                     geometry_type: head.geometry_type.clone(),
                 },
@@ -571,15 +586,21 @@ fn read_layer_manual(
 
     let geom_type = infer_geom_type(&features);
 
+    let layer_wkt = schema_srs_wkt(&schema.fields);
     let layer_info = GdbLayerInfo {
         name: entry.name.clone(),
         field_names: field_names.clone(),
         field_aliases: field_aliases_of(&schema.fields),
+        crs_info: layer_wkt
+            .as_deref()
+            .filter(|w| !w.trim().is_empty())
+            .map(crate::shp::parse_prj_text)
+            .unwrap_or_default(),
         num_features: features.len(),
         geometry_type: geom_type.to_string(),
     };
 
-    Ok((layer_info, features, field_names, schema_srs_wkt(&schema.fields)))
+    Ok((layer_info, features, field_names, layer_wkt))
 }
 
 // ─── Z/M 标志剥离（ArcGIS Pro 兼容） ───

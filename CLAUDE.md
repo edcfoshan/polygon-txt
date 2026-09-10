@@ -33,6 +33,7 @@ cargo test --test dynamic_projection_pipeline_test # 动态投影管线测试（
 cargo test --test advanced_fields_test # 高级字段模式（模板解析/无列表行输出/往返/TXT→SHP FIELDn）
 cargo test --test realdata_attr_test  # 真实业务数据属性回归
 cargo test --test plot_table_filter_test # 属性表/地图结构化 IPC + plot_filter 筛选（三模式）
+cargo test --test roundtrip_extent_test # 37 带溢出数据往返范围一致性（keep/前缀/换带 F/H）
 cargo test --test debug_output_test  # 调试用：从 TXT 生成 SHP/GDB 输出验证
 cargo run --bin diag_read_gdb -- [gdb路径]  # 诊断：打印 GDB 图层/首尾坐标点，对照 arcpy（不传参走默认路径）
 ```
@@ -152,17 +153,21 @@ SHP 存储 (X, Y) = (东坐标, 北坐标)。TXT 存储 (Y, X) = (北坐标, 东
 - D 模式（逆投影）：`x=northing, y=easting`，调用 `gauss_kruger_inverse(y, x, cm)` 返回 `(lon, lat)`
 - **预览与转换路径必须一致**，否则预览坐标与输出 TXT 不对齐
 
-### 预览坐标管线（关键）
+### 预览/导出坐标管线（v4.2 起单管线，关键）
 
-`shp_to_txt_preview` → `shp_files_to_plots` / `gdb_features_to_plots`（og 投影）→ `apply_dynamic_projection_to_plots`（动态投影）→ `txt::generate_txt`
+预览与导出**共用同一条管线**（旧双路径 `apply_dynamic_projection_to_plots`/`shp_files_to_plots`/`gdb_features_to_plots` 已删）：
 
-**陷阱**：`PlotData` 同时有 `coords`（扁平坐标列表）和 `rings`（结构化环坐标）。`generate_txt` 优先使用 `rings`（非空时）。**两个投影函数都必须同时更新 `coords` 和 `rings`**：
-- `apply_dynamic_projection_to_plots`（预览路径）
-- `transform_sources_dynamic`（导出路径，`apply_dynamic_projection_to_sources` 调用）
+```
+collect_import_sources（og 投影）→ apply_plot_filter_to_sources（地块筛选）
+→ apply_dynamic_projection_to_sources（动态投影/前缀，mutates coords+rings+header 同步）
+→ 扁平化 plots → txt::generate_txt
+```
 
-漏更 `rings` 会导致：预览正确（_to_plots 更新了 rings）但**导出用原始坐标**（transform_sources_dynamic 漏 rings，generate_txt 用原始 rings）——这种"预览对导出错"的 bug 极难发现，曾导致 39→40 换带导出仍 39 带的问题。
+预览（`shp_to_txt_preview`）只是把结果截 2000 行返回文本，不做独立处理——预览与导出的字节级一致由"同一条代码路径"从源头保证。
 
-**src_zone 从坐标推断**：`apply_dynamic_projection_to_sources`/`_to_plots` 用 `infer_zone_from_x(plots[0].coords[0].1)` 从**原始坐标**推断源带号（X 含带号前缀时），**不依赖 `header.带号`**（apply 后 header 被改成目标值，用它当 src 会 no-op 或算错）。前端 `applyProjMode` 的 `srcZone`/`inputBand` 同理：优先 `currentCrsInfo.z/.b`，空则从 `xmax` 推断。
+**残留注意**：`PlotData` 同时有 `coords`（扁平副本）和 `rings`（结构化环坐标），`generate_txt` 优先 `rings`——`transform_sources_dynamic` 两者都更新，新增变换逻辑时也必须两者同步，漏一会导致属性表/地图（走 rings）与 TXT 坐标行（也走 rings）之外的中间消费者错位。
+
+**src_zone 权威优先（v4.2）**：`apply_dynamic_projection_to_sources` 的 src_zone 取 `sources.first().source_zone`（PRJ/srs_wkt 声明，`authoritative_zone_band` 解析）→ 坐标前缀推断 → `header.带号`。坐标前缀推断在「37 带东侧溢出」（x 以 38 开头）时不可靠，只作无元数据兜底。前端 `applyProjMode` 的 `srcZone`/`inputBand` 同理：优先 `currentCrsInfo.z/.b`，空则从 `xmax` 推断。
 
 **WGS84 EPSG 借用**：`Ellipsoid::WGS84` 无标准中国 GK EPSG，`proj_epsg_3degree` 返回 CGCS2000 的 EPSG（4513+），`geo_epsg` 返回 4490（非 4326）——因 proj-core 跨基准（4326→4524）无转换路径；椭球差异 <mm 可忽略。
 
@@ -257,8 +262,9 @@ SHP 存储 (X, Y) = (东坐标, 北坐标)。TXT 存储 (Y, X) = (北坐标, 东
 - **启动静默自愈（v3.3）**：`src-tauri/src/selfheal.rs` 每次 release 启动 2s 后静默执行：删残留安装目录（`polygon-txt` / 中文目录，仅当 ≠ 当前 exe 目录且含主 exe）、清残留 `Uninstall\polygon-txt` 键、修复指向旧目录的 .lnk（只修不建）。debug_assertions（dev）下跳过防误删。日志：`app_log_dir/selfheal.log`
 - **更新弹窗两勾选项（v3.3）**：`#updFixLnk` 创建桌面快捷方式（默认勾，存 `tg_upd_fixlnk`，更新后 `ensure_shortcuts` 修+补建）；`#updKeepSave` 保留安装包到桌面（默认不勾，存 `tg_upd_keepsave`，绕过插件自管下载 → `download_and_run_setup`（reqwest 阻塞流式 + minisign 验签 + explorer 定位 + `/S /R` 静默安装）→ 前端 `exitApp()`）。更新完成重启走 `restart_into_updated_app`（spawn 新装目录 exe）替代 `relaunch()`——漂移修复场景 relaunch 会重启旧目录旧 exe
 - **`gen-latest-json.js` 多 `.sig` 陷阱**：脚本扫 `src-tauri/target/release/bundle/nsis/*.sig` 取第一个。若该目录残留旧版本 `.sig`，会误把旧签名嵌入 latest.json（下载 URL 是新版、签名是旧版 → 自动更新验签必然失败）。发版前先删该目录下旧版本的 `*-setup.exe` + `.sig`
+- **latest.json notes 竞态（v4.2 增 finalize-notes job）**：各平台 job 收尾时 tauri-action 合并平台条目并重传 latest.json，notes 会变成发布页模板正文，覆盖 Windows job 的 CHANGELOG 提取版。`finalize-notes` job（needs: release）在全部平台完成后用 extract-changelog 输出最终修正。CI 发版后若发现 notes 是模板，先查该 job 是否执行
 - **jsDelivr `@master` 缓存滞后**：push 后 `cdn.jsdelivr.net/.../@master/latest.json` 可能数分钟~更久仍返回旧版本，`purge.jsdelivr.net` 不一定立即生效且有 throttle。updater 第一端点是 jsDelivr、拿到旧 JSON 就不会 fallback 到 GitHub 端点。发版当天必须复验 `@master` 已切到新版本号
-- **发版必须**：`scripts/build-signed.ps1`（交互输密码签名构建）+ 删旧 nsis `.sig` 后 `node scripts/gen-latest-json.js --tag vX.Y`（生成 latest.json）+ 提交进仓库根目录并上传 Release。完整流程见 [docs/RELEASE.md](docs/RELEASE.md) 和 `release` skill。
+- **发版必须**：CI 流程（推 tag 自动构建三平台+签名+Release+finalize-notes 修正 notes）为主；本地只需提交推送 + 打 tag。如需本地签名构建才用 `scripts/build-signed.ps1`（交互输密码）。CI 完成后本地收尾：同步 Release 的 latest.json 到仓库根 + 提交推送（jsDelivr 源）+ purge jsDelivr 复验 notes/version + 下载三端中文命名安装包与便携版入 release 目录。完整流程见 [docs/RELEASE.md](docs/RELEASE.md) 和 `release` skill。
 
 ## 已知问题
 
@@ -277,6 +283,6 @@ SHP 存储 (X, Y) = (东坐标, 北坐标)。TXT 存储 (Y, X) = (北坐标, 东
 `@tauri-apps/api ^2`、`@tauri-apps/plugin-dialog ^2`、`@tauri-apps/plugin-shell ^2`、`@tauri-apps/plugin-updater ^2`、`@tauri-apps/plugin-process ^2`、`vite ^6`、`vite-plugin-singlefile ^2`、`@tauri-apps/cli ^2`
 
 ### Rust（Cargo.toml）
-`tauri 2`、`tauri-plugin-dialog/fs/shell/updater/process 2`、`shapefile 0.8`、`dbase 0.3`、`geonative-core/filegdb/shapefile 0.2`、`proj-core 0.9`（高斯-克吕格投影）、`chrono 0.4`、`encoding_rs 0.8`、`geo-types 0.7`、`serde 1`、`serde_json 1`、`tempfile 3`
+`tauri 2`、`tauri-plugin-dialog/fs/shell/updater/process 2`、`shapefile 0.8`、`dbase 0.3`、`geonative-core/filegdb/shapefile 0.2`、`proj-core 0.9`（高斯-克吕格投影）、`chrono 0.4`、`encoding_rs 0.8`、`geo-types 0.7`、`serde 1`、`serde_json 1`、`tempfile 3`、`base64 0.22` + `minisign-verify 0.2`（全平台依赖，selfheal 留包验签/签名规范化用，勿移入 cfg(windows) 段——平台无关代码引用会编译失败）、`reqwest 0.12`（cfg(windows)，留包下载）
 
 **GPKG 已移除**（v1.1+）：读取仅 SHP/GDB，输出仅 SHP。`gpkg.rs`/`smoke.rs`/`rusqlite` 依赖已删除。

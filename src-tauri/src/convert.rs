@@ -66,6 +66,23 @@ impl HeaderConfig {
     }
 }
 
+/// 部备案模板导出配置（前端「导出TXT(部备案)」按钮注入；标准 TXT 导出为 None）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BubeianOptions {
+    /// 埋桩（界址点类型）来源字段名；空 = 不读字段，全部用 stake_default
+    #[serde(default)]
+    pub stake_field: String,
+    /// 字段未选/缺失/值为空时的兜底值
+    #[serde(default)]
+    pub stake_default: String,
+    /// 距离单位："m"（米）/"km"（千米）/"cm"（厘米）
+    #[serde(default)]
+    pub distance_unit: String,
+    /// 距离小数位
+    #[serde(default)]
+    pub distance_decimals: u32,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ShpToTxtOptions {
     /// XY 坐标标反：勾选时输出 (X,Y) 顺序（东坐标在前）；默认 (Y,X) 北坐标在前（标准界址点格式）
@@ -104,6 +121,9 @@ pub struct ShpToTxtOptions {
     /// 前端由属性表筛选语句求值后下发，预览与导出共用（所见即所得）。
     #[serde(default)]
     pub plot_filter: Option<Vec<[usize; 2]>>,
+    /// 部备案模板模式：Some 时坐标行追加「距离、界址点类型」两列
+    #[serde(default)]
+    pub bubeian: Option<BubeianOptions>,
 }
 
 fn default_zone_type() -> u8 {
@@ -215,6 +235,32 @@ fn header_with_meter_unit(header_cfg: &HeaderConfig) -> HeaderConfig {
         }
     }
     h
+}
+
+/// BubeianOptions → txt 层坐标行附加列配置（距离单位/小数位；埋桩已随地块解析进 PlotData.stake）
+fn bubeian_spec(b: &BubeianOptions) -> txt::BubeianSpec {
+    txt::BubeianSpec {
+        distance_unit: b.distance_unit.clone(),
+        distance_decimals: b.distance_decimals,
+    }
+}
+
+/// 部备案模式：解析每个地块的界址点类型（埋桩）——字段值优先，未选字段/缺失/空值用手动兜底值
+fn apply_bubeian_stakes(plots: &mut [PlotWithSource], options: &ShpToTxtOptions) {
+    let Some(b) = &options.bubeian else { return };
+    let field = b.stake_field.trim();
+    for pws in plots.iter_mut() {
+        let mut v = if field.is_empty() {
+            String::new()
+        } else {
+            pws.attributes.get(field).cloned().unwrap_or_default()
+        };
+        v = v.trim().to_string();
+        if v.is_empty() {
+            v = b.stake_default.clone();
+        }
+        pws.plot.stake = v;
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -377,12 +423,13 @@ pub fn shp_to_txt_preview(
         .iter()
         .flat_map(|s| s.plots.iter().map(|p| p.plot.clone()))
         .collect();
-    let result = txt::generate_txt(
+    let result = txt::generate_txt_ex(
         &header_for_txt.project_info,
         &header_for_txt.attrs,
         &plots,
         options.oj,
         options.oc,
+        options.bubeian.as_ref().map(bubeian_spec).as_ref(),
     );
 
     Ok(result.lines().take(2000).collect::<Vec<_>>().join("\n"))
@@ -902,12 +949,13 @@ fn convert_one_to_one(
 
     for src in &sources {
         let plots: Vec<txt::PlotData> = src.plots.iter().map(|p| p.plot.clone()).collect();
-        let txt_content = txt::generate_txt(
+        let txt_content = txt::generate_txt_ex(
             &header_cfg.project_info,
             &header_cfg.attrs,
             &plots,
             options.oj,
             options.oc,
+            options.bubeian.as_ref().map(bubeian_spec).as_ref(),
         );
         let (final_name, bumped) = allocate_unique_name(&src.stem, &mut used_names);
         if bumped {
@@ -987,12 +1035,13 @@ fn convert_split_by_plot(
                 conflict_count += 1;
             }
 
-            let txt_content = txt::generate_txt(
+            let txt_content = txt::generate_txt_ex(
                 &header_cfg.project_info,
                 &header_cfg.attrs,
                 &[p.plot.clone()],
                 options.oj,
                 options.oc,
+                options.bubeian.as_ref().map(bubeian_spec).as_ref(),
             );
             let txt_path = subdir.join(format!("{}.txt", final_name));
             std::fs::write(&txt_path, &txt_content)
@@ -1033,12 +1082,13 @@ fn convert_merge_all(
 
     let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S").to_string();
     let filename = format!("merged_output_{}.txt", timestamp);
-    let txt_content = txt::generate_txt(
+    let txt_content = txt::generate_txt_ex(
         &header_cfg.project_info,
         &header_cfg.attrs,
         &all_plots,
         options.oj,
         options.oc,
+        options.bubeian.as_ref().map(bubeian_spec).as_ref(),
     );
     let txt_path = output_dir.join(&filename);
     std::fs::write(&txt_path, &txt_content).map_err(|e| format!("写 TXT 失败: {}", e))?;
@@ -1503,6 +1553,8 @@ fn single_shp_to_source(
         });
     }
 
+    apply_bubeian_stakes(&mut plots, options);
+
     let (source_zone, source_band) = authoritative_zone_band(&info.crs_info);
     Ok(ImportSource {
         stem,
@@ -1628,6 +1680,7 @@ fn gdb_to_sources(
         for (i, pws) in plots.iter_mut().enumerate() {
             pws.index_in_source = i;
         }
+        apply_bubeian_stakes(&mut plots, options);
         let (source_zone, source_band) = authoritative_zone_band(&layer_crs);
         sources.push(ImportSource {
             stem,
@@ -1710,6 +1763,8 @@ fn build_plot_data(
         coords,
         rings,
         fields,
+        // 埋桩（界址点类型）由 apply_bubeian_stakes 在源构建阶段按字段值/兜底值回填
+        stake: String::new(),
     }
 }
 
@@ -2060,6 +2115,7 @@ mod tests {
             coords,
             rings: Vec::new(),
             fields: Vec::new(),
+            stake: String::new(),
         }
     }
 
@@ -2120,5 +2176,6 @@ pub fn __plot_with_coords(c: Vec<(f64, f64)>) -> crate::txt::PlotData {
         coords: c,
         rings: vec![],
         fields: Vec::new(),
+        stake: String::new(),
     }
 }

@@ -47,6 +47,8 @@ Key: Vite inlines all JS into a single HTML file. The built `dist/index.html` co
 ### Dual-Mode Layout
 `data-mode="s"` (面→TXT, 3 columns: 260+260+360) vs `data-mode="t"` (TXT→面, 2 columns: 300+flex). CSS toggles panels.
 
+**v4.3 重排**：左栏 = ①导入数据 + ②输出与选项（两卡固定展开，无折叠箭头）；中栏 = 页签切换（投影 / 表头 / 字段 / 界址点，默认「字段」），`.mid-tabs`/`.mid-pane` 驱动；右栏 = 预览（TXT 预览/属性表/地图）不变。
+
 Layout is responsive: `.main` uses CSS grid with `minmax(lower-bound, fr-ratio)`. Columns scale proportionally when the window is resized; lower bounds prevent field overflow at `minWidth:800`.
 
 ## Build & Run
@@ -64,6 +66,7 @@ cd src-tauri; cargo build --release  # Rust only (no frontend embed, for compile
 cd src-tauri
 cargo test --test integration_test          # 17 integration tests (SHP/DBF/PRJ/TXT/GDB round-trips + 三模式输出)
 cargo test --test debug_output_test         # Debug: generate SHP/GDB output from test TXT
+cargo test --test bubeian_txt_test          # 部备案模板 TXT（6 列坐标行：距离+埋桩）
 cargo test                                   # All tests
 ```
 
@@ -88,6 +91,7 @@ src-tauri/
   tests/
     integration_test.rs   ← 17 integration tests（SHP/DBF/PRJ/TXT/GDB 往返 + 三模式输出）
     debug_output_test.rs  ← Debug output generation tests
+    bubeian_txt_test.rs   ← 部备案模板 TXT（6 列坐标行：距离/埋桩/闭合 0/单位换算）
   src/
     lib.rs            ← Tauri IPC commands + serde types
     main.rs           ← Entry point
@@ -103,6 +107,7 @@ src-tauri/
 - **一对一 (`one_to_one`)**: 每个导入源（SHP 文件 / GDB 要素类）输出一个 TXT。同名冲突自动追加 `_2/_3`
 - **按地块拆分 (`split_by_plot`)**: 按源建子目录 `output_dir/{source_stem}/`，内部每个 feature 一个 TXT。文件名可选 DKMC/DKBH/序号/FID；字段缺失自动用序号兜底，重名追加序号，非法字符替换为 `_`
 - **全合并 (`merge_all`)**: 所有源所有地块合并为 `merged_output_YYYYMMDD_HHMMSS.txt`（本地时间秒级时间戳）
+- **部备案TXT (`options.bubeian`, v4.3)**: 独立按钮输出部备案备案系统模板——坐标行 6 列 `点号,环号,Y,X,到下一点距离,界址点类型(埋桩)`；距离支持单位 米/千米/厘米 与小数位 0~6；埋桩=字段值优先、空值用手动兜底值；闭合点（与首点重合）距离为 0，开口环末点距离=到首点闭合边长。复用上述三种输出模式与全部转换选项；头部仍由自定义表头驱动（前端提供一键套用部备案默认表头）。测试 `cargo test --test bubeian_txt_test`
 
 ## Key Gotchas
 

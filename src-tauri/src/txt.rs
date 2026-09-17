@@ -56,6 +56,20 @@ pub struct PlotData {
     /// 空 = 旧 8 字段标准格式（元数据行走固定槽位，字节级兼容）。
     #[serde(default)]
     pub fields: Vec<(String, String)>,
+    /// 部备案模板：界址点类型（埋桩）。导入时按「字段值优先，空值用手动兜底值」
+    /// 解析为全地块统一值；仅 bubeian 导出走 6 列坐标行时输出。
+    #[serde(default)]
+    pub stake: String,
+}
+
+/// 部备案模板坐标行附加列配置（第 5 列距离 + 第 6 列界址点类型）。
+/// `generate_txt` 不带此参数 = 标准 4 列输出，行为不变。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BubeianSpec {
+    /// 距离单位："m"（米，原值）/"km"（千米，÷1000）/"cm"（厘米，×100）
+    pub distance_unit: String,
+    /// 距离小数位（>6 按 6 处理）
+    pub distance_decimals: u32,
 }
 
 /// TXT 解析结果
@@ -189,6 +203,7 @@ pub fn parse_txt(text: &str) -> TxtParseResult {
                             coords: Vec::new(),
                             rings: Vec::new(),
                             fields,
+                            stake: String::new(),
                         }
                     } else {
                         // 旧 8 字段标准格式：按位置切分
@@ -204,6 +219,7 @@ pub fn parse_txt(text: &str) -> TxtParseResult {
                             coords: Vec::new(),
                             rings: Vec::new(),
                             fields: Vec::new(),
+                            stake: String::new(),
                         }
                     };
                     current_plot = Some(plot);
@@ -316,13 +332,56 @@ pub fn number_plot_points(plot: &PlotData, oj: bool, oc: bool) -> Vec<(String, u
     out
 }
 
-/// 生成 TXT 内容
+/// 每个界址点到「下一个界址点」的平面直线距离，与 number_plot_points 输出同序。
+/// 环内闭合计：末点连回首点——末点与首点重合（闭合点）时距离自然为 0，
+/// 不重合（开口环）时为末点→首点的闭合边长。
+fn point_distances(plot: &PlotData) -> Vec<f64> {
+    let rings: Vec<&[(f64, f64)]> = if plot.rings.is_empty() {
+        vec![&plot.coords[..]]
+    } else {
+        plot.rings.iter().map(|r| &r.coords[..]).collect()
+    };
+    let mut out = Vec::new();
+    for coords in &rings {
+        let n = coords.len();
+        for i in 0..n {
+            let next = coords[(i + 1) % n];
+            out.push(((next.0 - coords[i].0).powi(2) + (next.1 - coords[i].1).powi(2)).sqrt());
+        }
+    }
+    out
+}
+
+/// 部备案模板距离列的换算系数与格式化
+fn format_distance(d: f64, spec: &BubeianSpec) -> String {
+    let factor = match spec.distance_unit.as_str() {
+        "km" => 0.001,
+        "cm" => 100.0,
+        _ => 1.0,
+    };
+    format!("{:.*}", spec.distance_decimals.min(6) as usize, d * factor)
+}
+
+/// 生成 TXT 内容（标准 4 列坐标行）
 pub fn generate_txt(
     project_info: &str,
     attrs: &[AttrRow],
     features: &[PlotData],
     oj: bool,
     oc: bool,
+) -> String {
+    generate_txt_ex(project_info, attrs, features, oj, oc, None)
+}
+
+/// 生成 TXT 内容。bubeian=Some 时坐标行输出部备案模板 6 列：
+/// `点号,环号,Y,X,到下一点距离,界址点类型`；其余行（头部/元数据）与标准格式一致。
+pub fn generate_txt_ex(
+    project_info: &str,
+    attrs: &[AttrRow],
+    features: &[PlotData],
+    oj: bool,
+    oc: bool,
+    bubeian: Option<&BubeianSpec>,
 ) -> String {
     let mut out = String::new();
 
@@ -387,14 +446,33 @@ pub fn generate_txt(
             )
         };
         out.push_str(&meta);
-        for (label, part_index, y, x) in &numbered {
-            out.push_str(&format!(
-                "{},{},{},{}\n",
-                label,
-                part_index,
-                format_coord(*y, decimals),
-                format_coord(*x, decimals),
-            ));
+        let distances = bubeian.map(|_| point_distances(plot));
+        for (idx, (label, part_index, y, x)) in numbered.iter().enumerate() {
+            match bubeian {
+                Some(spec) => {
+                    // 理论上 distances 与 numbered 同长（同一 rings 口径）；越界兜底 0
+                    let d = distances
+                        .as_ref()
+                        .and_then(|v| v.get(idx).copied())
+                        .unwrap_or(0.0);
+                    out.push_str(&format!(
+                        "{},{},{},{},{},{}\n",
+                        label,
+                        part_index,
+                        format_coord(*y, decimals),
+                        format_coord(*x, decimals),
+                        format_distance(d, spec),
+                        plot.stake,
+                    ));
+                }
+                None => out.push_str(&format!(
+                    "{},{},{},{}\n",
+                    label,
+                    part_index,
+                    format_coord(*y, decimals),
+                    format_coord(*x, decimals),
+                )),
+            }
         }
     }
 
@@ -467,6 +545,7 @@ J1,2,30.000,30.000";
                 },
             ],
             fields: vec![],
+            stake: String::new(),
         }
     }
 
@@ -530,6 +609,7 @@ J1,2,30.000,30.000";
             coords: vec![(1.0, 2.0), (3.0, 4.0), (1.0, 2.0)],
             rings: vec![],
             fields: vec![],
+            stake: String::new(),
         };
         let numbered = number_plot_points(&plot, true, false);
         assert_eq!(numbered.len(), 3);
@@ -563,6 +643,7 @@ J1,2,30.000,30.000";
                 },
             ],
             fields: vec![],
+            stake: String::new(),
         }];
         let attrs = vec![AttrRow {
             k: "精度".into(),
@@ -611,6 +692,7 @@ J1,2,30.000,30.000";
             coords: vec![(10.0, 20.0)],
             rings: vec![],
             fields: vec![],
+            stake: String::new(),
         }];
         let out = generate_txt("", &attrs, &plots, true, false);
 

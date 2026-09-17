@@ -66,7 +66,7 @@ fn opts(output_mode: &str, filter: Option<Vec<[usize; 2]>>) -> convert::ShpToTxt
         proj_mode: "keep".into(),
         proj_zone: None,
         proj_no_prefix: false,
-        plot_filter: filter,
+        plot_filter: filter, bubeian: None,
     }
 }
 

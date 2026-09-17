@@ -1599,6 +1599,8 @@ async function refreshPlotGeo(shpPaths, cfg, opt) {
     const geo = await tauriInvoke("read_plot_table_geo", { shpPaths, sourceType, sourcePath, headerCfg: cfg.h, fieldMapping: cfg.f, options: { ...opt, plot_filter: null }, selectedLayers: sourceType === "gdb" ? selectedLayers : [] });
     TV.setData(geo);
     MV.setData(geo);
+    // 部备案埋桩来源字段下拉随源字段刷新（保留当前选择）
+    bbSetFieldNames(TV.getFieldNames());
     // 字段下拉刷新 + 按当前条件重算筛选（字段列变了命中可能不同）
     QB.setFields(TV.getFieldNames());
     TV.applyFromBuilder(QB.getWhere());
@@ -1638,7 +1640,8 @@ window.up = async function () {
 }
 
 // ═══ Run ═══
-window.runShpToTxt = async function () {
+// bubeian=true 时走「导出TXT(部备案)」：坐标行追加距离、埋桩两列（其余选项/输出模式共用）
+window.runShpToTxt = async function (bubeian = false) {
   const shpPaths = loadedFiles.map((f) => f.shp_path).filter(Boolean);
   if (!shpPaths.length && !sourcePath) { toast("请先导入 SHP 或 GDB 文件"); return; }
     // GDB 已导入但未勾选任何要素类：拦截，避免后端把"空"当作"全选"
@@ -1656,16 +1659,99 @@ window.runShpToTxt = async function () {
 
   const cfg = getConfig();
   const opt = getOptions();
+  if (bubeian) opt.bubeian = getBubeianOptions();
   const fr = TV.getFilterUids();
   if (fr.error) { toast("筛选条件有误：" + fr.error.message); return; }
   if (fr.empty) { toast("筛选结果为空，请调整筛选条件"); return; }
   try {
     const result = await tauriInvoke("run_shp_to_txt", { shpPaths, sourceType, sourcePath, headerCfg: cfg.h, fieldMapping: cfg.f, options: opt, outputDir: outDir, selectedLayers: sourceType === "gdb" ? selectedLayers : [] });
-    toast("✓ " + result.message);
+    toast("✓ " + (bubeian ? "部备案TXT导出完成：" : "") + result.message);
     const pf = $("pf"); const ps = $("ps");
     if (pf) pf.style.width = "100%";
     if (ps) ps.textContent = "完成";
   } catch (e) { toast("转换失败: " + e); }
+};
+
+// ═══ 部备案TXT（坐标行：点号,环号,Y,X,到下一点距离,界址点类型） ═══
+const BB_CFG_KEY = "bb_cfg";
+function getBubeianOptions() {
+  const dec = parseInt($("bbDec")?.value, 10);
+  return {
+    stake_field: $("bbStakeField")?.value || "",
+    stake_default: $("bbStakeDefault")?.value ?? "埋桩",
+    distance_unit: $("bbUnit")?.value || "m",
+    distance_decimals: Number.isFinite(dec) ? Math.min(6, Math.max(0, dec)) : 3,
+  };
+}
+// 设置持久化（独立于表头/字段映射预设，跨启动保留）
+function bbSavePersist() {
+  try { localStorage.setItem(BB_CFG_KEY, JSON.stringify(getBubeianOptions())); } catch (e) {}
+}
+function bbLoadPersist() {
+  try {
+    const v = JSON.parse(localStorage.getItem(BB_CFG_KEY) || "null");
+    if (!v) return;
+    if ($("bbUnit") && v.distance_unit) $("bbUnit").value = v.distance_unit;
+    if ($("bbDec") && Number.isFinite(parseInt(v.distance_decimals, 10))) $("bbDec").value = String(v.distance_decimals);
+    if ($("bbStakeDefault") && typeof v.stake_default === "string") $("bbStakeDefault").value = v.stake_default;
+  } catch (e) {}
+}
+function bbSyncTag() {
+  const el = $("bbTag");
+  if (!el) return;
+  const o = getBubeianOptions();
+  const unit = { m: "米", km: "千米", cm: "厘米" }[o.distance_unit] || "米";
+  el.textContent = `距离${unit}/${o.distance_decimals}位`;
+}
+// 导入后刷新埋桩来源字段下拉（保留当前选择）
+function bbSetFieldNames(names) {
+  const sel = $("bbStakeField");
+  if (!sel) return;
+  const cur = sel.value;
+  sel.innerHTML = `<option value="">不读字段（手填）</option>`
+    + (names || []).map((n) => `<option value="${escAttr(n)}">${escAttr(n)}</option>`).join("");
+  if (cur && (names || []).includes(cur)) sel.value = cur;
+}
+// 部备案默认表头（模板顺序）：新增 格式版本号/数据产生单位/数据产生日期 三行；
+// 其余沿用当前值（坐标系/带号等已随导入自动推导），缺失时用模板默认
+function applyBubeianHeader() {
+  const cur = collectAttrRows();
+  const get = (k) => cur.find((r) => r.k.trim() === k)?.v ?? "";
+  const now = new Date();
+  const today = `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
+  renderAttrRows([
+    { k: "格式版本号", v: get("格式版本号") },
+    { k: "数据产生单位", v: get("数据产生单位") },
+    { k: "数据产生日期", v: get("数据产生日期") || today },
+    { k: "坐标系", v: get("坐标系") || "2000国家大地坐标系" },
+    { k: "几度分带", v: get("几度分带") || "3" },
+    { k: "投影类型", v: get("投影类型") || "高斯克吕格" },
+    { k: "计量单位", v: get("计量单位") || "米" },
+    { k: "带号", v: get("带号") },
+    { k: "精度", v: get("精度") || "0.001" },
+    { k: "转换参数", v: get("转换参数") || "0,0,0,0,0,0,0" },
+  ]);
+  updatePreview();
+  clearTimeout(autoSaveTimer);
+  flushAutoSave();
+  toast("已套用部备案表头（可在自定义表头中继续编辑）");
+}
+// 部备案预览：同一预览管线，仅注入 bubeian 选项；结果写入 TXT 预览页签
+window.previewBubeian = async function () {
+  const shpPaths = loadedFiles.map((f) => f.shp_path).filter(Boolean);
+  if (!shpPaths.length && !sourcePath) { toast("请先导入 SHP 或 GDB 文件"); return; }
+  const cfg = getConfig();
+  const opt = { ...getOptions(), bubeian: getBubeianOptions() };
+  const spin = $("pvSpin");
+  try {
+    if (spin) spin.classList.add("on");
+    const txt = await tauriInvoke("read_shp_to_txt_preview", { shpPaths, sourceType, sourcePath, headerCfg: cfg.h, fieldMapping: cfg.f, options: opt, selectedLayers: sourceType === "gdb" ? selectedLayers : [] });
+    window.swPvTab("pv");
+    const pv = $("pv");
+    if (pv) pv.textContent = txt || "（无内容）";
+    lastPreviewKey = txt;
+  } catch (e) { toast("部备案预览失败: " + (e?.message || e)); }
+  finally { if (spin) spin.classList.remove("on"); }
 };
 
 window.runTxtToShp = async function () {
@@ -2672,7 +2758,23 @@ async function init() {
     updatePreview();
   });
   bindAttrRowEvents();
+  // 中栏页签：投影 / 表头 / 字段 / 界址点（默认激活「字段」，HTML 里 .on 控制）
+  document.querySelectorAll(".mid-tab").forEach((b) => {
+    b.addEventListener("click", () => {
+      document.querySelectorAll(".mid-tab").forEach((x) => x.classList.toggle("on", x === b));
+      document.querySelectorAll(".mid-pane").forEach((p) => p.classList.toggle("on", p.dataset.mp === b.dataset.mt));
+    });
+  });
   bind("btnRunStt", () => runShpToTxt());
+  bind("btnRunBb", () => runShpToTxt(true));
+  bind("btnBbPreview", () => previewBubeian());
+  bind("btnBbHeader", () => armButton($("btnBbHeader"), "覆盖当前表头？", applyBubeianHeader));
+  ["bbUnit", "bbDec", "bbStakeField", "bbStakeDefault"].forEach((id) => {
+    const el = $(id);
+    if (el) el.addEventListener("change", () => { bbSavePersist(); bbSyncTag(); });
+  });
+  bbLoadPersist();
+  bbSyncTag();
   bind("btnRunTts", () => runTxtToShp());
   bind("btnCloseAbout", () => closeAbout());
   bind("btnCloseSet", () => closeSettings());

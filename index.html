@@ -585,6 +585,25 @@ body::before{
 .pnl-m .oc-row .oc-label{color:var(--tx3);font-size:10.5px}
 .pnl-m .oc-row select{font-size:11px;padding:1px 4px;background:var(--srf2);color:var(--tx);border:1px solid var(--brd);border-radius:4px}
 .pnl-m .oc-row select:disabled{opacity:.45;cursor:not-allowed}
+/* 部备案TXT（界址点成果表模板）：距离列 + 埋桩列设置 */
+.bb-grid{display:grid;grid-template-columns:auto 1fr;gap:4px 6px;align-items:center;margin-bottom:6px}
+.bb-grid label{font-size:10.5px;color:var(--tx3)}
+.bb-grid select,.bb-grid input{width:100%;min-width:0;font-size:11px;padding:2px 4px;background:var(--srf2);color:var(--tx);border:1px solid var(--brd);border-radius:4px}
+.bb-hint{font-size:9.5px;color:var(--tx3);line-height:1.5;margin-bottom:6px}
+.bb-btns{display:flex;gap:6px;margin-bottom:6px}
+.bb-run{width:100%}
+/* 中栏页签（投影/表头/字段/界址点） */
+.mid-tabs{display:flex;gap:4px;margin-bottom:6px;flex-shrink:0}
+.mid-tab{flex:1;padding:4px 2px;font-size:11px;font-family:inherit;border:1px solid var(--brd);background:var(--srf2);color:var(--tx3);border-radius:4px;cursor:pointer;transition:all .15s;white-space:nowrap}
+.mid-tab:hover{color:var(--tx)}
+.mid-tab.on{background:var(--ac);border-color:var(--ac);color:#fff}
+.mid-pane{display:none;flex:1;min-height:0;flex-direction:column;overflow-y:auto;padding:2px 2px 6px}
+.mid-pane.on{display:flex}
+.mid-pane .accsw{font-size:10px;margin-left:6px;color:var(--tx2);cursor:pointer;font-weight:400}
+.mid-pane .accsw input{width:12px;height:12px;accent-color:var(--ac);cursor:pointer;vertical-align:-1px}
+/* 左栏输出模式：窄栏时换行防裁字 */
+.pnl-l .mode-seg{flex-wrap:wrap}
+.pnl-l .mode-seg .seg{min-width:88px}
 .pnl-m .hcfg{padding:5px}
 .pnl-m .hrow{display:flex;align-items:center;margin-bottom:1px;gap:4px}
 .pnl-m .hrow label{font-size:10px;width:34px;flex-shrink:0}
@@ -624,7 +643,7 @@ body::before{
 .prec-val{min-width:72px;font-size:10px;color:var(--tx);font-variant-numeric:tabular-nums}
 
 /* ─── 手风琴分组卡（v3.0 方案A 折叠收纳式） ─── */
-.accs{display:flex;flex-direction:column;gap:6px;flex:1;height:100%;min-height:0}
+.accs{display:flex;flex-direction:column;gap:6px;flex:1;height:100%;min-height:0;overflow-y:auto;overflow-x:hidden}
 .acc{background:var(--srf);border:1px solid var(--brd);border-radius:8px;overflow:hidden;flex-shrink:0}
 .acc-h{display:flex;align-items:center;gap:7px;padding:7px 10px;cursor:pointer;user-select:none;background:var(--srf2)}
 .acc-h:hover{background:var(--srf3)}
@@ -642,7 +661,7 @@ body::before{
 .accs > .acc.open .acc-b{display:flex}
 .accs > .acc .acc-b{flex:1;min-height:0;flex-direction:column;overflow-y:auto}
 /* 中栏：③④自然高度，⑤自定义表头拿剩余空间（7 行表头完整显示，不再被平分压缩） */
-.pnl-m .accs > .acc{flex:0 0 auto}
+.pnl-l .accs > .acc,.pnl-m .accs > .acc{flex:0 0 auto}
 .pnl-m .accs > .acc:last-child{flex:1}
 .accs > .acc .acc-b > .drop,.accs > .acc .acc-b > .div,.accs > .acc .acc-b > .slabel,.accs > .acc .acc-b > .fld,.accs > .acc .acc-b > .mode-group,.accs > .acc .acc-b > .ck-grid,.accs > .acc .acc-b > .oc-row,.accs > .acc .acc-b > .hdr-tabs,.accs > .acc .acc-b > .hdr-panel,.accs > .acc .acc-b > .file-list{flex-shrink:0}
 .accs > .acc .acc-b > .file-list{flex:1;min-height:60px;overflow-y:auto}
@@ -745,7 +764,7 @@ body::before{
 .card-h .arr{font-size:7px;transition:transform .25s cubic-bezier(.4,0,.2,1);display:inline-block;color:var(--tx3)}
 .card-h .arr.o{transform:rotate(90deg)}
 .card-label{font-size:11px;color:var(--tx2);font-weight:600;letter-spacing:0;padding:5px 0;margin-bottom:2px}
-.card-b{padding:2px 0 0 16px;display:block;animation:slideIn .25s ease}
+.card-b{padding:2px 0 0 16px;animation:slideIn .25s ease}
 @keyframes slideIn{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:translateY(0)}}
 
 /* Form fields */
@@ -1167,7 +1186,7 @@ body::before{
       <div class="mode-s pnl-bd">
         <div class="accs">
         <div class="acc open">
-          <div class="acc-h" onclick="togAcc(this)"><span class="no">1</span><span class="t">导入数据</span><span class="n" id="impTag">未导入</span><span class="arw">▶</span></div>
+          <div class="acc-h"><span class="no">1</span><span class="t">导入数据</span><span class="n" id="impTag">未导入</span></div>
           <div class="acc-b">
         <div class="drop" id="dropZone">
           <div class="drop-ic">＋</div>
@@ -1185,34 +1204,45 @@ body::before{
           </div>
         </div>
         <div class="acc open">
-          <div class="acc-h" onclick="togAcc(this)"><span class="no">2</span><span class="t">字段映射</span><span class="n" id="fmTag">简单模式</span><label class="accsw" onclick="event.stopPropagation()"><input type="checkbox" id="advMode">高级</label><span class="arw">▶</span></div>
-          <div class="card-b">
-            <div class="fgrid" id="fieldSimple">
-              <div class="fcell"><label>地块名称</label><select id="fn"><option value="">不填</option><option value="__placeholder__" selected>DKMC (占位)</option></select></div>
-              <div class="fcell"><label>地块编号</label><select id="fi"><option value="">不填</option><option value="__placeholder__" selected>DKBH (占位)</option></select></div>
-              <div class="fcell"><label>面积</label><select id="fa"><option value="">不填</option><option value="__placeholder__" selected>MJ (占位)</option><option value="__area_sqm__">平方米(自动)</option><option value="__area_ha__">公顷(自动)</option></select></div>
-              <div class="fcell"><label>用途</label><select id="fu"><option value="">不填</option><option value="__placeholder__" selected>DKYT (占位)</option></select></div>
-              <div class="fcell"><label>图幅号</label><select id="fm"><option value="">不填</option><option value="__placeholder__" selected>TFH (占位)</option></select></div>
-              <div class="fcell"><label>地类</label><select id="fd"><option value="">不填</option><option value="__placeholder__" selected>DLBM (占位)</option></select></div>
-            </div>
-            <div id="fieldAdv" style="display:none">
-              <div class="adv-toolbar">
-                <button class="btn attr-add" id="btnAddField" style="font-size:9.5px;padding:2px 8px">+ 添加字段</button>
-                <button class="btn" id="btnSaveTpl" style="font-size:9.5px;padding:2px 8px" onclick="saveAdvTpl()" title="把当前字段清单保存为方案（同名覆盖）">存为方案</button>
-                <button class="btn" id="btnDelTpl" style="font-size:9.5px;padding:2px 8px;display:none" onclick="delAdvTpl()" title="删除选中的自定义方案">✕</button>
-              </div>
-              <div class="adv-toolbar">
-                <select class="presetsel" id="bcgSel" title="预设/自定义字段方案；手动修改任何行后自动变为「自定义」">
-                  <option value="std">8 字段标准</option>
-                  <option value="bcg">补充耕地模式</option>
-                  <option value="custom">自定义</option>
-                </select>
-                <input class="presetsel tplname" id="tplNameInput" maxlength="30" placeholder="输入方案名，回车保存" style="display:none;flex:1">
-                <button class="btn" id="btnTplOk" style="font-size:9.5px;padding:2px 8px;display:none" onclick="confirmAdvTplSave()" title="确认保存">✓</button>
-                <button class="btn" id="btnTplCancel" style="font-size:9.5px;padding:2px 8px;display:none" onclick="cancelAdvTplSave()" title="取消">✕</button>
-              </div>
-              <div id="fieldRows"></div>
-            </div>
+          <div class="acc-h"><span class="no">2</span><span class="t">输出与选项</span><span class="n">一对一</span></div>
+          <div class="acc-b">
+        <div class="slabel">输出模式</div>
+        <div class="mode-seg">
+          <label class="seg on" title="每个导入文件单独输出一个 TXT"><input type="radio" name="output_mode" value="one_to_one" checked><span>一对一</span></label>
+          <label class="seg" title="每个地块单独输出一个文件"><input type="radio" name="output_mode" value="split_by_plot"><span>按地块拆分</span></label>
+          <label class="seg" title="全部合并为一个 TXT"><input type="radio" name="output_mode" value="merge_all"><span>全部合并</span></label>
+        </div>
+        <div id="filenameFieldRow" style="display: none; margin-left: 20px; margin-bottom: 6px;">
+          <label style="font-size:11px;color:var(--tx3)">地块拆分文件名</label>
+          <select id="filename_field" style="margin-left:6px">
+            <option value="DKMC">地块名称(DKMC)</option>
+            <option value="DKBH">地块编号(DKBH)</option>
+            <option value="">序号</option>
+            <option value="FID">自定义(FID)</option>
+          </select>
+        </div>
+
+        <div class="slabel">转换选项</div>
+        <div class="ck-grid">
+        <label class="ck"><input type="checkbox" id="ox">XY 坐标标反</label>
+        <label class="ck"><input type="checkbox" id="oj">点号前加"J"</label>
+        <label class="ck"><input type="checkbox" id="on">起始点西北角</label>
+        <label class="ck"><input type="checkbox" id="oo" checked>首末点重合</label>
+        </div>
+        <div class="oc-row">
+          <span class="oc-label">闭合点编号</span>
+          <select id="oc">
+            <option value="0">回到环首点</option>
+            <option value="1">续编</option>
+          </select>
+        </div>
+        <div class="fld">
+          <label>输出目录</label>
+          <div style="display:flex;gap:4px">
+            <input type="text" id="out_dir_s" readonly placeholder="选择输出文件夹…" style="flex:1;min-width:0" class="fci">
+            <button class="btn fci" id="btnBrowseS" style="white-space:nowrap">浏览</button>
+          </div>
+        </div>
           </div>
         </div>
         </div>
@@ -1270,52 +1300,14 @@ body::before{
     <div class="pnl pnl-m">
       <!-- 面→TXT mode -->
       <div class="mode-s pnl-bd">
-        <div class="accs">
-        <div class="acc open">
-          <div class="acc-h" onclick="togAcc(this)"><span class="no">3</span><span class="t">输出与选项</span><span class="n">一对一</span><span class="arw">▶</span></div>
-          <div class="acc-b">
-        <div class="slabel">输出模式</div>
-        <div class="mode-seg">
-          <label class="seg on" title="每个导入文件单独输出一个 TXT"><input type="radio" name="output_mode" value="one_to_one" checked><span>一对一</span></label>
-          <label class="seg" title="每个地块单独输出一个文件"><input type="radio" name="output_mode" value="split_by_plot"><span>按地块拆分</span></label>
-          <label class="seg" title="全部合并为一个 TXT"><input type="radio" name="output_mode" value="merge_all"><span>全部合并</span></label>
+        <div class="mid-tabs">
+          <button type="button" class="mid-tab" data-mt="proj">投影</button>
+          <button type="button" class="mid-tab" data-mt="hdr">表头</button>
+          <button type="button" class="mid-tab on" data-mt="fld">字段</button>
+          <button type="button" class="mid-tab" data-mt="bb">界址点</button>
         </div>
-        <div id="filenameFieldRow" style="display: none; margin-left: 20px; margin-bottom: 6px;">
-          <label style="font-size:11px;color:var(--tx3)">地块拆分文件名</label>
-          <select id="filename_field" style="margin-left:6px">
-            <option value="DKMC">地块名称(DKMC)</option>
-            <option value="DKBH">地块编号(DKBH)</option>
-            <option value="">序号</option>
-            <option value="FID">自定义(FID)</option>
-          </select>
-        </div>
-
-        <div class="slabel">转换选项</div>
-        <div class="ck-grid">
-        <label class="ck"><input type="checkbox" id="ox">XY 坐标标反</label>
-        <label class="ck"><input type="checkbox" id="oj">点号前加"J"</label>
-        <label class="ck"><input type="checkbox" id="on">起始点西北角</label>
-        <label class="ck"><input type="checkbox" id="oo" checked>首末点重合</label>
-        </div>
-        <div class="oc-row">
-          <span class="oc-label">闭合点编号</span>
-          <select id="oc">
-            <option value="0">回到环首点</option>
-            <option value="1">续编</option>
-          </select>
-        </div>
-        <div class="fld">
-          <label>输出目录</label>
-          <div style="display:flex;gap:4px">
-            <input type="text" id="out_dir_s" readonly placeholder="选择输出文件夹…" style="flex:1;min-width:0" class="fci">
-            <button class="btn fci" id="btnBrowseS" style="white-space:nowrap">浏览</button>
-          </div>
-        </div>
-          </div>
-        </div>
-        <div class="acc open">
-          <div class="acc-h" onclick="togAcc(this)"><span class="no">4</span><span class="t">动态投影</span><span class="n" id="projTag">关闭</span><span class="arw">▶</span></div>
-          <div class="acc-b">
+        <div class="mid-pane" data-mp="proj">
+        <div class="slabel">动态投影</div>
         <div class="proj-crs-line" id="projCrsStatus">导入后显示坐标系</div>
         <div class="proj-switch-row">
           <div class="proj-switch" id="projSwitch">
@@ -1328,11 +1320,9 @@ body::before{
             <span class="proj-toggle-label proj-prefix-label">带号前缀</span>
           </label>
         </div>
-          </div>
         </div>
-        <div class="acc open">
-          <div class="acc-h" onclick="togAcc(this)"><span class="no">5</span><span class="t">自定义表头</span><span class="n" id="hdrTag">7 行</span><span class="arw">▶</span></div>
-          <div class="acc-b">
+        <div class="mid-pane" data-mp="hdr">
+        <div class="slabel">自定义表头 <span id="hdrTag">7 行</span></div>
         <div class="hdr-tabs">
           <div class="hdr-tab on" id="hdrTabAttr" data-tab="attr">属性描述</div>
           <div class="hdr-tab" id="hdrTabProj" data-tab="proj">项目信息</div>
@@ -1350,8 +1340,69 @@ body::before{
           <div style="display:flex;justify-content:flex-end;margin-bottom:3px"><button class="btn" id="btnPrefill" style="font-size:9.5px;padding:2px 8px">预填写</button></div>
           <textarea class="hdr-textarea" id="hpi"></textarea>
         </div>
-          </div>
         </div>
+        <div class="mid-pane on" data-mp="fld">
+        <div class="slabel">字段映射 <span id="fmTag">简单模式</span><label class="accsw" onclick="event.stopPropagation()"><input type="checkbox" id="advMode">高级</label></div>
+        <div class="fgrid" id="fieldSimple">
+          <div class="fcell"><label>地块名称</label><select id="fn"><option value="">不填</option><option value="__placeholder__" selected>DKMC (占位)</option></select></div>
+          <div class="fcell"><label>地块编号</label><select id="fi"><option value="">不填</option><option value="__placeholder__" selected>DKBH (占位)</option></select></div>
+          <div class="fcell"><label>面积</label><select id="fa"><option value="">不填</option><option value="__placeholder__" selected>MJ (占位)</option><option value="__area_sqm__">平方米(自动)</option><option value="__area_ha__">公顷(自动)</option></select></div>
+          <div class="fcell"><label>用途</label><select id="fu"><option value="">不填</option><option value="__placeholder__" selected>DKYT (占位)</option></select></div>
+          <div class="fcell"><label>图幅号</label><select id="fm"><option value="">不填</option><option value="__placeholder__" selected>TFH (占位)</option></select></div>
+          <div class="fcell"><label>地类</label><select id="fd"><option value="">不填</option><option value="__placeholder__" selected>DLBM (占位)</option></select></div>
+        </div>
+        <div id="fieldAdv" style="display:none">
+          <div class="adv-toolbar">
+            <button class="btn attr-add" id="btnAddField" style="font-size:9.5px;padding:2px 8px">+ 添加字段</button>
+            <button class="btn" id="btnSaveTpl" style="font-size:9.5px;padding:2px 8px" onclick="saveAdvTpl()" title="把当前字段清单保存为方案（同名覆盖）">存为方案</button>
+            <button class="btn" id="btnDelTpl" style="font-size:9.5px;padding:2px 8px;display:none" onclick="delAdvTpl()" title="删除选中的自定义方案">✕</button>
+          </div>
+          <div class="adv-toolbar">
+            <select class="presetsel" id="bcgSel" title="预设/自定义字段方案；手动修改任何行后自动变为「自定义」">
+              <option value="std">8 字段标准</option>
+              <option value="bcg">补充耕地模式</option>
+              <option value="custom">自定义</option>
+            </select>
+            <input class="presetsel tplname" id="tplNameInput" maxlength="30" placeholder="输入方案名，回车保存" style="display:none;flex:1">
+            <button class="btn" id="btnTplOk" style="font-size:9.5px;padding:2px 8px;display:none" onclick="confirmAdvTplSave()" title="确认保存">✓</button>
+            <button class="btn" id="btnTplCancel" style="font-size:9.5px;padding:2px 8px;display:none" onclick="cancelAdvTplSave()" title="取消">✕</button>
+          </div>
+          <div id="fieldRows"></div>
+        </div>
+        </div>
+        <div class="mid-pane" data-mp="bb">
+        <div class="slabel">界址点(部备案TXT) · <span id="bbTag">距离米/3位</span></div>
+        <div class="slabel">距离列（本点到下一点直线距离）</div>
+        <div class="bb-grid">
+          <label>单位</label>
+          <select id="bbUnit" title="距离列数值单位">
+            <option value="m">米</option>
+            <option value="km">千米</option>
+            <option value="cm">厘米</option>
+          </select>
+          <label>小数位</label>
+          <select id="bbDec" title="距离列小数位数">
+            <option value="0">0</option>
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3" selected>3</option>
+          </select>
+        </div>
+        <div class="slabel">埋桩（界址点类型）</div>
+        <div class="bb-grid">
+          <label>来源字段</label>
+          <select id="bbStakeField" title="读取导入数据的属性字段作为界址点类型">
+            <option value="">不读字段（手填）</option>
+          </select>
+          <label>兜底值</label>
+          <input type="text" id="bbStakeDefault" value="埋桩" title="字段未选、缺失或值为空时使用">
+        </div>
+        <div class="bb-hint">选字段时：字段值优先，空值用兜底值。闭合点与首点重合时距离为 0；不重合时算到首点的闭合距离。表头在「表头」页签编辑，可一键套用部备案默认表头。</div>
+        <div class="bb-btns">
+          <button class="btn" id="btnBbHeader" style="font-size:9.5px;padding:2px 8px">套用部备案表头</button>
+          <button class="btn" id="btnBbPreview" style="font-size:9.5px;padding:2px 8px">预览</button>
+        </div>
+        <button class="btn-run bb-run" id="btnRunBb">导出TXT(部备案)</button>
         </div>
       </div>
     </div>

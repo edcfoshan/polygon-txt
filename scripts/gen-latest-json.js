@@ -11,7 +11,7 @@
 //   5. 写入仓库根目录 latest.json（jsDelivr 源会从这里取）
 //
 // 发布时把生成的 latest.json 和 NSIS exe 一起上传到 GitHub Release。
-import { readFileSync, writeFileSync, readdirSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, readdirSync, existsSync, statSync } from 'node:fs';
 import { resolve, dirname, basename, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -37,11 +37,14 @@ if (sigFiles.length === 0) {
   console.error('  检查环境变量 TAURI_SIGNING_PRIVATE_KEY / TAURI_SIGNING_PRIVATE_KEY_PASSWORD 是否已设置。');
   process.exit(1);
 }
+// 构建目录可能残留旧版本 .sig；updater 必须使用最新一次构建生成的签名。
+const [newestSig] = sigFiles
+  .map((name) => ({ name, mtimeMs: statSync(join(nsisDir, name)).mtimeMs }))
+  .sort((a, b) => b.mtimeMs - a.mtimeMs);
+const sigName = newestSig.name;
 if (sigFiles.length > 1) {
-  console.warn(`⚠ 发现多个 .sig 文件，使用第一个：${sigFiles[0]}`);
+  console.warn(`⚠ 发现多个 .sig 文件，使用最新构建：${sigName}`);
 }
-
-const sigName = sigFiles[0];
 // 签名文件 .sig 与同名 exe（Tauri 默认产物，文件名可能含中文）配对
 const sourceExeName = sigName.replace(/\.sig$/, '');
 if (!existsSync(join(nsisDir, sourceExeName))) {

@@ -2,13 +2,14 @@
 // 坐标行 6 列：点号,环号,Y,X,到下一点距离,界址点类型（埋桩）
 // 距离规则：本点到下一点直线距离；末点连回首点——闭合点距离 0，开口环算到首点的闭合边长。
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 extern crate jisig_bpoint_converter_lib;
 
 use jisig_bpoint_converter_lib::{convert, txt};
 use jisig_bpoint_converter_lib::geometry::IndexedRing;
-use jisig_bpoint_converter_lib::txt::{BubeianSpec, PlotData};
+use jisig_bpoint_converter_lib::txt::{PlotData, PointColumn, PointLayout};
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -21,11 +22,42 @@ fn test_shp_stem() -> PathBuf {
     repo_root().join("test_arcpy").join("std_shp").join("plot_000.shp")
 }
 
-fn spec(unit: &str, decimals: u32) -> BubeianSpec {
-    BubeianSpec {
+fn column(kind: &str, source: &str, value: &str) -> PointColumn {
+    PointColumn {
+        kind: kind.to_string(),
+        source: source.to_string(),
+        value: value.to_string(),
+        distance_unit: None,
+        distance_decimals: None,
+    }
+}
+
+fn distance_column(unit: &str, decimals: u32) -> PointColumn {
+    let mut col = column("distance", "", "");
+    col.distance_unit = Some(unit.to_string());
+    col.distance_decimals = Some(decimals);
+    col
+}
+
+fn layout(columns: &[PointColumn], unit: &str, decimals: u32) -> PointLayout {
+    PointLayout {
+        columns: columns.to_vec(),
+        stake_field: String::new(),
+        stake_default: String::new(),
         distance_unit: unit.to_string(),
         distance_decimals: decimals,
     }
+}
+
+fn bubeian_layout(unit: &str, decimals: u32) -> PointLayout {
+    layout(
+        &["point", "ring", "y", "x", "distance", "stake"]
+            .iter()
+            .map(|kind| column(kind, "", ""))
+            .collect::<Vec<_>>(),
+        unit,
+        decimals,
+    )
 }
 
 fn square_plot(stake: &str) -> PlotData {
@@ -45,6 +77,7 @@ fn square_plot(stake: &str) -> PlotData {
         }],
         fields: vec![],
         stake: stake.to_string(),
+        custom_values: HashMap::new(),
     }
 }
 
@@ -64,7 +97,7 @@ fn attrs() -> Vec<convert::AttrRow> {
 #[test]
 fn test_bubeian_six_columns_closing_zero_stake() {
     let plot = square_plot("埋桩");
-    let out = txt::generate_txt_ex("", &attrs(), &[plot], true, false, Some(&spec("m", 3)));
+    let out = txt::generate_txt_ex("", &attrs(), &[plot], true, false, Some(&bubeian_layout("m", 3)));
     let lines = coord_lines(&out);
 
     assert_eq!(
@@ -96,8 +129,9 @@ fn test_bubeian_unclosed_ring_distance_to_first() {
         rings: vec![],
         fields: vec![],
         stake: "钢钉".to_string(),
+        custom_values: HashMap::new(),
     };
-    let out = txt::generate_txt_ex("", &attrs(), &[plot], true, false, Some(&spec("m", 3)));
+    let out = txt::generate_txt_ex("", &attrs(), &[plot], true, false, Some(&bubeian_layout("m", 3)));
     let lines = coord_lines(&out);
     assert_eq!(
         lines,
@@ -115,13 +149,13 @@ fn test_bubeian_unclosed_ring_distance_to_first() {
 fn test_bubeian_unit_conversion_and_decimals() {
     let plot = square_plot("埋桩");
     // 千米：10 m = 0.010 km
-    let out = txt::generate_txt_ex("", &attrs(), &[plot.clone()], true, false, Some(&spec("km", 3)));
+    let out = txt::generate_txt_ex("", &attrs(), &[plot.clone()], true, false, Some(&bubeian_layout("km", 3)));
     assert!(out.contains("J1,1,10.000,10.000,0.010,埋桩"), "千米换算:\n{}", out);
     // 厘米：10 m = 1000 cm
-    let out = txt::generate_txt_ex("", &attrs(), &[plot.clone()], true, false, Some(&spec("cm", 3)));
+    let out = txt::generate_txt_ex("", &attrs(), &[plot.clone()], true, false, Some(&bubeian_layout("cm", 3)));
     assert!(out.contains("J1,1,10.000,10.000,1000.000,埋桩"), "厘米换算:\n{}", out);
     // 0 位小数：闭合边 14.142 → 14
-    let out = txt::generate_txt_ex("", &attrs(), &[plot], true, false, Some(&spec("m", 0)));
+    let out = txt::generate_txt_ex("", &attrs(), &[plot], true, false, Some(&bubeian_layout("m", 0)));
     assert!(out.contains("J3,1,20.000,20.000,14,埋桩"), "0 位小数:\n{}", out);
 }
 
@@ -135,6 +169,124 @@ fn test_bubeian_standard_output_unchanged_without_spec() {
         out
     );
     assert!(!out.contains(",埋桩"), "标准输出不应出现埋桩列:\n{}", out);
+}
+
+#[test]
+fn test_custom_layout_order_field_and_fixed() {
+    let mut plot = square_plot("埋桩");
+    plot.custom_values.insert("DKMC".to_string(), "测试地块".to_string());
+    let custom = PointLayout {
+        columns: vec![
+            column("x", "", ""),
+            column("field", "DKMC", ""),
+            column("fixed", "", "手动列"),
+            column("point", "", ""),
+        ],
+        stake_field: String::new(),
+        stake_default: String::new(),
+        distance_unit: "m".to_string(),
+        distance_decimals: 3,
+    };
+    let out = txt::generate_txt_ex("", &attrs(), &[plot], true, false, Some(&custom));
+    let line = coord_lines(&out).first().expect("至少一行坐标").clone();
+    assert_eq!(line, "10.000,测试地块,手动列,J1");
+}
+
+#[test]
+fn test_custom_layout_missing_field_outputs_empty() {
+    let plot = square_plot("埋桩");
+    let custom = PointLayout {
+        columns: vec![column("point", "", ""), column("field", "NOT_EXIST", "")],
+        stake_field: String::new(),
+        stake_default: String::new(),
+        distance_unit: "m".to_string(),
+        distance_decimals: 3,
+    };
+    let out = txt::generate_txt_ex("", &attrs(), &[plot], true, false, Some(&custom));
+    assert!(out.contains("\nJ1,\n"), "缺失字段列应输出空值:\n{}", out);
+}
+
+#[test]
+fn test_each_distance_column_has_own_unit_and_precision() {
+    let plot = square_plot("埋桩");
+    let custom = PointLayout {
+        columns: vec![
+            column("point", "", ""),
+            column("y", "", ""),
+            distance_column("km", 1),
+            distance_column("cm", 0),
+        ],
+        stake_field: String::new(),
+        stake_default: String::new(),
+        distance_unit: "m".to_string(),
+        distance_decimals: 3,
+    };
+    let out = txt::generate_txt_ex("", &attrs(), &[plot], true, false, Some(&custom));
+    let lines = coord_lines(&out);
+    assert_eq!(
+        lines,
+        vec![
+            "J1,10.000,0.0,1000".to_string(),
+            "J2,10.000,0.0,1000".to_string(),
+            "J3,20.000,0.0,1414".to_string(),
+            "J1,10.000,0.0,0".to_string(),
+        ],
+        "两个点距离列应分别使用自身单位/精度:\n{}",
+        out
+    );
+}
+
+#[test]
+fn test_distance_is_per_ring_for_multipolygon_and_hole() {
+    let plot = PlotData {
+        point_count: 9,
+        area: String::new(),
+        fid: String::new(),
+        name: String::new(),
+        geom_type: "面".to_string(),
+        tfh: String::new(),
+        use_field: String::new(),
+        dlbm: String::new(),
+        coords: vec![],
+        rings: vec![
+            IndexedRing {
+                part_index: 1,
+                coords: vec![(0.0, 0.0), (0.0, 10.0), (10.0, 10.0), (10.0, 0.0), (0.0, 0.0)],
+            },
+            IndexedRing {
+                part_index: 2,
+                coords: vec![(0.0, 0.0), (0.0, 30.0), (40.0, 0.0), (0.0, 0.0)],
+            },
+        ],
+        fields: vec![],
+        stake: "埋桩".to_string(),
+        custom_values: HashMap::new(),
+    };
+    let layout = PointLayout {
+        columns: vec![column("point", "", ""), column("distance", "", "")],
+        stake_field: String::new(),
+        stake_default: String::new(),
+        distance_unit: "m".to_string(),
+        distance_decimals: 3,
+    };
+    let out = txt::generate_txt_ex("", &attrs(), &[plot], true, true, Some(&layout));
+    let lines = coord_lines(&out);
+    assert_eq!(
+        lines,
+        vec![
+            "J1,10.000".to_string(),
+            "J2,10.000".to_string(),
+            "J3,10.000".to_string(),
+            "J4,10.000".to_string(),
+            "J5,0.000".to_string(),
+            "J6,30.000".to_string(),
+            "J7,50.000".to_string(),
+            "J8,40.000".to_string(),
+            "J9,0.000".to_string(),
+        ],
+        "多部件/内环应各自闭合，不跨环连边:\n{}",
+        out
+    );
 }
 
 // ─── 2. SHP 端到端：埋桩字段值优先 / 缺字段兜底 ───
@@ -181,7 +333,7 @@ fn base_options() -> convert::ShpToTxtOptions {
         zone_type: 3,
         proj_no_prefix: false,
         plot_filter: None,
-        bubeian: None,
+        point_layout: None,
     }
 }
 
@@ -220,12 +372,10 @@ fn test_shp_to_txt_bubeian_stake_from_field() {
     }
     let out_dir = tempfile::tempdir().expect("temp dir");
     let mut options = base_options();
-    options.bubeian = Some(convert::BubeianOptions {
-        stake_field: "DKMC".into(),
-        stake_default: "埋桩".into(),
-        distance_unit: "m".into(),
-        distance_decimals: 3,
-    });
+    let mut layout = bubeian_layout("m", 3);
+    layout.stake_field = "DKMC".into();
+    layout.stake_default = "埋桩".into();
+    options.point_layout = Some(layout);
 
     let result = convert::convert_shp_to_txt(
         &[test_shp_stem()],
@@ -262,12 +412,10 @@ fn test_shp_to_txt_bubeian_stake_fallback_and_standard_prefix() {
     let out_dir = tempfile::tempdir().expect("temp dir");
     // 字段不存在 → 全部用兜底值
     let mut options = base_options();
-    options.bubeian = Some(convert::BubeianOptions {
-        stake_field: "NOT_EXIST".into(),
-        stake_default: "钢钉".into(),
-        distance_unit: "m".into(),
-        distance_decimals: 3,
-    });
+    let mut layout = bubeian_layout("m", 3);
+    layout.stake_field = "NOT_EXIST".into();
+    layout.stake_default = "钢钉".into();
+    options.point_layout = Some(layout);
 
     let header = make_header();
     let fm = field_mapping();
@@ -314,5 +462,45 @@ fn test_shp_to_txt_bubeian_stake_fallback_and_standard_prefix() {
                 b
             );
         }
+    }
+}
+
+#[test]
+fn test_point_layout_applies_to_all_output_modes() {
+    if !repo_root().join("test_arcpy").exists() {
+        return;
+    }
+    let layout = PointLayout {
+        columns: vec![column("point", "", ""), column("fixed", "", "LAYOUT_OK")],
+        stake_field: String::new(),
+        stake_default: String::new(),
+        distance_unit: "m".to_string(),
+        distance_decimals: 3,
+    };
+
+    for mode in ["one_to_one", "split_by_plot", "merge_all"] {
+        let out_dir = tempfile::tempdir().expect("temp dir");
+        let mut options = base_options();
+        options.output_mode = mode.to_string();
+        options.point_layout = Some(layout.clone());
+
+        let result = convert::convert_shp_to_txt(
+            &[test_shp_stem()],
+            None,
+            None,
+            &make_header(),
+            &field_mapping(),
+            &options,
+            out_dir.path(),
+            None,
+        )
+        .unwrap_or_else(|e| panic!("{mode} 转换失败: {e}"));
+
+        assert!(result.success, "{mode} 应成功");
+        let content = std::fs::read_to_string(&result.output_files[0]).unwrap();
+        assert!(
+            content.lines().any(|line| line.starts_with("J1,") && line.ends_with(",LAYOUT_OK")),
+            "{mode} 应使用自定义列布局:\n{content}"
+        );
     }
 }

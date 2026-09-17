@@ -57,19 +57,54 @@ pub struct PlotData {
     #[serde(default)]
     pub fields: Vec<(String, String)>,
     /// 部备案模板：界址点类型（埋桩）。导入时按「字段值优先，空值用手动兜底值」
-    /// 解析为全地块统一值；仅 bubeian 导出走 6 列坐标行时输出。
+    /// 解析为全地块统一值；仅布局包含埋桩列时输出。
     #[serde(default)]
     pub stake: String,
+    /// 自定义坐标列的已解析源字段值（键 = 源字段名）。TXT 解析侧不产生该数据。
+    #[serde(default)]
+    pub custom_values: HashMap<String, String>,
 }
 
-/// 部备案模板坐标行附加列配置（第 5 列距离 + 第 6 列界址点类型）。
-/// `generate_txt` 不带此参数 = 标准 4 列输出，行为不变。
+/// 界址点坐标行的一个输出列。核心列由生成器赋予固定语义；自定义列取地块字段或固定文本。
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BubeianSpec {
+pub struct PointColumn {
+    /// point | ring | y | x | distance | stake | field | fixed
+    pub kind: String,
+    /// kind = field 时的源字段名
+    #[serde(default)]
+    pub source: String,
+    /// kind = fixed 时的输出文本
+    #[serde(default)]
+    pub value: String,
+    /// kind = distance 时的单位；None 回退布局全局单位
+    #[serde(default)]
+    pub distance_unit: Option<String>,
+    /// kind = distance 时的小数位；None 回退布局全局小数位
+    #[serde(default)]
+    pub distance_decimals: Option<u32>,
+}
+
+/// 界址点坐标行布局。`generate_txt` 不带此参数 = 标准 4 列输出，行为不变。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PointLayout {
+    /// 有序输出列。前端内置模板保证核心列完整；空列表按标准 4 列兜底。
+    pub columns: Vec<PointColumn>,
+    /// 埋桩（界址点类型）来源字段名；空 = 不读字段，全部用 stake_default
+    #[serde(default)]
+    pub stake_field: String,
+    /// 埋桩字段缺失或为空时的兜底值
+    #[serde(default)]
+    pub stake_default: String,
     /// 距离单位："m"（米，原值）/"km"（千米，÷1000）/"cm"（厘米，×100）
     pub distance_unit: String,
     /// 距离小数位（>6 按 6 处理）
     pub distance_decimals: u32,
+}
+
+impl PointLayout {
+    pub fn has_core(&self, kind: &str) -> bool {
+        self.columns.iter().any(|c| c.kind == kind)
+    }
 }
 
 /// TXT 解析结果
@@ -204,6 +239,7 @@ pub fn parse_txt(text: &str) -> TxtParseResult {
                             rings: Vec::new(),
                             fields,
                             stake: String::new(),
+                            custom_values: HashMap::new(),
                         }
                     } else {
                         // 旧 8 字段标准格式：按位置切分
@@ -220,6 +256,7 @@ pub fn parse_txt(text: &str) -> TxtParseResult {
                             rings: Vec::new(),
                             fields: Vec::new(),
                             stake: String::new(),
+                            custom_values: HashMap::new(),
                         }
                     };
                     current_plot = Some(plot);
@@ -352,14 +389,16 @@ fn point_distances(plot: &PlotData) -> Vec<f64> {
     out
 }
 
-/// 部备案模板距离列的换算系数与格式化
-fn format_distance(d: f64, spec: &BubeianSpec) -> String {
-    let factor = match spec.distance_unit.as_str() {
+/// 界址点布局距离列的换算系数与格式化；列级参数优先，布局全局参数兜底。
+fn format_distance(d: f64, layout: &PointLayout, column: &PointColumn) -> String {
+    let unit = column.distance_unit.as_deref().unwrap_or(&layout.distance_unit);
+    let decimals = column.distance_decimals.unwrap_or(layout.distance_decimals);
+    let factor = match unit {
         "km" => 0.001,
         "cm" => 100.0,
         _ => 1.0,
     };
-    format!("{:.*}", spec.distance_decimals.min(6) as usize, d * factor)
+    format!("{:.*}", decimals.min(6) as usize, d * factor)
 }
 
 /// 生成 TXT 内容（标准 4 列坐标行）
@@ -373,15 +412,15 @@ pub fn generate_txt(
     generate_txt_ex(project_info, attrs, features, oj, oc, None)
 }
 
-/// 生成 TXT 内容。bubeian=Some 时坐标行输出部备案模板 6 列：
-/// `点号,环号,Y,X,到下一点距离,界址点类型`；其余行（头部/元数据）与标准格式一致。
+/// 生成 TXT 内容。layout=Some 时按配置列序输出；空列兜底为标准 4 列。
+/// 其余行（头部/元数据）与标准格式一致。
 pub fn generate_txt_ex(
     project_info: &str,
     attrs: &[AttrRow],
     features: &[PlotData],
     oj: bool,
     oc: bool,
-    bubeian: Option<&BubeianSpec>,
+    layout: Option<&PointLayout>,
 ) -> String {
     let mut out = String::new();
 
@@ -412,6 +451,7 @@ pub fn generate_txt_ex(
     }
 
     out.push_str("[地块坐标]\n");
+    let effective_layout = layout.filter(|l| !l.columns.is_empty());
     // 高级格式不输出字段名列表行（用户需求：接收系统按约定列序解析）；
     // 解析侧仍识别外部文件自带的【...,@】列表行（parse_txt）
     for plot in features {
@@ -446,33 +486,41 @@ pub fn generate_txt_ex(
             )
         };
         out.push_str(&meta);
-        let distances = bubeian.map(|_| point_distances(plot));
+        let distances = effective_layout
+            .filter(|l| l.has_core("distance"))
+            .map(|_| point_distances(plot));
         for (idx, (label, part_index, y, x)) in numbered.iter().enumerate() {
-            match bubeian {
-                Some(spec) => {
-                    // 理论上 distances 与 numbered 同长（同一 rings 口径）；越界兜底 0
-                    let d = distances
-                        .as_ref()
-                        .and_then(|v| v.get(idx).copied())
-                        .unwrap_or(0.0);
-                    out.push_str(&format!(
-                        "{},{},{},{},{},{}\n",
-                        label,
-                        part_index,
-                        format_coord(*y, decimals),
-                        format_coord(*x, decimals),
-                        format_distance(d, spec),
-                        plot.stake,
-                    ));
-                }
-                None => out.push_str(&format!(
+            let Some(spec) = effective_layout else {
+                out.push_str(&format!(
                     "{},{},{},{}\n",
                     label,
                     part_index,
                     format_coord(*y, decimals),
                     format_coord(*x, decimals),
-                )),
-            }
+                ));
+                continue;
+            };
+            let d = distances
+                .as_ref()
+                .and_then(|v| v.get(idx).copied())
+                .unwrap_or(0.0);
+            let cells = spec.columns.iter().map(|col| match col.kind.as_str() {
+                "point" => label.clone(),
+                "ring" => part_index.to_string(),
+                "y" => format_coord(*y, decimals),
+                "x" => format_coord(*x, decimals),
+                "distance" => format_distance(d, spec, col),
+                "stake" => plot.stake.clone(),
+                "field" => plot
+                    .custom_values
+                    .get(&col.source)
+                    .cloned()
+                    .unwrap_or_default(),
+                "fixed" => col.value.clone(),
+                _ => String::new(),
+            });
+            out.push_str(&cells.collect::<Vec<_>>().join(","));
+            out.push('\n');
         }
     }
 
@@ -483,6 +531,7 @@ pub fn generate_txt_ex(
 mod tests {
     use super::{generate_txt, number_plot_points, parse_txt, AttrRow, PlotData};
     use crate::geometry::IndexedRing;
+    use std::collections::HashMap;
 
     #[test]
     fn multi_part_indices_survive_txt_roundtrip() {
@@ -546,6 +595,7 @@ J1,2,30.000,30.000";
             ],
             fields: vec![],
             stake: String::new(),
+            custom_values: HashMap::new(),
         }
     }
 
@@ -610,6 +660,7 @@ J1,2,30.000,30.000";
             rings: vec![],
             fields: vec![],
             stake: String::new(),
+            custom_values: HashMap::new(),
         };
         let numbered = number_plot_points(&plot, true, false);
         assert_eq!(numbered.len(), 3);
@@ -644,6 +695,7 @@ J1,2,30.000,30.000";
             ],
             fields: vec![],
             stake: String::new(),
+            custom_values: HashMap::new(),
         }];
         let attrs = vec![AttrRow {
             k: "精度".into(),
@@ -693,6 +745,7 @@ J1,2,30.000,30.000";
             rings: vec![],
             fields: vec![],
             stake: String::new(),
+            custom_values: HashMap::new(),
         }];
         let out = generate_txt("", &attrs, &plots, true, false);
 

@@ -1622,6 +1622,7 @@ window.up = async function () {
   const cfg = getConfig();
   const opt = getOptions();
   const shpPaths = loadedFiles.map((f) => f.shp_path).filter(Boolean);
+  if (!shpPaths.length && !sourcePath) setBbStatus("未导入 SHP/GDB，无法生成界址点预览。", true);
 
   if (shpPaths.length > 0 || sourcePath) {
     const spin = $('pvSpin');
@@ -1629,9 +1630,23 @@ window.up = async function () {
       if (spin) spin.classList.add('on');
       // 先发地块数据请求（不 await：与预览并行；预览失败也不影响属性表/地图）
       const geoP = refreshPlotGeo(shpPaths, cfg, opt);
+      setBbStatus("正在生成坐标行列预览…");
       const txt = await tauriInvoke("read_shp_to_txt_preview", { shpPaths, sourceType, sourcePath, headerCfg: cfg.h, fieldMapping: cfg.f, options: opt, selectedLayers: sourceType === "gdb" ? selectedLayers : [] });
-      if (txt) { const pv = $("pv"); if (pv) pv.textContent = txt; await geoP; return; }
-    } catch (e) { console.error("Preview error:", e); toast("预览失败: " + (e?.message || e)); }
+      if (txt) {
+        const pv = $("pv");
+        if (pv) pv.textContent = txt;
+        lastPreviewKey = txt;
+        setBbStatus(`预览已更新：${collectPointRows().length} 列。导出请使用下方按钮。`);
+        await geoP;
+        return;
+      }
+      setBbStatus("没有可输出的坐标内容：请检查导入数据和筛选条件。", true);
+    } catch (e) {
+      console.error("Preview error:", e);
+      const message = e?.message || e;
+      setBbStatus("预览失败：" + message, true);
+      toast("预览失败: " + message);
+    }
     finally { if (spin) spin.classList.remove('on'); }
   }
   const pv = $("pv");
@@ -1640,8 +1655,8 @@ window.up = async function () {
 }
 
 // ═══ Run ═══
-// bubeian=true 时走「导出TXT(部备案)」：坐标行追加距离、埋桩两列（其余选项/输出模式共用）
-window.runShpToTxt = async function (bubeian = false) {
+// 统一导出入口：是否追加距离/埋桩等由界址点页签的 point_layout 决定
+window.runShpToTxt = async function () {
   const shpPaths = loadedFiles.map((f) => f.shp_path).filter(Boolean);
   if (!shpPaths.length && !sourcePath) { toast("请先导入 SHP 或 GDB 文件"); return; }
     // GDB 已导入但未勾选任何要素类：拦截，避免后端把"空"当作"全选"
@@ -1659,101 +1674,235 @@ window.runShpToTxt = async function (bubeian = false) {
 
   const cfg = getConfig();
   const opt = getOptions();
-  if (bubeian) opt.bubeian = getBubeianOptions();
   const fr = TV.getFilterUids();
   if (fr.error) { toast("筛选条件有误：" + fr.error.message); return; }
   if (fr.empty) { toast("筛选结果为空，请调整筛选条件"); return; }
   try {
     const result = await tauriInvoke("run_shp_to_txt", { shpPaths, sourceType, sourcePath, headerCfg: cfg.h, fieldMapping: cfg.f, options: opt, outputDir: outDir, selectedLayers: sourceType === "gdb" ? selectedLayers : [] });
-    toast("✓ " + (bubeian ? "部备案TXT导出完成：" : "") + result.message);
+    toast("✓ " + result.message);
     const pf = $("pf"); const ps = $("ps");
     if (pf) pf.style.width = "100%";
     if (ps) ps.textContent = "完成";
   } catch (e) { toast("转换失败: " + e); }
 };
 
-// ═══ 部备案TXT（坐标行：点号,环号,Y,X,到下一点距离,界址点类型） ═══
-const BB_CFG_KEY = "bb_cfg";
-function getBubeianOptions() {
-  const dec = parseInt($("bbDec")?.value, 10);
+// ═══ 界址点坐标行列布局（预览/导出共用同一套 PointLayout） ═══
+const POINT_CORE = [
+  { kind: "point", label: "点号" },
+  { kind: "ring", label: "环号" },
+  { kind: "y", label: "Y坐标" },
+  { kind: "x", label: "X坐标" },
+];
+const POINT_CUSTOM_KINDS = [
+  { kind: "fixed", label: "固定值" },
+  { kind: "field", label: "源字段" },
+  { kind: "distance", label: "点距离" },
+];
+
+function corePointRows() {
+  return POINT_CORE.map(({ kind }) => ({ kind, source: "", value: "" }));
+}
+
+function buildPointFieldOptions(cur) {
+  const names = [...new Set(lastFieldNames.filter(Boolean))];
+  let html = `<option value="">${cur ? "缺失字段（输出空）" : "选择源字段"}</option>`;
+  names.forEach((name) => {
+    html += `<option value="${escAttr(name)}"${name === cur ? " selected" : ""}>${escAttr(name)}</option>`;
+  });
+  if (cur && !names.includes(cur)) {
+    html = `<option value="${escAttr(cur)}" selected>${escAttr(cur)}（缺失）</option>` + html;
+  }
+  return html;
+}
+
+function renderPointRows(rows) {
+  const box = $("bbRows");
+  if (!box) return;
+  box.innerHTML = "";
+  rows.forEach((row, i) => {
+    const core = POINT_CORE.find((c) => c.kind === row.kind);
+    const div = document.createElement("div");
+    div.className = "point-row";
+    if (core) {
+      div.innerHTML =
+        `<span class="grip" title="拖动排序">⠿</span>` +
+        `<span class="pk" data-kind="${core.kind}">${core.label}</span>` +
+        `<span class="pfx">自动</span>`;
+    } else {
+      const kind = POINT_CUSTOM_KINDS.some((c) => c.kind === row.kind) ? row.kind : "field";
+      let valueCtrl;
+      if (kind === "field") {
+        valueCtrl = `<select class="psource" title="选择输出到每条界址点的源字段">${buildPointFieldOptions(row.source)}</select>`;
+      } else if (kind === "fixed") {
+        const display = row.value || "";
+        valueCtrl =
+          `<span class="pvalue-read${display ? "" : " empty"}" data-value="${escAttr(display)}" title="${escAttr(display || "未设置")}">${display ? escAttr(display) : "未设置"}</span>` +
+          `<button class="pbtn" data-act="edit" data-i="${i}" title="打开固定值编辑窗口">编辑</button>`;
+      } else {
+        valueCtrl =
+          `<select class="punit" title="距离单位">` +
+          `<option value="m"${row.unit === "km" ? "" : " selected"}>米</option>` +
+          `<option value="km"${row.unit === "km" ? " selected" : ""}>千米</option>` +
+          `<option value="cm"${row.unit === "cm" ? " selected" : ""}>厘米</option>` +
+          `</select>` +
+          `<select class="pprec" title="距离小数位">` +
+          [0, 1, 2, 3, 4, 5, 6].map((n) => `<option value="${n}"${String(row.decimals || "3") === String(n) ? " selected" : ""}>${n}位</option>`).join("") +
+          `</select>`;
+      }
+      div.innerHTML =
+        `<span class="grip" title="拖动排序">⠿</span>` +
+        `<select class="pk">` +
+        POINT_CUSTOM_KINDS.map((c) => `<option value="${c.kind}"${c.kind === kind ? " selected" : ""}>${c.label}</option>`).join("") +
+        `</select>` + valueCtrl +
+        `<button class="abtn del" data-act="del" data-i="${i}" title="删除此列">✕</button>`;
+    }
+    box.appendChild(div);
+  });
+}
+
+function collectPointRows() {
+  const box = $("bbRows");
+  if (!box || !box.children.length) return corePointRows();
+  const rows = [];
+  box.querySelectorAll(".point-row").forEach((div) => {
+    const kindCtrl = div.querySelector(".pk");
+    const kind = kindCtrl?.tagName === "SELECT" ? kindCtrl.value : kindCtrl?.dataset.kind || "point";
+    const source = div.querySelector(".psource")?.value || "";
+    const value = div.querySelector(".pvalue-read")?.dataset.value || "";
+    const unit = div.querySelector(".punit")?.value || "m";
+    const decimals = div.querySelector(".pprec")?.value || "3";
+    rows.push({ kind, source, value, unit, decimals });
+  });
+  return rows;
+}
+
+function getPointLayout() {
+  const rows = collectPointRows();
+  if (rows.map((row) => row.kind).join(",") === POINT_CORE.map((row) => row.kind).join(",")) return null;
+  const columns = rows.map((row) => {
+    if (row.kind !== "distance") {
+      return { kind: row.kind, source: row.source, value: row.value };
+    }
+    const decimals = Number.parseInt(row.decimals, 10);
+    return {
+      kind: row.kind,
+      source: row.source,
+      value: row.value,
+      distance_unit: row.unit || "m",
+      distance_decimals: Number.isFinite(decimals) ? Math.min(6, Math.max(0, decimals)) : 3,
+    };
+  });
+  const distance = rows.find((row) => row.kind === "distance");
   return {
-    stake_field: $("bbStakeField")?.value || "",
-    stake_default: $("bbStakeDefault")?.value ?? "埋桩",
-    distance_unit: $("bbUnit")?.value || "m",
-    distance_decimals: Number.isFinite(dec) ? Math.min(6, Math.max(0, dec)) : 3,
+    columns,
+    stake_field: "",
+    stake_default: "",
+    distance_unit: distance?.unit || "m",
+    distance_decimals: Number.isFinite(parseInt(distance?.decimals, 10))
+      ? Math.min(6, Math.max(0, parseInt(distance.decimals, 10)))
+      : 3,
   };
 }
-// 设置持久化（独立于表头/字段映射预设，跨启动保留）
-function bbSavePersist() {
-  try { localStorage.setItem(BB_CFG_KEY, JSON.stringify(getBubeianOptions())); } catch (e) {}
+
+function applyPointLayoutConfig(config) {
+  if (!config || !Array.isArray(config.columns) || !config.columns.length) {
+    renderPointRows(corePointRows());
+    bbSyncTag();
+    return;
+  }
+  const rows = config.columns
+    .map((row) => ({
+      kind: row?.kind || "point",
+      source: row?.source || "",
+      value: row?.value || "",
+      unit: row?.unit || config.distance_unit || "m",
+      decimals: row?.decimals || config.distance_decimals || "3",
+    }))
+    .filter((row) => POINT_CORE.some((core) => core.kind === row.kind)
+      || POINT_CUSTOM_KINDS.some((kind) => kind.kind === row.kind));
+  const seenCore = new Set();
+  const coreRows = [];
+  const customRows = [];
+  rows.forEach((row) => {
+    if (POINT_CORE.some((core) => core.kind === row.kind)) {
+      if (seenCore.has(row.kind)) return;
+      seenCore.add(row.kind);
+      coreRows.push(row);
+    } else {
+      customRows.push(row);
+    }
+  });
+  POINT_CORE.forEach((core) => {
+    if (!seenCore.has(core.kind)) coreRows.push({ kind: core.kind, source: "", value: "" });
+  });
+  const normalized = [...coreRows, ...customRows];
+  renderPointRows(normalized.length ? normalized : corePointRows());
+  bbSyncTag();
 }
-function bbLoadPersist() {
-  try {
-    const v = JSON.parse(localStorage.getItem(BB_CFG_KEY) || "null");
-    if (!v) return;
-    if ($("bbUnit") && v.distance_unit) $("bbUnit").value = v.distance_unit;
-    if ($("bbDec") && Number.isFinite(parseInt(v.distance_decimals, 10))) $("bbDec").value = String(v.distance_decimals);
-    if ($("bbStakeDefault") && typeof v.stake_default === "string") $("bbStakeDefault").value = v.stake_default;
-  } catch (e) {}
-}
+
 function bbSyncTag() {
   const el = $("bbTag");
   if (!el) return;
-  const o = getBubeianOptions();
-  const unit = { m: "米", km: "千米", cm: "厘米" }[o.distance_unit] || "米";
-  el.textContent = `距离${unit}/${o.distance_decimals}位`;
+  const rows = collectPointRows();
+  const distance = rows.find((row) => row.kind === "distance");
+  if (!distance) {
+    el.textContent = `${rows.length}列`;
+    return;
+  }
+  const unit = { m: "米", km: "千米", cm: "厘米" }[distance.unit] || "米";
+  el.textContent = `${rows.length}列 · 距离${unit}/${distance.decimals}位`;
 }
-// 导入后刷新埋桩来源字段下拉（保留当前选择）
-function bbSetFieldNames(names) {
-  const sel = $("bbStakeField");
-  if (!sel) return;
-  const cur = sel.value;
-  sel.innerHTML = `<option value="">不读字段（手填）</option>`
-    + (names || []).map((n) => `<option value="${escAttr(n)}">${escAttr(n)}</option>`).join("");
-  if (cur && (names || []).includes(cur)) sel.value = cur;
-}
-// 部备案默认表头（模板顺序）：新增 格式版本号/数据产生单位/数据产生日期 三行；
-// 其余沿用当前值（坐标系/带号等已随导入自动推导），缺失时用模板默认
-function applyBubeianHeader() {
-  const cur = collectAttrRows();
-  const get = (k) => cur.find((r) => r.k.trim() === k)?.v ?? "";
-  const now = new Date();
-  const today = `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
-  renderAttrRows([
-    { k: "格式版本号", v: get("格式版本号") },
-    { k: "数据产生单位", v: get("数据产生单位") },
-    { k: "数据产生日期", v: get("数据产生日期") || today },
-    { k: "坐标系", v: get("坐标系") || "2000国家大地坐标系" },
-    { k: "几度分带", v: get("几度分带") || "3" },
-    { k: "投影类型", v: get("投影类型") || "高斯克吕格" },
-    { k: "计量单位", v: get("计量单位") || "米" },
-    { k: "带号", v: get("带号") },
-    { k: "精度", v: get("精度") || "0.001" },
-    { k: "转换参数", v: get("转换参数") || "0,0,0,0,0,0,0" },
-  ]);
-  updatePreview();
-  clearTimeout(autoSaveTimer);
-  flushAutoSave();
-  toast("已套用部备案表头（可在自定义表头中继续编辑）");
-}
-// 部备案预览：同一预览管线，仅注入 bubeian 选项；结果写入 TXT 预览页签
-window.previewBubeian = async function () {
-  const shpPaths = loadedFiles.map((f) => f.shp_path).filter(Boolean);
-  if (!shpPaths.length && !sourcePath) { toast("请先导入 SHP 或 GDB 文件"); return; }
-  const cfg = getConfig();
-  const opt = { ...getOptions(), bubeian: getBubeianOptions() };
-  const spin = $("pvSpin");
-  try {
-    if (spin) spin.classList.add("on");
-    const txt = await tauriInvoke("read_shp_to_txt_preview", { shpPaths, sourceType, sourcePath, headerCfg: cfg.h, fieldMapping: cfg.f, options: opt, selectedLayers: sourceType === "gdb" ? selectedLayers : [] });
-    window.swPvTab("pv");
-    const pv = $("pv");
-    if (pv) pv.textContent = txt || "（无内容）";
-    lastPreviewKey = txt;
-  } catch (e) { toast("部备案预览失败: " + (e?.message || e)); }
-  finally { if (spin) spin.classList.remove("on"); }
-};
 
+function setBbStatus(message, isError = false) {
+  const el = $("bbStatus");
+  if (!el) return;
+  el.textContent = message;
+  el.classList.toggle("err", isError);
+}
+
+let pointValueEditIndex = null;
+
+function openPointValueEditor(index) {
+  const rows = collectPointRows();
+  const row = rows[index];
+  if (row?.kind !== "fixed") return;
+  pointValueEditIndex = index;
+  const input = $("pointValueInput");
+  const start = $("btnPointValueStart");
+  input.value = row.value || "";
+  input.readOnly = true;
+  start.textContent = "开始修改";
+  $("pointValueModal")?.classList.add("on");
+  start.focus();
+}
+
+function closePointValueEditor() {
+  pointValueEditIndex = null;
+  const input = $("pointValueInput");
+  input.value = "";
+  input.readOnly = true;
+  $("btnPointValueStart").textContent = "开始修改";
+  $("pointValueModal")?.classList.remove("on");
+}
+
+function commitPointValueEditor() {
+  const index = pointValueEditIndex;
+  const rows = collectPointRows();
+  if (index == null || !rows[index] || rows[index].kind !== "fixed") {
+    closePointValueEditor();
+    return;
+  }
+  rows[index].value = $("pointValueInput").value.replace(/\s+/g, " ").trim();
+  renderPointRows(rows);
+  updatePreview();
+  closePointValueEditor();
+  toast("固定值已更新");
+}
+
+// 导入后刷新自定义字段下拉（保留当前选择）
+function bbSetFieldNames(names) {
+  renderPointRows(collectPointRows());
+}
 window.runTxtToShp = async function () {
   if (!txtFiles.length) { toast("请先导入 TXT 文件"); return; }
   const outDir = $("out_dir")?.value || "";
@@ -1819,6 +1968,8 @@ function getOptions() {
     filename_field: filenameField,
     // 地块级筛选（属性表求值）：预览/导出共用同一 uid 口径；语句有误时为 null（导出前另有拦截）
     plot_filter: (window.TV && TV.getFilterUids ? TV.getFilterUids().uids : null),
+    // 界址点列布局：null = 标准4列；界面切换部备案/自定义后所有预览和导出共用
+    point_layout: getPointLayout(),
   };
 }
 
@@ -2130,6 +2281,7 @@ window.ld = function (id) {
     if ($("oz") && $("og")) $("oz").disabled = !$("og").checked || $("og").disabled;
     refreshOgWarn();
     if ($("om")) $("om").checked = !!c.p.om;
+    applyPointLayoutConfig(c.p.point_layout || null);
   }
   if (c.f) {
     // 6 槽位按元素 ID 恢复（f 键名为 DOM id：fn/fi/fa/fu/fm/fd）
@@ -2419,7 +2571,7 @@ window.closeAbout = function (e) { if (e && e.target !== $("aboutModal")) return
 window.openSettings = function () { const m = $("settingsModal"); if (m) m.classList.add("on"); };
 window.closeSettings = function (e) { if (e && e.target !== $("settingsModal")) return; const m = $("settingsModal"); if (m) m.classList.remove("on"); };
 document.addEventListener("keydown", function (e) {
-  if (e.key === "Escape") { const am = $("aboutModal"); const gm = $("gdbSelectModal"); const um = $("updateModal"); const rm = $("settingsModal"); if (am) am.classList.remove("on"); if (gm) gm.classList.remove("on"); if (um && !isUpdating) um.classList.remove("on"); if (rm) rm.classList.remove("on"); }
+  if (e.key === "Escape") { const am = $("aboutModal"); const gm = $("gdbSelectModal"); const um = $("updateModal"); const rm = $("settingsModal"); const pm = $("pointValueModal"); if (am) am.classList.remove("on"); if (gm) gm.classList.remove("on"); if (um && !isUpdating) um.classList.remove("on"); if (rm) rm.classList.remove("on"); if (pm) closePointValueEditor(); }
 });
 
 // ═══ Display ratio (s-mode three-column) ═══
@@ -2766,14 +2918,91 @@ async function init() {
     });
   });
   bind("btnRunStt", () => runShpToTxt());
-  bind("btnRunBb", () => runShpToTxt(true));
-  bind("btnBbPreview", () => previewBubeian());
-  bind("btnBbHeader", () => armButton($("btnBbHeader"), "覆盖当前表头？", applyBubeianHeader));
-  ["bbUnit", "bbDec", "bbStakeField", "bbStakeDefault"].forEach((id) => {
-    const el = $(id);
-    if (el) el.addEventListener("change", () => { bbSavePersist(); bbSyncTag(); });
+  bind("btnAddPointColumn", () => {
+    const rows = collectPointRows();
+    const kind = $("bbNewKind")?.value || "field";
+    rows.push({ kind, source: "", value: "", unit: "m", decimals: "3" });
+    renderPointRows(rows);
+    $("bbRows")?.scrollTo({ top: $("bbRows").scrollHeight });
+    updatePreview();
   });
-  bbLoadPersist();
+  const bbRows = $("bbRows");
+  if (bbRows) {
+    bbRows.addEventListener("click", (e) => {
+      const editBtn = e.target.closest("button[data-act='edit']");
+      if (editBtn) {
+        openPointValueEditor(parseInt(editBtn.dataset.i, 10));
+        return;
+      }
+      const btn = e.target.closest("button[data-act='del']");
+      if (!btn) return;
+      const rows = collectPointRows();
+      rows.splice(parseInt(btn.dataset.i, 10), 1);
+      renderPointRows(rows);
+      updatePreview();
+    });
+    bbRows.addEventListener("change", (e) => {
+      if (e.target.matches(".pk, .psource")) {
+        renderPointRows(collectPointRows());
+        updatePreview();
+      }
+      if (e.target.matches(".punit, .pprec")) {
+        bbSyncTag();
+        updatePreview();
+      }
+    });
+    bbRows.addEventListener("mousedown", (e) => {
+      const grip = e.target.closest(".grip");
+      if (!grip || e.button !== 0) return;
+      const row = grip.closest(".point-row");
+      if (!row) return;
+      e.preventDefault();
+      row.classList.add("dragging");
+      const onMove = (ev) => {
+        const el = document.elementFromPoint(ev.clientX, ev.clientY);
+        const targetRow = el && el.closest(".point-row");
+        if (!targetRow || targetRow === row) return;
+        const rect = targetRow.getBoundingClientRect();
+        if (ev.clientY - rect.top > rect.height / 2) targetRow.after(row);
+        else targetRow.before(row);
+      };
+      const onUp = () => {
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+        row.classList.remove("dragging");
+        renderPointRows(collectPointRows());
+        updatePreview();
+      };
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+    });
+  }
+  bind("btnPointValueStart", () => {
+    const input = $("pointValueInput");
+    const start = $("btnPointValueStart");
+    if (input.readOnly) {
+      input.readOnly = false;
+      start.textContent = "完成修改";
+      input.focus();
+      input.setSelectionRange(input.value.length, input.value.length);
+    } else {
+      commitPointValueEditor();
+    }
+  });
+  bind("btnPointValueCancel", () => closePointValueEditor());
+  $("pointValueInput")?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      commitPointValueEditor();
+    }
+  });
+  const pointValueOverlay = $("pointValueModal");
+  if (pointValueOverlay) {
+    pointValueOverlay.addEventListener("click", (e) => {
+      if (e.target === pointValueOverlay) closePointValueEditor();
+    });
+  }
+  renderPointRows(collectPointRows());
   bbSyncTag();
   bind("btnRunTts", () => runTxtToShp());
   bind("btnCloseAbout", () => closeAbout());
@@ -2839,7 +3068,7 @@ async function init() {
   // All other inputs/selects trigger preview update
   document.querySelectorAll("input,select").forEach((el) => {
     // 属性表筛选工具条与地图工具条：各自模块内部管理事件（防勾选/击键误触发全量预览重取）
-    if (el.closest("#paneTbl") || el.closest("#paneMap")) return;
+    if (el.closest("#paneTbl") || el.closest("#paneMap") || el.closest("#pointValueModal")) return;
     el.addEventListener("input", updatePreview);
     el.addEventListener("change", updatePreview);
   });

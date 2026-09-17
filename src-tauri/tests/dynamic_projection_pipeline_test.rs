@@ -37,7 +37,7 @@ fn shp_opts_test_default() -> ShpToTxtOptions {
         og: false, zone_type: 3,
         proj_mode: String::new(),
         proj_zone: None,
-        proj_no_prefix: false, plot_filter: None, bubeian: None,
+        proj_no_prefix: false, plot_filter: None, point_layout: None,
     }
 }
 

@@ -18,7 +18,8 @@ Write-Host "Starting signed release build (5-10 min)..." -ForegroundColor Cyan
 Write-Host ""
 npm run tauri build
 if ($LASTEXITCODE -eq 0) {
-    $sig = Get-ChildItem 'src-tauri\target\release\bundle\nsis\*.sig' -ErrorAction SilentlyContinue | Select-Object -First 1
+    $sig = Get-ChildItem 'src-tauri\target\release\bundle\nsis\*.sig' -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTime -Descending | Select-Object -First 1
     if ($sig) {
         Write-Host ""
         Write-Host "BUILD OK - signature generated:" $sig.Name -ForegroundColor Green

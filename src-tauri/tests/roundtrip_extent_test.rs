@@ -66,7 +66,7 @@ fn opts_with(proj_mode: &str, proj_zone: Option<u32>, no_prefix: bool) -> conver
         proj_mode: proj_mode.into(),
         proj_zone,
         proj_no_prefix: no_prefix,
-        plot_filter: None, bubeian: None,
+        plot_filter: None, point_layout: None,
     }
 }
 

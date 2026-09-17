@@ -6,6 +6,7 @@
 extern crate jisig_bpoint_converter_lib;
 
 use jisig_bpoint_converter_lib::{convert, geometry::IndexedRing, shp, txt};
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 fn repo_root() -> PathBuf {
@@ -90,7 +91,7 @@ fn adv_options() -> convert::ShpToTxtOptions {
         proj_zone: None,
         ox: false, oj: true, on: false, oo: true, oc: false,
         output_mode: "one_to_one".into(), filename_field: String::new(),
-        og: false, zone_type: 3, proj_no_prefix: false, plot_filter: None, bubeian: None,
+        og: false, zone_type: 3, proj_no_prefix: false, plot_filter: None, point_layout: None,
     }
 }
 
@@ -187,6 +188,7 @@ fn test_generate_advanced_meta_no_list_line() {
             ("备注".to_string(), String::new()),
         ],
         stake: String::new(),
+        custom_values: HashMap::new(),
     }];
     let attrs = vec![convert::AttrRow { k: "精度".into(), v: "0.001".into() }];
     let out = txt::generate_txt("", &attrs, &plots, true, false);

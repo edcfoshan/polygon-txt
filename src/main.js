@@ -351,6 +351,9 @@ const importShp = async function () {
     if (result.skipped && result.skipped.length) {
       toast(`以下文件不是面状要素，已忽略：${result.skipped.join("、")}`, "err");
     }
+    if (result.failed && result.failed.length) {
+      toast("以下文件读取失败：" + result.failed.join("、"), "err");
+    }
     if (!result.files || result.files.length === 0) return;
     loadedFiles = result.files;
     sourceType = null;
@@ -3259,6 +3262,9 @@ function initImportAndDrop() {
   bindDropZone("dropZone", ".shp", "pick_shp_files_from_paths", (result) => {
     if (result.skipped && result.skipped.length) {
       toast(`以下文件不是面状要素，已忽略：${result.skipped.join("、")}`, "err");
+    }
+    if (result.failed && result.failed.length) {
+      toast("以下文件读取失败：" + result.failed.join("、"), "err");
     }
     if (result.files && result.files.length > 0) {
       loadedFiles = result.files; sourceType = null; sourcePath = null; gdbLayers = []; selectedLayers = []; renderFileList(); processImport();

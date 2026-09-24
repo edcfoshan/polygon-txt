@@ -23,6 +23,8 @@ struct ShpImportResult {
     dir: String,
     /// 被拒收的非面状 SHP 文件名（前端用于 toast 提示）
     skipped: Vec<String>,
+    /// 读取失败的 SHP（文件名+原因）——此前只 eprintln，发布版界面完全看不到
+    failed: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -243,6 +245,7 @@ fn pick_shp_files(app: tauri::AppHandle) -> Result<ShpImportResult, String> {
                 files: vec![],
                 dir: String::new(),
                 skipped: vec![],
+                failed: vec![],
             })
         }
     };
@@ -258,21 +261,26 @@ fn pick_shp_files(app: tauri::AppHandle) -> Result<ShpImportResult, String> {
         .iter()
         .filter_map(|f| f.as_path().map(|p| p.to_path_buf()))
         .collect();
-    let (files, skipped) = collect_shp_items(&paths, "读 SHP 失败");
+    let (files, skipped, failed) = collect_shp_items(&paths, "读 SHP 失败");
 
     Ok(ShpImportResult {
         files,
         dir: base_dir,
         skipped,
+        failed,
     })
 }
 
 /// 从一组 SHP 路径收集导入项——「选择文件」与「拖放」两个入口共用同一实现。
 /// err_label：读取失败时的日志前缀（两个入口的历史文案不同，逐字保留）。
-/// 返回 (可导入项, 被拒收的非面状文件名)。
-fn collect_shp_items(paths: &[PathBuf], err_label: &str) -> (Vec<ShpFileItem>, Vec<String>) {
+/// 返回 (可导入项, 被拒收的非面状文件名, 读取失败的文件名+原因)。
+fn collect_shp_items(
+    paths: &[PathBuf],
+    err_label: &str,
+) -> (Vec<ShpFileItem>, Vec<String>, Vec<String>) {
     let mut items = Vec::new();
     let mut skipped = Vec::new();
+    let mut failed = Vec::new();
     for shp_path in paths {
         if shp_path.extension().map(|e| e != "shp").unwrap_or(true) {
             continue;
@@ -302,10 +310,17 @@ fn collect_shp_items(paths: &[PathBuf], err_label: &str) -> (Vec<ShpFileItem>, V
                     eprintln!("拒收非面状 SHP: {} ({})", info.name, info.shape_type);
                 }
             }
-            Err(e) => eprintln!("{}: {}", err_label, e),
+            Err(e) => {
+                eprintln!("{}: {}", err_label, e);
+                let name = shp_path
+                    .file_name()
+                    .map(|s| s.to_string_lossy().to_string())
+                    .unwrap_or_default();
+                failed.push(format!("{}（{}）", name, e));
+            }
         }
     }
-    (items, skipped)
+    (items, skipped, failed)
 }
 
 #[tauri::command]
@@ -618,8 +633,8 @@ fn pick_shp_files_from_paths(paths: Vec<String>) -> Result<ShpImportResult, Stri
         .unwrap_or_default();
 
     let paths: Vec<PathBuf> = paths.iter().map(PathBuf::from).collect();
-    let (files, skipped) = collect_shp_items(&paths, "拖放读 SHP 失败");
-    Ok(ShpImportResult { files, dir: base_dir, skipped })
+    let (files, skipped, failed) = collect_shp_items(&paths, "拖放读 SHP 失败");
+    Ok(ShpImportResult { files, dir: base_dir, skipped, failed })
 }
 
 #[tauri::command]

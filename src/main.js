@@ -76,7 +76,6 @@ let cfgs = {};
 let headerManual = {};
 let projMode = "keep"; // prototype: dynamic projection selection
 let projZone = null;   // dynamic projection zone (A/B: dst zone; C: src zone; F/G: auto or user)
-let lastPreviewKey = "";
 let previewTimer = null;
 let autoSaveTimer = null;
 let theme = "light";
@@ -168,6 +167,74 @@ function bindGripReorder(box, collect, render) {
     box.children[to]?.querySelector(".grip")?.focus();
     updatePreview();
   });
+}
+
+// ═══ 拖动排序的鼠标路径（三处行列表共用：属性行 / 字段行 / 界址点列）═══
+// 手动 mouse 实现而非 HTML5 DnD（WebView2 下 DnD 兼容性差）；拖动过程实时改 DOM 顺序，
+// 松手后按新顺序 collect → render，与键盘路径 bindGripReorder 复用同一对 collect/render。
+function bindGripMouseReorder(box, rowSel, collect, render, afterRender) {
+  if (!box) return;
+  box.addEventListener("mousedown", (e) => {
+    const grip = e.target.closest(".grip");
+    if (!grip || e.button !== 0) return;
+    const row = grip.closest(rowSel);
+    if (!row) return;
+    e.preventDefault();
+    row.classList.add("dragging");
+    const onMove = (ev) => {
+      const el = document.elementFromPoint(ev.clientX, ev.clientY);
+      const targetRow = el && el.closest(rowSel);
+      if (!targetRow || targetRow === row) return;
+      const rect = targetRow.getBoundingClientRect();
+      if (ev.clientY - rect.top > rect.height / 2) targetRow.after(row);
+      else targetRow.before(row);
+    };
+    const onUp = () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      row.classList.remove("dragging");
+      render(collect());
+      if (afterRender) afterRender();
+      updatePreview();
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  });
+}
+
+// ═══ 共用小件：行删除 / 拖放导入 / 遮罩关闭（此前各调用点逐字重复）═══
+
+/// 行列表的删除按钮（属性行 / 字段行 / 界址点列共用）：按 data-i 从 collect 结果删除该行
+function deleteRowByIndex(btn, collect, render, afterRender) {
+  const rows = collect();
+  rows.splice(parseInt(btn.dataset.i, 10), 1);
+  render(rows);
+  if (afterRender) afterRender();
+  updatePreview();
+}
+
+/// 拖放导入（SHP / TXT 投放区共用）：高亮 → 按扩展名过滤 → 交后端解析 → onResult 处理结果
+function bindDropZone(zoneId, ext, cmd, onResult) {
+  const zone = $(zoneId);
+  if (!zone) return;
+  const reset = () => { zone.style.borderColor = ""; zone.style.background = ""; };
+  zone.addEventListener("dragover", (e) => { e.preventDefault(); zone.style.borderColor = "var(--ac)"; zone.style.background = "var(--acg)"; });
+  zone.addEventListener("dragleave", reset);
+  zone.addEventListener("drop", async (e) => {
+    e.preventDefault();
+    reset();
+    const files = Array.from(e.dataTransfer?.files || []).filter((f) => f.name.toLowerCase().endsWith(ext));
+    if (!files.length) { toast(`请拖入 ${ext} 文件`, "err"); return; }
+    try {
+      const paths = files.map((f) => f.path || f.name);
+      onResult(await tauriInvoke(cmd, { paths }));
+    } catch (err) { toast("拖放导入失败: " + err, "err"); }
+  });
+}
+
+/// 点击遮罩空白处关闭弹窗（6 个弹窗共用；点卡片内部不关闭）
+function bindModalBackdrop(overlay, close) {
+  if (overlay) overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
 }
 
 // ═══ Toast ═══
@@ -276,7 +343,7 @@ function renderMarkdown(md) {
 }
 
 // ═══ SHP 导入 ═══
-window.importShp = async function () {
+const importShp = async function () {
   try {
     const result = await tauriInvoke("pick_shp_files");
     if (result.skipped && result.skipped.length) {
@@ -299,7 +366,7 @@ window.importShp = async function () {
 // ═══ GDB 导入 ═══
 // 流程：选 .gdb 文件夹 → 后端枚举面状要素类 → 自动弹出选择框（默认不选）
 // → 用户勾选并确认 → 结果以单行汇总落在左栏，预览区刷新。
-window.importGdb = async function () {
+const importGdb = async function () {
   try {
     const result = await tauriInvoke("import_gdb");
     if (!result || !result.path) return;
@@ -335,7 +402,7 @@ window.importGdb = async function () {
 let gdbTempSelected = [];
 
 // 打开要素类选择弹窗（用当前 selectedLayers 初始化临时态，实现"重开恢复上次勾选"）
-window.openGdbSelectModal = function () {
+const openGdbSelectModal = function () {
   const m = $("gdbSelectModal");
   if (!m) return;
   gdbTempSelected = [...selectedLayers];
@@ -346,14 +413,14 @@ window.openGdbSelectModal = function () {
 };
 
 // 关闭弹窗：不改 selectedLayers（保留上次确认值）；点遮罩/取消/Esc 走这里
-window.closeGdbSelectModal = function (e) {
+const closeGdbSelectModal = function (e) {
   if (e && e.target && e.target.id && e.target.id !== "gdbSelectModal" && e.type === "click") return;
   const m = $("gdbSelectModal");
   if (m) m.classList.remove("on");
 };
 
 // 确认：提交临时态 → 关闭 → 刷新左栏汇总 + 右栏预览
-window.confirmGdbSelect = function () {
+const confirmGdbSelect = function () {
   if (gdbTempSelected.length === 0) {
     toast("请至少选择一个要素类", "err");
     return;
@@ -385,7 +452,7 @@ window.confirmGdbSelect = function () {
     toast(`⚠ 所选图层坐标系不一致：${zones.join("、")}，请分开处理`, "err");
   }
   resetFilterOnImport();
-  window.closeGdbSelectModal();
+  closeGdbSelectModal();
   // 识别行/带号前缀智能默认改随「勾选的第一个图层」的权威 CRS
   if (window._gdbImportResult && firstSelLayer?.crs_info) {
     const selCrs = { ...firstSelLayer.crs_info };
@@ -521,20 +588,17 @@ function clearGdbImport() {
 function renderFileList() {
   const fl = $("fl");
   if (!fl) return;
-  fl.innerHTML = "";
-  loadedFiles.forEach((g, i) => {
-    fl.innerHTML += `<div class="fitem"><span class="fn">${ICON_LAYERS} ${g.name}.shp</span><span class="fs">${g.num_features}个</span><button class="fitem-close" data-remove-file="${i}" title="移除" aria-label="移除该文件">${ICON_X}</button></div>`;
-  });
+  fl.innerHTML = loadedFiles.map((g, i) => `<div class="fitem"><span class="fn">${ICON_LAYERS} ${g.name}.shp</span><span class="fs">${g.num_features}个</span><button class="fitem-close" data-remove-file="${i}" title="移除" aria-label="移除该文件">${ICON_X}</button></div>`).join("");
   const tag = $("impTag");
   if (tag) tag.textContent = loadedFiles.length ? `${loadedFiles.length} 个文件` : "未导入";
 }
 
-window.removeFile = function (i) {
+const removeFile = function (i) {
   loadedFiles.splice(i, 1);
   if (!loadedFiles.length) {
     syncOgGate(null);
     updateProjButton();
-    const fl = $("fl"); if (fl) fl.innerHTML = ""; lastPreviewKey = ""; updatePreview(); return;
+    const fl = $("fl"); if (fl) fl.innerHTML = ""; updatePreview(); return;
   }
   renderFileList();
   if (loadedFiles.length === 1) syncOgGate(loadedFiles[0].crs_info || null);
@@ -729,7 +793,7 @@ function autoEnableProjPrefix() {
 
 /// 点击「带号前缀」开关：开 = 输出东坐标带带号前缀；关 = 输出自然值（剥前缀）。
 /// 与动态投影正交：keep 下直接生效（Rust keep+proj_zone 做前缀调整），不点亮动态投影开关。
-window.toggleProjPrefix = function () {
+const toggleProjPrefix = function () {
   const tb = $('projPrefixToggle');
   if (!tb || tb.disabled) return;
   window._projNoPrefix = !tb.checked;
@@ -952,7 +1016,7 @@ function renderProjModal(info) {
   if (cmInput && !cmInput._projBound) { cmInput.addEventListener('input', syncZoneFromCM); cmInput._projBound = true; }
 }
 
-window.openProjModal = function () {
+const openProjModal = function () {
   const overlay = $('projModal');
   if (!overlay) return;
   const info = currentCrsInfo || (loadedFiles[0] && loadedFiles[0].crs_info);
@@ -960,12 +1024,12 @@ window.openProjModal = function () {
   overlay.classList.add('on');
 };
 
-window.closeProjModal = function () {
+const closeProjModal = function () {
   const overlay = $('projModal');
   if (overlay) overlay.classList.remove('on');
 };
 
-window.applyProjMode = function () {
+const applyProjMode = function () {
   const sel = $('projFormSelect');
   const val = sel ? sel.value : '3';
   const zi = $('projZoneInput');
@@ -1033,10 +1097,10 @@ window.applyProjMode = function () {
 
   updateProjButton();
   updatePreview();
-  window.closeProjModal();
+  closeProjModal();
 };
 
-window.resetProjMode = function () {
+const resetProjMode = function () {
   projMode = 'keep';
   projZone = null;
   window._projFormValue = null;
@@ -1381,9 +1445,6 @@ function renderBcgSel() {
   if (del) del.style.display = readAdvTpls().length > 0 ? "" : "none";
 }
 
-// 补充耕地开关三态视觉（v2.2 旧 checkbox 版）→ v3.0 已由预设下拉 bcgSel 取代
-function renderBcgToggle() { renderBcgSel(); }
-
 // ─── 字段名候选弹层（自绘，body 级 fixed 定位防 #fieldRows overflow 裁剪）───
 let advSug = null;
 function ensureAdvSuggest() {
@@ -1440,12 +1501,7 @@ function bindFieldRowEvents() {
   if (!box) return;
   box.addEventListener("click", (e) => {
     const btn = e.target.closest("button[data-act='del']");
-    if (!btn) return;
-    const rows = collectFieldRows();
-    rows.splice(parseInt(btn.dataset.i, 10), 1);
-    renderFieldRows(rows);
-    syncAdvPresetState();
-    updatePreview();
+    if (btn) deleteRowByIndex(btn, collectFieldRows, renderFieldRows, syncAdvPresetState);
   });
   // 字段名 input：输入中只更新候选与自动保存，绝不重渲染（保焦点光标）
   box.addEventListener("input", (e) => {
@@ -1466,33 +1522,7 @@ function bindFieldRowEvents() {
       updatePreview();
     }
   });
-  // 拖拽排序（同 attr 行手动 mouse 实现，避免 WebView2 HTML5 DnD 兼容问题）
-  box.addEventListener("mousedown", (e) => {
-    const grip = e.target.closest(".grip");
-    if (!grip || e.button !== 0) return;
-    const row = grip.closest(".field-row");
-    if (!row) return;
-    e.preventDefault();
-    row.classList.add("dragging");
-    const onMove = (ev) => {
-      const el = document.elementFromPoint(ev.clientX, ev.clientY);
-      const targetRow = el && el.closest(".field-row");
-      if (!targetRow || targetRow === row) return;
-      const rect = targetRow.getBoundingClientRect();
-      if (ev.clientY - rect.top > rect.height / 2) targetRow.after(row);
-      else targetRow.before(row);
-    };
-    const onUp = () => {
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onUp);
-      row.classList.remove("dragging");
-      renderFieldRows(collectFieldRows());
-      syncAdvPresetState();
-      updatePreview();
-    };
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
-  });
+  bindGripMouseReorder(box, ".field-row", collectFieldRows, renderFieldRows, syncAdvPresetState);
 }
 
 // 首次开启高级模式：继承简单模式 6 下拉已选的源字段（输出与现状等价，仅多列表行）
@@ -1518,7 +1548,6 @@ function setAdvModeOn(on) {
   const advBox = $("fieldAdv");
   if (simple) simple.style.display = on ? "none" : "";
   if (advBox) advBox.style.display = on ? "" : "none";
-  lastPreviewKey = "";
   updatePreview();
 }
 
@@ -1567,7 +1596,7 @@ function autoFillHeaderFromTxt(info) {
 }
 
 // ═══ TXT 导入 ═══
-window.importTxt = async function () {
+const importTxt = async function () {
   try {
     const result = await tauriInvoke("pick_txt_files");
     if (result.failed && result.failed.length) {
@@ -1587,15 +1616,12 @@ window.importTxt = async function () {
 function renderTxtFileList() {
   const fl = $("flT");
   if (!fl) return;
-  fl.innerHTML = "";
-  txtFiles.forEach((f, i) => {
-    fl.innerHTML += `<div class="fitem"><span class="fn">${ICON_LAYERS} ${f.name}</span><span class="fs">${(f.size / 1024).toFixed(0)}KB</span><button class="fitem-close" data-remove-txt="${i}" title="移除" aria-label="移除该文件">${ICON_X}</button></div>`;
-  });
+  fl.innerHTML = txtFiles.map((f, i) => `<div class="fitem"><span class="fn">${ICON_LAYERS} ${f.name}</span><span class="fs">${(f.size / 1024).toFixed(0)}KB</span><button class="fitem-close" data-remove-txt="${i}" title="移除" aria-label="移除该文件">${ICON_X}</button></div>`).join("");
   const tag = $("impTTag");
   if (tag) tag.textContent = txtFiles.length ? `${txtFiles.length} 个文件` : "未导入";
 }
 
-window.removeTxtFile = function (i) {
+const removeTxtFile = function (i) {
   txtFiles.splice(i, 1);
   if (!txtFiles.length) {
     const fl = $("flT"); if (fl) fl.innerHTML = "";
@@ -1614,13 +1640,13 @@ function renderTxtParseLog() {
     : "等待导入 TXT 文件…";
 }
 
-window.clearAllFiles = function () { loadedFiles = []; sourceType = null; sourcePath = null; gdbLayers = []; selectedLayers = []; gdbTempSelected = []; window._gdbName = ""; syncOgGate(null); const fl = $("fl"); if (fl) fl.innerHTML = ""; const out = $("out_dir_s"); if (out) out.value = ""; updateProjButton(); QB.clearRows(); try { localStorage.removeItem("tg_flt2"); } catch (e) {} TV.reset(); MV.reset(); toast("已清空", "ok"); };
-window.clearAllFilesTxt = function () { txtFiles = []; const fl = $("flT"); if (fl) fl.innerHTML = ""; const pv = $("pvT"); if (pv) pv.textContent = "等待导入 TXT 文件…"; const out = $("out_dir"); if (out) out.value = ""; toast("已清空", "ok"); };
+const clearAllFiles = function () { loadedFiles = []; sourceType = null; sourcePath = null; gdbLayers = []; selectedLayers = []; gdbTempSelected = []; window._gdbName = ""; syncOgGate(null); const fl = $("fl"); if (fl) fl.innerHTML = ""; const out = $("out_dir_s"); if (out) out.value = ""; updateProjButton(); QB.clearRows(); try { localStorage.removeItem("tg_flt2"); } catch (e) {} TV.reset(); MV.reset(); toast("已清空", "ok"); };
+const clearAllFilesTxt = function () { txtFiles = []; const fl = $("flT"); if (fl) fl.innerHTML = ""; const pv = $("pvT"); if (pv) pv.textContent = "等待导入 TXT 文件…"; const out = $("out_dir"); if (out) out.value = ""; toast("已清空", "ok"); };
 
 // ═══ Preview ═══
 function updatePreview() {
   clearTimeout(previewTimer);
-  previewTimer = setTimeout(() => window.up(), 150);
+  previewTimer = setTimeout(() => up(), 150);
   scheduleAutoSave();
 }
 
@@ -1662,7 +1688,7 @@ async function refreshPlotGeo(shpPaths, cfg, opt) {
   }
 }
 
-window.up = async function () {
+const up = async function () {
   const hpi = $("hpi")?.value || "";
   const attrLines = collectAttrRows()
     .filter((r) => r.k.trim() !== "" || r.v.trim() !== "")
@@ -1687,7 +1713,6 @@ window.up = async function () {
       if (txt) {
         const pv = $("pv");
         if (pv) pv.textContent = txt;
-        lastPreviewKey = txt;
         setBbStatus(`预览已更新：${collectPointRows().length} 列。导出请使用下方按钮。`);
         await geoP;
         return;
@@ -1703,7 +1728,6 @@ window.up = async function () {
   }
   const pv = $("pv");
   if (pv) pv.textContent = out || "请先导入 SHP 或 GDB 文件";
-  lastPreviewKey = out;
 }
 
 // ═══ Run ═══
@@ -1741,7 +1765,7 @@ function focusAttrRow(key) {
 }
 
 // 统一导出入口：是否追加距离/埋桩等由界址点页签的 point_layout 决定
-window.runShpToTxt = async function () {
+const runShpToTxt = async function () {
   const shpPaths = loadedFiles.map((f) => f.shp_path).filter(Boolean);
   if (!shpPaths.length && !sourcePath) { toast("请先导入 SHP 或 GDB 文件", "err"); return; }
   // GDB 已导入但未勾选任何要素类：拦截，避免后端把"空"当作"全选"
@@ -2001,7 +2025,7 @@ function commitPointValueEditor() {
 function bbSetFieldNames(names) {
   renderPointRows(collectPointRows());
 }
-window.runTxtToShp = async function () {
+const runTxtToShp = async function () {
   if (!txtFiles.length) { toast("请先导入 TXT 文件", "err"); return; }
   const outDir = $("out_dir")?.value || "";
   if (!outDir) {
@@ -2083,7 +2107,7 @@ function getOptions() {
 }
 
 // ═══ Tab switch ═══
-window.sw = function (t) {
+const sw = function (t) {
   document.querySelectorAll(".tab").forEach((e) => e.classList.remove("on"));
   const tab = document.querySelector(`[data-t="${t}"]`);
   if (tab) tab.classList.add("on");
@@ -2100,7 +2124,7 @@ window.swPvTab = function (name) {
   if (name === "map") MV.ensureInit();
 };
 
-window.tg = function (h) {
+const tg = function (h) {
   const a = h.querySelector(".arr");
   const b = h.nextElementSibling;
   if (a) a.classList.toggle("o");
@@ -2108,7 +2132,7 @@ window.tg = function (h) {
 };
 
 // ═══ Header tabs ═══
-window.switchHdrTab = function (t) {
+const switchHdrTab = function (t) {
   document.querySelectorAll(".hdr-tab").forEach((e) => e.classList.toggle("on", e.dataset.tab === t));
   $("hdrAttr")?.classList.toggle("on", t === "attr");
   $("hdrProj")?.classList.toggle("on", t === "proj");
@@ -2240,12 +2264,7 @@ function bindAttrRowEvents() {
   // 删除
   box.addEventListener("click", (e) => {
     const btn = e.target.closest("button[data-act='del']");
-    if (!btn) return;
-    const i = parseInt(btn.dataset.i, 10);
-    const rows = collectAttrRows();
-    rows.splice(i, 1);
-    renderAttrRows(rows);
-    updatePreview();
+    if (btn) deleteRowByIndex(btn, collectAttrRows, renderAttrRows);
   });
   // 输入实时更新预览 + headerManual 标记（input 和 select 都走 input 事件）
   box.addEventListener("input", (e) => {
@@ -2279,35 +2298,10 @@ function bindAttrRowEvents() {
       updatePreview();
     }
   });
-  // 拖拽排序（手动 mouse 实现，避免 WebView2 HTML5 DnD 兼容问题；实时排序视觉）
-  box.addEventListener("mousedown", (e) => {
-    const grip = e.target.closest(".grip");
-    if (!grip || e.button !== 0) return;
-    const row = grip.closest(".attr-row");
-    if (!row) return;
-    e.preventDefault();
-    row.classList.add("dragging");
-    const onMove = (ev) => {
-      const el = document.elementFromPoint(ev.clientX, ev.clientY);
-      const targetRow = el && el.closest(".attr-row");
-      if (!targetRow || targetRow === row) return;
-      const rect = targetRow.getBoundingClientRect();
-      if (ev.clientY - rect.top > rect.height / 2) targetRow.after(row);
-      else targetRow.before(row);
-    };
-    const onUp = () => {
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onUp);
-      row.classList.remove("dragging");
-      renderAttrRows(collectAttrRows());
-      updatePreview();
-    };
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
-  });
+  bindGripMouseReorder(box, ".attr-row", collectAttrRows, renderAttrRows);
 }
 
-window.prefillProject = function () {
+const prefillProject = function () {
   const hpi = $("hpi");
   if (!hpi) return;
   hpi.value = `项目名称=
@@ -2335,7 +2329,7 @@ window.prefillProject = function () {
   updatePreview();
 };
 
-window.resetDefaults = function () {
+const resetDefaults = function () {
   renderAttrRows(DEFAULT_ATTRS.map((r) => ({ ...r })));
   updatePreview();
   // 立即落盘「已恢复默认」的结果，避免下次加载时旧自定义值再次复活
@@ -2345,12 +2339,12 @@ window.resetDefaults = function () {
 };
 
 
-window.selectOutputDir = async function () {
+const selectOutputDir = async function () {
   const dir = await tauriInvoke("pick_output_dir");
   if (dir) { const inp = $("out_dir"); if (inp) inp.value = dir; }
 };
 
-window.selectOutputDirS = async function () {
+const selectOutputDirS = async function () {
   const dir = await tauriInvoke("pick_output_dir");
   if (dir) { const inp = $("out_dir_s"); if (inp) inp.value = dir; }
 };
@@ -2359,13 +2353,10 @@ window.selectOutputDirS = async function () {
 function renderChips() {
   const ch = $("ch");
   if (!ch) return;
-  ch.innerHTML = "";
-  Object.values(cfgs).forEach((c) => {
-    ch.innerHTML += `<button type="button" class="chip${c.id === cur ? " on" : ""}" data-chip="${c.id}">${c.n}</button>`;
-  });
+  ch.innerHTML = Object.values(cfgs).map((c) => `<button type="button" class="chip${c.id === cur ? " on" : ""}" data-chip="${c.id}">${c.n}</button>`).join("");
 }
 
-window.ld = function (id) {
+const ld = function (id) {
   if (!id) return;
   const c = cfgs[id] || PP.find((p) => p.id === id);
   if (!c) return;
@@ -2406,7 +2397,7 @@ window.ld = function (id) {
   updatePreview();
 };
 
-window.saveOnly = function () {
+const saveOnly = function () {
   const cn = $("cn");
   if (!cn) return;
   const newName = (cn.textContent || "").trim();
@@ -2436,10 +2427,9 @@ const doDelCfg = () => {
   renderChips();
   toast("已删除", "ok");
 };
-window.delCfg = doDelCfg;
 
 // ═══ Open GitHub ═══
-window.openGitHub = async function () {
+const openGitHub = async function () {
   try {
     await shellOpen("https://github.com/edcfoshan/polygon-txt");
   } catch (e) { console.error("openGitHub:", e); }
@@ -2556,7 +2546,7 @@ async function checkAppUpdate(manual = false) {
 }
 
 // 打开更新模态框：填充版本号 / 更新说明 / 重置进度条 / 跳过按钮显隐
-window.openUpdateModal = function () {
+const openUpdateModal = function () {
   // 没有 pendingUpdate 时，从 localStorage 恢复一份给弹窗展示（用于"已跳过态"重新打开）
   if (!pendingUpdate) {
     const known = readKnown();
@@ -2584,7 +2574,7 @@ window.openUpdateModal = function () {
   m.classList.add("on");
 };
 
-window.closeUpdateModal = function (e) {
+const closeUpdateModal = function (e) {
   if (e && e.target !== $("updateModal")) return;
   if (isUpdating) return; // 下载安装中禁止关闭
   const m = $("updateModal");
@@ -2592,7 +2582,7 @@ window.closeUpdateModal = function (e) {
 };
 
 // 跳过当前版本：写入 localStorage，按钮转灰态，关弹窗
-window.skipCurrentVersion = function () {
+const skipCurrentVersion = function () {
   if (!pendingUpdate?.version) return;
   writeSkipped(pendingUpdate.version);
   setUpdateBtnState("skipped");
@@ -2602,7 +2592,7 @@ window.skipCurrentVersion = function () {
 
 // 下载并安装：监听进度 → 更新进度条 → 重启进新装目录。失败兜底百度云。
 // 「保留安装包到桌面」勾选时：绕过插件自管下载到桌面（验签 + 资源管理器定位 + 静默安装）。
-window.doUpdate = async function () {
+const doUpdate = async function () {
   // restored 态（从 localStorage 恢复的）没有真实 update 对象，需重新检查拿真实句柄
   if (pendingUpdate?.__restored) {
     setUpdateBtnState("loading");
@@ -2674,10 +2664,10 @@ window.doUpdate = async function () {
 };
 
 // ═══ Modals ═══
-window.openAbout = function () { const m = $("aboutModal"); if (m) m.classList.add("on"); };
-window.closeAbout = function (e) { if (e && e.target !== $("aboutModal")) return; const m = $("aboutModal"); if (m) m.classList.remove("on"); };
-window.openSettings = function () { const m = $("settingsModal"); if (m) m.classList.add("on"); };
-window.closeSettings = function (e) { if (e && e.target !== $("settingsModal")) return; const m = $("settingsModal"); if (m) m.classList.remove("on"); };
+const openAbout = function () { const m = $("aboutModal"); if (m) m.classList.add("on"); };
+const closeAbout = function (e) { if (e && e.target !== $("aboutModal")) return; const m = $("aboutModal"); if (m) m.classList.remove("on"); };
+const openSettings = function () { const m = $("settingsModal"); if (m) m.classList.add("on"); };
+const closeSettings = function (e) { if (e && e.target !== $("settingsModal")) return; const m = $("settingsModal"); if (m) m.classList.remove("on"); };
 document.addEventListener("keydown", function (e) {
   if (e.key === "Escape") { const am = $("aboutModal"); const gm = $("gdbSelectModal"); const um = $("updateModal"); const rm = $("settingsModal"); const pm = $("pointValueModal"); if (am) am.classList.remove("on"); if (gm) gm.classList.remove("on"); if (um && !isUpdating) um.classList.remove("on"); if (rm) rm.classList.remove("on"); if (pm) closePointValueEditor(); }
 });
@@ -2843,7 +2833,8 @@ async function init() {
   });
 
   const s = localStorage.getItem("tg_dark");
-  if (s) cfgs = JSON.parse(s);
+  // 存档损坏不应导致启动失败：解析失败回退空对象，由下方 PP.forEach 重建内置预设
+  try { cfgs = JSON.parse(s || "{}"); } catch { cfgs = {}; }
   PP.forEach((p) => {
     if (p.id === "usr") {
       // 恢复：localStorage 里的 usr 必须包含全部 DEFAULT_ATTRS 键，否则重建
@@ -2917,11 +2908,11 @@ async function init() {
     r.addEventListener("change", () => {
       const row = $("filenameFieldRow");
       if (row) row.style.display = r.checked && r.value === "split_by_plot" ? "block" : "none";
-      if (r.checked) { syncModeSeg("output_mode"); lastPreviewKey = ""; updatePreview(); }
+      if (r.checked) { syncModeSeg("output_mode"); updatePreview(); }
     });
   });
   const ff = $("filename_field");
-  if (ff) ff.addEventListener("change", () => { lastPreviewKey = ""; updatePreview(); });
+  if (ff) ff.addEventListener("change", () => { updatePreview(); });
 
   // 闭合点编号下拉：未勾「首末点重合」时置灰
   const oo = $("oo");
@@ -2930,7 +2921,7 @@ async function init() {
     const syncOcDisabled = () => { oc.disabled = !oo.checked; };
     syncOcDisabled();
     oo.addEventListener("change", syncOcDisabled);
-    oc.addEventListener("change", () => { lastPreviewKey = ""; updatePreview(); });
+    oc.addEventListener("change", () => { updatePreview(); });
   }
 
   // og 公里网：未勾时 oz 置灰；og/oz 变更刷新预览与软提示
@@ -2940,17 +2931,16 @@ async function init() {
     const syncOz = () => {
       oz.disabled = !og.checked;
       refreshOgWarn();
-      lastPreviewKey = "";
       updatePreview();
     };
     og.addEventListener("change", syncOz);
-    oz.addEventListener("change", () => { lastPreviewKey = ""; updatePreview(); });
+    oz.addEventListener("change", () => { updatePreview(); });
   }
 
   // 字段映射下拉框改选后刷新预览（fn/fi/fa/fu/fm/fd = 地块名/编号/面积/用途/图幅号/地类编码）
   ["fn", "fi", "fa", "fu", "fm", "fd"].forEach((id) => {
     const el = $(id);
-    if (el) el.addEventListener("change", () => { lastPreviewKey = ""; updatePreview(); });
+    if (el) el.addEventListener("change", () => { updatePreview(); });
   });
 
   // 字段映射高级模式：开关 / 补充耕地预设开关 / 添加 / 恢复默认 / 动态行事件
@@ -3057,7 +3047,7 @@ async function init() {
   bind("btnProjApply", () => applyProjMode());
   // click outside proj modal closes it
   const projOverlay = projModal;
-  if (projOverlay) projOverlay.addEventListener("click", (e) => { if (e.target === projOverlay) closeProjModal(); });
+  bindModalBackdrop($("projModal"), closeProjModal);
   // esc closes proj modal
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && projOverlay && projOverlay.classList.contains("on")) closeProjModal(); });
   // initial gate state
@@ -3097,11 +3087,7 @@ async function init() {
         return;
       }
       const btn = e.target.closest("button[data-act='del']");
-      if (!btn) return;
-      const rows = collectPointRows();
-      rows.splice(parseInt(btn.dataset.i, 10), 1);
-      renderPointRows(rows);
-      updatePreview();
+      if (btn) deleteRowByIndex(btn, collectPointRows, renderPointRows);
     });
     bbRows.addEventListener("change", (e) => {
       if (e.target.matches(".pk, .psource")) {
@@ -3113,31 +3099,7 @@ async function init() {
         updatePreview();
       }
     });
-    bbRows.addEventListener("mousedown", (e) => {
-      const grip = e.target.closest(".grip");
-      if (!grip || e.button !== 0) return;
-      const row = grip.closest(".point-row");
-      if (!row) return;
-      e.preventDefault();
-      row.classList.add("dragging");
-      const onMove = (ev) => {
-        const el = document.elementFromPoint(ev.clientX, ev.clientY);
-        const targetRow = el && el.closest(".point-row");
-        if (!targetRow || targetRow === row) return;
-        const rect = targetRow.getBoundingClientRect();
-        if (ev.clientY - rect.top > rect.height / 2) targetRow.after(row);
-        else targetRow.before(row);
-      };
-      const onUp = () => {
-        document.removeEventListener("mousemove", onMove);
-        document.removeEventListener("mouseup", onUp);
-        row.classList.remove("dragging");
-        renderPointRows(collectPointRows());
-        updatePreview();
-      };
-      document.addEventListener("mousemove", onMove);
-      document.addEventListener("mouseup", onUp);
-    });
+    bindGripMouseReorder(bbRows, ".point-row", collectPointRows, renderPointRows);
     bindGripReorder(bbRows, collectPointRows, renderPointRows);
   }
   bind("btnPointValueStart", () => {
@@ -3159,12 +3121,7 @@ async function init() {
       commitPointValueEditor();
     }
   });
-  const pointValueOverlay = $("pointValueModal");
-  if (pointValueOverlay) {
-    pointValueOverlay.addEventListener("click", (e) => {
-      if (e.target === pointValueOverlay) closePointValueEditor();
-    });
-  }
+  bindModalBackdrop($("pointValueModal"), closePointValueEditor);
   renderPointRows(collectPointRows());
   bbSyncTag();
   bind("btnRunTts", () => runTxtToShp());
@@ -3207,14 +3164,10 @@ async function init() {
   });
 
   // Modal overlay click-to-close
-  const aboutModal = $("aboutModal");
-  if (aboutModal) aboutModal.addEventListener("click", (e) => { if (e.target === aboutModal) closeAbout(); });
-  const settingsModal = $("settingsModal");
-  if (settingsModal) settingsModal.addEventListener("click", (e) => { if (e.target === settingsModal) closeSettings(); });
-  const gdbSelectModal = $("gdbSelectModal");
-  if (gdbSelectModal) gdbSelectModal.addEventListener("click", (e) => { if (e.target === gdbSelectModal) closeGdbSelectModal(); });
-  const updateModal = $("updateModal");
-  if (updateModal) updateModal.addEventListener("click", (e) => { if (e.target === updateModal) closeUpdateModal(); });
+  bindModalBackdrop($("aboutModal"), closeAbout);
+  bindModalBackdrop($("settingsModal"), closeSettings);
+  bindModalBackdrop($("gdbSelectModal"), closeGdbSelectModal);
+  bindModalBackdrop($("updateModal"), closeUpdateModal);
 
   // ─── 启动时静默检查更新（失败不报错，仅在有新版本时显示绿色箭头）───
   checkAppUpdate(false);
@@ -3256,49 +3209,24 @@ async function init() {
     if (chip) ld(chip.dataset.chip);
   });
 
-  // Drag & Drop — SHP
-  const dz = $("dropZone");
-  if (dz) {
-    dz.addEventListener("dragover", (e) => { e.preventDefault(); dz.style.borderColor = "var(--ac)"; dz.style.background = "var(--acg)"; });
-    dz.addEventListener("dragleave", () => { dz.style.borderColor = ""; dz.style.background = ""; });
-    dz.addEventListener("drop", async (e) => {
-      e.preventDefault(); dz.style.borderColor = ""; dz.style.background = "";
-      const files = Array.from(e.dataTransfer?.files || []).filter((f) => f.name.toLowerCase().endsWith(".shp"));
-      if (!files.length) { toast("请拖入 .shp 文件", "err"); return; }
-      try {
-        const paths = files.map((f) => f.path || f.name);
-        const result = await tauriInvoke("pick_shp_files_from_paths", { paths });
-        if (result.skipped && result.skipped.length) {
-          toast(`以下文件不是面状要素，已忽略：${result.skipped.join("、")}`, "err");
-        }
-        if (result.files && result.files.length > 0) {
-          loadedFiles = result.files; sourceType = null; sourcePath = null; gdbLayers = []; selectedLayers = []; renderFileList(); processImport();
-        }
-      } catch (err) { toast("拖放导入失败: " + err, "err"); }
-    });
-  }
-  // Drag & Drop — TXT
-  const dzT = $("dropZoneTxt");
-  if (dzT) {
-    dzT.addEventListener("dragover", (e) => { e.preventDefault(); dzT.style.borderColor = "var(--ac)"; dzT.style.background = "var(--acg)"; });
-    dzT.addEventListener("dragleave", () => { dzT.style.borderColor = ""; dzT.style.background = ""; });
-    dzT.addEventListener("drop", async (e) => {
-      e.preventDefault(); dzT.style.borderColor = ""; dzT.style.background = "";
-      const files = Array.from(e.dataTransfer?.files || []).filter((f) => f.name.toLowerCase().endsWith(".txt"));
-      if (!files.length) { toast("请拖入 .txt 文件", "err"); return; }
-      try {
-        const paths = files.map((f) => f.path || f.name);
-        const result = await tauriInvoke("pick_txt_files_from_paths", { paths });
-        if (result.failed && result.failed.length) {
-          toast("以下文件解析失败：" + result.failed.join("、"), "err");
-        }
-        if (result.files && result.files.length > 0) {
-          txtFiles = result.files; renderTxtFileList(); renderTxtParseLog();
-          if (result.files[0]?.crs_info) autoFillHeaderFromTxt(result.files[0].crs_info);
-        }
-      } catch (err) { toast("拖放导入失败: " + err, "err"); }
-    });
-  }
+  // Drag & Drop — SHP / TXT（共用实现见 bindDropZone）
+  bindDropZone("dropZone", ".shp", "pick_shp_files_from_paths", (result) => {
+    if (result.skipped && result.skipped.length) {
+      toast(`以下文件不是面状要素，已忽略：${result.skipped.join("、")}`, "err");
+    }
+    if (result.files && result.files.length > 0) {
+      loadedFiles = result.files; sourceType = null; sourcePath = null; gdbLayers = []; selectedLayers = []; renderFileList(); processImport();
+    }
+  });
+  bindDropZone("dropZoneTxt", ".txt", "pick_txt_files_from_paths", (result) => {
+    if (result.failed && result.failed.length) {
+      toast("以下文件解析失败：" + result.failed.join("、"), "err");
+    }
+    if (result.files && result.files.length > 0) {
+      txtFiles = result.files; renderTxtFileList(); renderTxtParseLog();
+      if (result.files[0]?.crs_info) autoFillHeaderFromTxt(result.files[0].crs_info);
+    }
+  });
 
   // ─── 右栏属性表/地图（v4.0）：结构化筛选条件（querybuilder）+ 状态持久化 ───
   TV.init();

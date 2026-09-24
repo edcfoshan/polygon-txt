@@ -575,9 +575,7 @@ body{
 .app[data-mode="t"] .pnl-l .pnl-bd .ck{font-size:12px}
 /* TXT mode: left panel scrollable */
 .app[data-mode="t"] .pnl-l .pnl-bd{overflow-y:auto}
-/* TXT mode: compact output-settings row */
-.os-h{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 0 2px}
-.os-h .ck{white-space:nowrap;font-size:12px}
+/* TXT mode: left panel scrollable */
 
 .pnl{
   display:flex;flex-direction:column;overflow:hidden;
@@ -605,9 +603,6 @@ body{
 .pnl-m .oc-row select{font-size:11px;padding:1px 4px;background:var(--srf2);color:var(--tx);border:1px solid var(--brd);border-radius:4px}
 .pnl-m .oc-row select:disabled{opacity:.45;cursor:not-allowed}
 /* 部备案TXT（界址点成果表模板）：距离列 + 埋桩列设置 */
-.bb-grid{display:grid;grid-template-columns:auto 1fr;gap:4px 6px;align-items:center;margin-bottom:6px}
-.bb-grid label{font-size:10.5px;color:var(--tx3)}
-.bb-grid select,.bb-grid input{width:100%;min-width:0;font-size:11px;padding:2px 4px;background:var(--srf2);color:var(--tx);border:1px solid var(--brd);border-radius:4px}
 .bb-hint{font-size:9.5px;color:var(--tx3);line-height:1.5;margin-bottom:6px}
 .bb-add{display:flex;align-items:center;gap:4px;margin-bottom:5px}
 .bb-add span{font-size:10px;color:var(--tx3);flex-shrink:0}
@@ -687,9 +682,6 @@ body{
 .pnl-l .mode-seg{flex-wrap:wrap}
 .pnl-l .mode-seg .seg{min-width:88px}
 .pnl-m .hcfg{padding:5px}
-.pnl-m .hrow{display:flex;align-items:center;margin-bottom:1px;gap:4px}
-.pnl-m .hrow label{font-size:10px;width:34px;flex-shrink:0}
-.pnl-m .hrow input,.pnl-m .hrow select{flex:1;min-width:0;padding:4px 6px;font-size:11px}
 /* Header inner tabs */
 .hdr-tabs{display:flex;border-bottom:1px solid var(--brd);margin-bottom:4px}
 .hdr-tab{flex:1;text-align:center;padding:5px 0;font-size:11px;font-weight:500;color:var(--tx3);cursor:pointer;border-bottom:1.5px solid transparent;transition:all .15s;font-family:inherit}
@@ -752,7 +744,7 @@ body{
 /* 中栏：③④自然高度，⑤自定义表头拿剩余空间（7 行表头完整显示，不再被平分压缩） */
 .pnl-l .accs > .acc,.pnl-m .accs > .acc{flex:0 0 auto}
 .pnl-m .accs > .acc:last-child{flex:1}
-.accs > .acc .acc-b > .drop,.accs > .acc .acc-b > .div,.accs > .acc .acc-b > .slabel,.accs > .acc .acc-b > .fld,.accs > .acc .acc-b > .mode-group,.accs > .acc .acc-b > .ck-grid,.accs > .acc .acc-b > .oc-row,.accs > .acc .acc-b > .hdr-tabs,.accs > .acc .acc-b > .hdr-panel,.accs > .acc .acc-b > .file-list{flex-shrink:0}
+.accs > .acc .acc-b > .drop,.accs > .acc .acc-b > .div,.accs > .acc .acc-b > .slabel,.accs > .acc .acc-b > .fld,.accs > .acc .acc-b > .ck-grid,.accs > .acc .acc-b > .oc-row,.accs > .acc .acc-b > .hdr-tabs,.accs > .acc .acc-b > .hdr-panel,.accs > .acc .acc-b > .file-list{flex-shrink:0}
 .accs > .acc .acc-b > .file-list{flex:1;min-height:60px;overflow-y:auto}
 
 /* ─── 字段映射高级模式动态行（复用 attr-row 行式布局） ─── */
@@ -835,13 +827,10 @@ body{
 }
 .fld input:focus-visible,.fld select:focus-visible{border-color:var(--ac);box-shadow:0 0 0 3px var(--acg)}
 .fld input::placeholder{color:var(--tx3)}
-.fld-row{display:flex;gap:6px}
-.fld-row .fld{flex:1}
 .fgrid{display:grid;grid-template-columns:1fr 1fr;gap:2px 6px}
 .fcell label{display:block;font-size:10px;color:var(--tx3);margin-bottom:1px;font-weight:500;letter-spacing:0;white-space:nowrap}
 .fcell select,.fcell input{width:100%;padding:4px 6px;border:1px solid var(--brd);border-radius:4px;font-size:11px;line-height:1.5;background:var(--bg);color:var(--tx);outline:none;font-family:inherit;transition:all .18s}
 .fcell select:focus-visible,.fcell input:focus-visible{border-color:var(--ac);box-shadow:0 0 0 3px var(--acg)}
-.fcell-full{grid-column:1/-1}
 .fci{height:26px}
 
 /* File drop */
@@ -909,17 +898,6 @@ body{
 
 /* Header editor */
 .hcfg{background:var(--bg);border-radius:6px;padding:8px;border:1px solid var(--brd)}
-.hrow{display:flex;align-items:center;gap:5px;margin-bottom:3px}
-.hrow label{
-  width:34px;text-align:right;color:var(--tx3);flex-shrink:0;
-  font-size:10px;font-weight:500;letter-spacing:0;
-}
-.hrow input,.hrow select{
-  flex:1;padding:4px 6px;border:1px solid var(--brd);border-radius:4px;
-  font-size:11px;background:var(--srf);color:var(--tx);outline:none;font-family:inherit;
-  transition:all .15s;
-}
-.hrow input:focus-visible,.hrow select:focus-visible{border-color:var(--ac);box-shadow:0 0 0 3px var(--acg)}
 
 /* Preview */
 .pv{
@@ -1049,29 +1027,6 @@ body{
 .plot-blink{animation:plotBlink .5s linear 3}
 @keyframes plotBlink{0%,100%{opacity:1}50%{opacity:.1}}
 
-/* Result tags */
-.rtags{display:flex;flex-wrap:wrap;gap:4px}
-.rtag{
-  padding:3px 9px;border-radius:999px;font-size:10.5px;font-weight:500;
-  display:inline-flex;align-items:center;gap:4px;
-  animation:pop .35s cubic-bezier(.34,1.56,.64,1) both;
-}
-@keyframes pop{from{opacity:0;transform:scale(.85)}to{opacity:1;transform:scale(1)}}
-.rtag.ok{background:rgba(122,174,138,.15);color:var(--ok);border:1px solid rgba(122,174,138,.25)}
-.rtag.er{background:rgba(196,119,114,.15);color:var(--er);border:1px solid rgba(196,119,114,.25)}
-.rtag.pd{background:var(--acg);color:var(--ac);border:1px solid var(--acb)}
-.lnk{font-size:10px;color:var(--ac);cursor:pointer;margin-top:6px;display:inline-block;font-weight:500;transition:opacity .15s}
-.lnk:hover{text-decoration:underline;opacity:.8}
-.logbox{
-  background:var(--pv-bg);border:1px solid var(--brd);border-radius:6px;
-  padding:7px 9px;font-family:"JetBrains Mono",monospace;font-size:9.5px;
-  max-height:52px;overflow-y:auto;margin-top:5px;display:none;
-  color:var(--tx2);line-height:1.55;
-  box-shadow:var(--shadow-sm);
-}
-.logbox.on{display:block;animation:slideIn .25s ease}
-.logbox div{padding:1px 0}
-
 /* Divider */
 .div{height:1px;background:var(--brd);margin:8px 0;opacity:.6}
 
@@ -1096,9 +1051,6 @@ body{
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:var(--brd2);border-radius:2px}
 ::-webkit-scrollbar-thumb:hover{background:var(--tx3)}
-
-/* 折叠内容 / 日志滑入 */
-@keyframes slideIn{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:translateY(0)}}
 
 /* Dynamic Projection Modal */
 .proj-switch{display:inline-flex;align-items:center;gap:6px}
@@ -1143,7 +1095,6 @@ body{
 .proj-form.dimmed{opacity:.4;pointer-events:none}
 .proj-row{display:flex;align-items:center;gap:8px;font-size:12px;padding:3px 0}
 .proj-label{color:var(--tx3);min-width:48px;font-size:11.5px}
-.proj-val{color:var(--tx);font-weight:500;font-family:"JetBrains Mono",monospace;font-size:11.5px;flex:1}
 .proj-hint{color:var(--tx2);font-size:11px}
 .proj-input{padding:3px 8px;border:1px solid var(--brd);border-radius:3px;background:var(--srf);color:var(--tx);font-size:11.5px;font-family:inherit}
 .proj-input:focus-visible{outline:none;border-color:var(--ac);box-shadow:0 0 0 2px var(--acg)}

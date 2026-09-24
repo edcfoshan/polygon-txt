@@ -2754,6 +2754,19 @@ function renderRatioChips() {
 
 // ═══ Init ═══
 async function init() {
+  initWindowState();
+  await initThemeAndDisplay();   // 内含 await initVersion()（填充版本号，须在弹窗内容渲染前）
+  initClickBindings();
+  initUpdater();
+  initInputBindings();
+  initImportAndDrop();
+  initRightPane();
+}
+
+// ═══ init 分段（按职责拆分；纯代码搬移，调用顺序与原 init 完全一致）═══
+
+/// 窗口尺寸/位置记忆：恢复上次状态 + 同步快存 + 异步精修（含最大化过滤）
+function initWindowState() {
   // ─── 窗口长宽+位置记忆（v3.0）：恢复上次状态；同步快存（防快速关闭丢失）+ 异步精修（含 x/y） ───
   try {
     const appWin = getCurrentWindow();
@@ -2796,7 +2809,10 @@ async function init() {
     appWin.onMoved(() => fullSave()).catch(() => {});
     window.addEventListener("beforeunload", quickSave);
   } catch (e) { /* 浏览器 dev 环境无窗口 API，跳过 */ }
+}
 
+/// 主题色系 / 显示比例 / 三区字号 / 配置预设恢复与 chip 渲染
+async function initThemeAndDisplay() {
   const savedTheme = localStorage.getItem("tg_theme") || "light";
   // prototype: URL hash demo seeding (#demo=geodetic|projected-3|projected-6|unknown)
   const demoType = (location.hash.match(/demo=([\w-]+)/) || [])[1];
@@ -2851,6 +2867,10 @@ async function init() {
 
   await initVersion(); // 填充 APP_VERSION + 标题栏 brand-sub（须在 about 渲染前）
 
+}
+
+/// 弹窗内容注入 + 全部点击绑定（原 init 中段 307 行）
+function initClickBindings() {
   // ─── 注入弹窗内容（Markdown → HTML） ───
   const ab = $("aboutBody");
   if (ab) ab.innerHTML = renderMarkdown(aboutContent).replace(/\{\{version\}\}/g, APP_VERSION ? "V" + APP_VERSION : "")
@@ -3169,6 +3189,10 @@ async function init() {
   bindModalBackdrop($("gdbSelectModal"), closeGdbSelectModal);
   bindModalBackdrop($("updateModal"), closeUpdateModal);
 
+}
+
+/// 启动时静默检查更新（失败不报错，仅在有新版本时显示绿色箭头）
+function initUpdater() {
   // ─── 启动时静默检查更新（失败不报错，仅在有新版本时显示绿色箭头）───
   checkAppUpdate(false);
   // Prevent modal card click from closing
@@ -3176,6 +3200,10 @@ async function init() {
     card.addEventListener("click", (e) => e.stopPropagation());
   });
 
+}
+
+/// input/change 绑定 + 动态元素事件委派
+function initInputBindings() {
   // ─── Bind input/change events (replaces inline oninput/onchange) ───
   // hc/hb/hj/hu/hz/ha/ht 已改为动态属性行，事件由 bindAttrRowEvents() 在 #attrRows 上委托
   const hpi = $("hpi");
@@ -3208,7 +3236,10 @@ async function init() {
     const chip = e.target.closest("[data-chip]");
     if (chip) ld(chip.dataset.chip);
   });
+}
 
+/// 拖放导入区（SHP / TXT）
+function initImportAndDrop() {
   // Drag & Drop — SHP / TXT（共用实现见 bindDropZone）
   bindDropZone("dropZone", ".shp", "pick_shp_files_from_paths", (result) => {
     if (result.skipped && result.skipped.length) {
@@ -3227,7 +3258,10 @@ async function init() {
       if (result.files[0]?.crs_info) autoFillHeaderFromTxt(result.files[0].crs_info);
     }
   });
+}
 
+/// 右栏属性表 / 地图初始化 + 首帧预览
+function initRightPane() {
   // ─── 右栏属性表/地图（v4.0）：结构化筛选条件（querybuilder）+ 状态持久化 ───
   TV.init();
   QB.init(() => {

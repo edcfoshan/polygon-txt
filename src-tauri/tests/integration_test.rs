@@ -968,6 +968,7 @@ fn test_read_gdb() {
 
 // ─── 测试 13: Default1.gdb 手动回退读取 ───
 
+#[ignore = "本地专用：依赖外部 Default1.gdb 绝对路径（未入库）"]
 #[test]
 fn test_read_default_gdb() {
     let gdb_path = PathBuf::from(DEFAULT_GDB);
@@ -1261,6 +1262,7 @@ fn exp_data_dir() -> PathBuf {
 
 /// 回归：DBF 含 UTF-8 中文非 ASCII 字段名（村民姓/行政村/备注）时不应 panic，
 /// 且字段名/记录能正常读取。dbase 0.3.0 内部会 panic，read_dbf 用 catch_unwind 回退手动解析。
+#[ignore = "本地专用：依赖 00测试数据/（.gitignore 未入库）"]
 #[test]
 fn test_read_dbf_utf8_field_names() {
     let dbf = exp_data_dir().join("试验数据0626.dbf");
@@ -1279,6 +1281,7 @@ fn test_read_dbf_utf8_field_names() {
 }
 
 /// 回归：GBK 编码的 TXT（新建txt.txt）能用 read_text_file 正常解码为中文。
+#[ignore = "本地专用：依赖 00测试数据/（.gitignore 未入库）"]
 #[test]
 fn test_read_text_file_gbk() {
     let txt_path = exp_data_dir().join("新建txt.txt");
@@ -1291,6 +1294,7 @@ fn test_read_text_file_gbk() {
 }
 
 /// 回归：UTF-8 编码的 TXT 仍能正常读取（编码探测不应破坏 UTF-8 路径）。
+#[ignore = "本地专用：依赖 00测试数据/（.gitignore 未入库）"]
 #[test]
 fn test_read_text_file_utf8() {
     let txt_path = repo_root().join("test_data").join("44120000072.txt");
@@ -1306,6 +1310,7 @@ fn test_read_text_file_utf8() {
 /// 回归：GBK(ANSI) TXT → SHP 转换后，输出 DBF 必须是 UTF-8 + LDID=0 + CPG=UTF-8，
 /// 字段值中文不乱码（ArcMap 10.x 兼容）。根因：旧版用 GBK 数据 + 非标准 LDID 0x7C，
 /// ArcMap 误判编码。现统一为 ArcPy 官方标准（UTF-8）。
+#[ignore = "本地专用：依赖 00测试数据/（.gitignore 未入库）"]
 #[test]
 fn test_txt_to_shp_utf8_dbf() {
     let txt_path = exp_data_dir().join("新建txt.txt");
@@ -1358,6 +1363,7 @@ fn test_txt_to_shp_utf8_dbf() {
 
 /// 回归：GBK 编码、无 .cpg、ASCII 字段名的 DBF（如 ArcMap 导出的测试A1.dbf）
 /// 应能正确识别为 GBK 并解码字段值，不依赖 dbase crate（避免 UTF-8 误解码）。
+#[ignore = "本地专用：依赖 00测试数据/（.gitignore 未入库）"]
 #[test]
 fn test_read_dbf_gbk_no_cpg() {
     let dbf = exp_data_dir().join("测试A1").join("测试A1.dbf");
@@ -1394,8 +1400,7 @@ fn test_shp_to_txt_proj_mode_a_forward() {
         .join("std_shp")
         .join("plot_000.shp");
     if !test_shp.exists() {
-        eprintln!("跳过：测试数据不存在 {}", test_shp.display());
-        return;
+        panic!("缺少入库 fixture：{}（test_* / test_data 已入库，不应缺失）", test_shp.display());
     }
     let out_dir = tempfile::tempdir().expect("output temp dir");
     // proj_mode A：大地（度）→ 投影 3°带。表头带号=38，分带=3°带。

@@ -368,7 +368,7 @@ fn assert_bubeian_rows(content: &str, expected_stake: &str) {
 #[test]
 fn test_shp_to_txt_bubeian_stake_from_field() {
     if !repo_root().join("test_arcpy").exists() {
-        return;
+        panic!("缺少入库 fixture：test_arcpy/（已入库，不应缺失）");
     }
     let out_dir = tempfile::tempdir().expect("temp dir");
     let mut options = base_options();
@@ -407,7 +407,7 @@ fn test_shp_to_txt_bubeian_stake_from_field() {
 #[test]
 fn test_shp_to_txt_bubeian_stake_fallback_and_standard_prefix() {
     if !repo_root().join("test_arcpy").exists() {
-        return;
+        panic!("缺少入库 fixture：test_arcpy/（已入库，不应缺失）");
     }
     let out_dir = tempfile::tempdir().expect("temp dir");
     // 字段不存在 → 全部用兜底值
@@ -468,7 +468,7 @@ fn test_shp_to_txt_bubeian_stake_fallback_and_standard_prefix() {
 #[test]
 fn test_point_layout_applies_to_all_output_modes() {
     if !repo_root().join("test_arcpy").exists() {
-        return;
+        panic!("缺少入库 fixture：test_arcpy/（已入库，不应缺失）");
     }
     let layout = PointLayout {
         columns: vec![column("point", "", ""), column("fixed", "", "LAYOUT_OK")],

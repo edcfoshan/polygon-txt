@@ -366,8 +366,7 @@ fn gdb_test_dir() -> PathBuf {
 fn gdb_catalog_matches_full_read() {
     let dir = gdb_test_dir();
     if !dir.exists() {
-        println!("test.gdb 不存在，跳过");
-        return;
+        panic!("缺少入库 fixture：test_arcpy/test.gdb（已入库，不应缺失）");
     }
     let catalog = jisig_bpoint_converter_lib::gdb::read_gdb_catalog(&dir).expect("catalog 读取失败");
     let full = jisig_bpoint_converter_lib::gdb::read_gdb(&dir).expect("全量读取失败");
@@ -384,8 +383,7 @@ fn gdb_catalog_matches_full_read() {
 fn gdb_filtered_read_aligns_indices() {
     let dir = gdb_test_dir();
     if !dir.exists() {
-        println!("test.gdb 不存在，跳过");
-        return;
+        panic!("缺少入库 fixture：test_arcpy/test.gdb（已入库，不应缺失）");
     }
     let full = jisig_bpoint_converter_lib::gdb::read_gdb(&dir).expect("全量读取失败");
     if full.layers.len() < 2 {
@@ -414,8 +412,7 @@ fn gdb_filtered_read_aligns_indices() {
 fn gdb_attrs_align_with_field_names() {
     let dir = gdb_test_dir();
     if !dir.exists() {
-        println!("test.gdb 不存在，跳过");
-        return;
+        panic!("缺少入库 fixture：test_arcpy/test.gdb（已入库，不应缺失）");
     }
     let info = jisig_bpoint_converter_lib::gdb::read_gdb(&dir).expect("读取失败");
     for (li, feats) in info.all_features.iter().enumerate() {

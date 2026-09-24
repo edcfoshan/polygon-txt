@@ -10,8 +10,7 @@ fn debug_generate_and_verify_shp() {
         .join("44120000072.txt");
     
     if !txt_path.exists() {
-        eprintln!("Test TXT not found at {:?}", txt_path);
-        return;
+        panic!("缺少入库 fixture：test_data/44120000072.txt（已入库，不应缺失）");
     }
     
     let text = std::fs::read_to_string(&txt_path).unwrap();
@@ -120,8 +119,7 @@ fn debug_generate_and_verify_gdb() {
         .join("44120000072.txt");
     
     if !txt_path.exists() {
-        eprintln!("Test TXT not found at {:?}", txt_path);
-        return;
+        panic!("缺少入库 fixture：test_data/44120000072.txt（已入库，不应缺失）");
     }
     
     let text = std::fs::read_to_string(&txt_path).unwrap();

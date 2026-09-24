@@ -3,6 +3,7 @@ use crate::convert::AttrRow;
 use crate::geometry::IndexedRing;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fmt::Write;
 use std::path::Path;
 
 /// 读取文本文件，按 BOM → UTF-8 → GBK 顺序探测编码解码。
@@ -328,11 +329,6 @@ fn precision_to_decimals(precision: &str) -> u32 {
     }
 }
 
-/// 按指定小数位数格式化浮点数
-fn format_coord(val: f64, decimals: u32) -> String {
-    format!("{:.prec$}", val, prec = decimals as usize)
-}
-
 /// 对地块的全部坐标做一次变换，避免调用方同时遍历 coords 与 rings（同一批点被算两遍）。
 ///
 /// 约定：`coords` 恒为 `rings` 的展平（顺序 = 环序 × 环内点序，见 txt 解析与 collect_import_sources），
@@ -484,22 +480,22 @@ pub fn generate_txt_ex(
         // 编号与点序列统一走 number_plot_points（地图界址点标注共用同一套口径）
         let numbered = number_plot_points(plot, oj, oc);
         let point_count = numbered.len();
-        let meta = if !plot.fields.is_empty() {
+        if !plot.fields.is_empty() {
             // 高级格式：按列顺序输出；__count__ 列（value==哨兵，与字段名无关）强制用本块实际点数
-            let vals: Vec<String> = plot
-                .fields
-                .iter()
-                .map(|(_, v)| {
-                    if v == crate::convert::COUNT_SENTINEL {
-                        point_count.to_string()
-                    } else {
-                        v.clone()
-                    }
-                })
-                .collect();
-            format!("{},@\n", vals.join(","))
+            for (i, (_, v)) in plot.fields.iter().enumerate() {
+                if i > 0 {
+                    out.push(',');
+                }
+                if v == crate::convert::COUNT_SENTINEL {
+                    let _ = write!(out, "{}", point_count);
+                } else {
+                    out.push_str(v);
+                }
+            }
+            out.push_str(",@\n");
         } else {
-            format!(
+            let _ = write!(
+                out,
                 "{},{},{},{},{},{},{},{},@\n",
                 point_count,
                 plot.area,
@@ -509,43 +505,56 @@ pub fn generate_txt_ex(
                 plot.tfh,
                 plot.use_field,
                 plot.dlbm,
-            )
-        };
-        out.push_str(&meta);
+            );
+        }
         let distances = effective_layout
             .filter(|l| l.has_core("distance"))
             .map(|_| point_distances(plot));
         for (idx, (label, part_index, y, x)) in numbered.iter().enumerate() {
             let Some(spec) = effective_layout else {
-                out.push_str(&format!(
-                    "{},{},{},{}\n",
+                let _ = write!(
+                    out,
+                    "{},{},{:.*},{:.*}\n",
                     label,
                     part_index,
-                    format_coord(*y, decimals),
-                    format_coord(*x, decimals),
-                ));
+                    decimals as usize,
+                    *y,
+                    decimals as usize,
+                    *x,
+                );
                 continue;
             };
             let d = distances
                 .as_ref()
                 .and_then(|v| v.get(idx).copied())
                 .unwrap_or(0.0);
-            let cells = spec.columns.iter().map(|col| match col.kind.as_str() {
-                "point" => label.clone(),
-                "ring" => part_index.to_string(),
-                "y" => format_coord(*y, decimals),
-                "x" => format_coord(*x, decimals),
-                "distance" => format_distance(d, spec, col),
-                "stake" => plot.stake.clone(),
-                "field" => plot
-                    .custom_values
-                    .get(&col.source)
-                    .cloned()
-                    .unwrap_or_default(),
-                "fixed" => col.value.clone(),
-                _ => String::new(),
-            });
-            out.push_str(&cells.collect::<Vec<_>>().join(","));
+            for (i, col) in spec.columns.iter().enumerate() {
+                if i > 0 {
+                    out.push(',');
+                }
+                match col.kind.as_str() {
+                    "point" => out.push_str(label),
+                    "ring" => {
+                        let _ = write!(out, "{}", part_index);
+                    }
+                    "y" => {
+                        let _ = write!(out, "{:.*}", decimals as usize, *y);
+                    }
+                    "x" => {
+                        let _ = write!(out, "{:.*}", decimals as usize, *x);
+                    }
+                    "distance" => out.push_str(&format_distance(d, spec, col)),
+                    "stake" => out.push_str(&plot.stake),
+                    "field" => out.push_str(
+                        plot.custom_values
+                            .get(&col.source)
+                            .map(|s| s.as_str())
+                            .unwrap_or(""),
+                    ),
+                    "fixed" => out.push_str(&col.value),
+                    _ => {}
+                }
+            }
             out.push('\n');
         }
     }

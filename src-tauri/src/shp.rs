@@ -132,15 +132,29 @@ fn polygon_rings_to_feature<P>(
 /// 此处用 `catch_unwind` 包裹（依赖 unwind；当前 release profile 未设 panic=abort），
 /// panic 或 Err 时回退到自写的手动 DBF 解析器（`read_dbf_manual`）。
 pub fn read_dbf(path: &Path) -> Result<(Vec<String>, Vec<Vec<String>>), String> {
+    // DBF 本体只读一次：编码探测、dbase 解析、手动回退都基于这同一份字节
+    let data = std::fs::read(path).map_err(|e| format!("读 DBF: {}", e))?;
+    let encoding = detect_dbf_encoding(path, &data);
     // 非 UTF-8（如 GBK 无 .cpg）直接手动解析，避免 dbase 用 UTF-8 误解码 GBK 字段值
-    if detect_dbf_encoding(path) != encoding_rs::UTF_8 {
-        return read_dbf_manual(path);
+    if encoding != encoding_rs::UTF_8 {
+        return read_dbf_manual(&data, encoding);
     }
 
     use dbase::FieldValue;
 
+    // Memo 字段依赖 .dbt/.fpt 伴随文件，只能让 dbase 按路径打开；其余走内存游标，省一次读盘
+    let via_path = dbf_has_memo_field(&data);
     let dbase_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        dbase::read(path).map_err(|e| format!("打开 DBF 失败: {}", e))
+        let records = if via_path {
+            let mut reader = dbase::Reader::from_path(path)
+                .map_err(|e| format!("打开 DBF 失败: {}", e))?;
+            reader.read().map_err(|e| format!("读 DBF 失败: {}", e))?
+        } else {
+            let mut reader = dbase::Reader::new(std::io::Cursor::new(&data))
+                .map_err(|e| format!("打开 DBF 失败: {}", e))?;
+            reader.read().map_err(|e| format!("读 DBF 失败: {}", e))?
+        };
+        Ok::<_, String>(records)
     }));
 
     match dbase_result {
@@ -191,18 +205,19 @@ pub fn read_dbf(path: &Path) -> Result<(Vec<String>, Vec<Vec<String>>), String> 
         }
         Ok(Err(e)) => {
             eprintln!("dbase::read 返回错误，回退手动解析: {}", e);
-            read_dbf_manual(path)
+            read_dbf_manual(&data, encoding)
         }
         Err(_) => {
             eprintln!("dbase::read panic，回退手动解析");
-            read_dbf_manual(path)
+            read_dbf_manual(&data, encoding)
         }
     }
 }
 
 /// 探测 DBF 字段名/值的编码：优先读同名 .cpg 文件；无 .cpg 时采样 Character 字段值
 /// 字节探测（合法 UTF-8 → UTF-8，否则 → GBK）。中国大陆非 UTF-8 的 DBF 几乎都是 GBK。
-fn detect_dbf_encoding(dbf_path: &Path) -> &'static encoding_rs::Encoding {
+/// `data` 为已读取的 DBF 字节（调用方只读一次盘）。
+fn detect_dbf_encoding(dbf_path: &Path, data: &[u8]) -> &'static encoding_rs::Encoding {
     let cpg = dbf_path.with_extension("cpg");
     if let Ok(text) = std::fs::read_to_string(&cpg) {
         let t = text.trim().to_ascii_uppercase();
@@ -214,17 +229,31 @@ fn detect_dbf_encoding(dbf_path: &Path) -> &'static encoding_rs::Encoding {
         }
     }
     // 无 .cpg：采样 Character 字段值字节做严格 UTF-8 判定
-    if let Ok(data) = std::fs::read(dbf_path) {
-        let sample = collect_dbf_char_bytes(&data);
-        if !sample.is_empty() {
-            return if std::str::from_utf8(&sample).is_ok() {
-                encoding_rs::UTF_8
-            } else {
-                encoding_rs::GBK
-            };
-        }
+    let sample = collect_dbf_char_bytes(data);
+    if !sample.is_empty() {
+        return if std::str::from_utf8(&sample).is_ok() {
+            encoding_rs::UTF_8
+        } else {
+            encoding_rs::GBK
+        };
     }
     encoding_rs::UTF_8
+}
+
+/// 是否声明了 Memo 字段（类型 'M'）——这类 DBF 的取值需要 .dbt/.fpt 伴随文件
+fn dbf_has_memo_field(data: &[u8]) -> bool {
+    if data.len() < 32 {
+        return false;
+    }
+    let header_len = u16::from_le_bytes([data[8], data[9]]) as usize;
+    let mut off = 32usize;
+    while off + 32 <= header_len && off < data.len() && data[off] != 0x0D {
+        if data[off + 11] == b'M' {
+            return true;
+        }
+        off += 32;
+    }
+    false
 }
 
 /// 收集 DBF 所有 Character('C') 字段值字节（用于无 .cpg 时的编码探测）。
@@ -271,17 +300,18 @@ fn collect_dbf_char_bytes(data: &[u8]) -> Vec<u8> {
     sample
 }
 
-/// 手动解析 dBase III+ DBF（作为 dbase::read panic/Err 时的回退）。
-/// 仅覆盖 C/N/F/I/L/D 字段类型，字段名按 detect_dbf_encoding 解码。
-fn read_dbf_manual(dbf_path: &Path) -> Result<(Vec<String>, Vec<Vec<String>>), String> {
-    let data = std::fs::read(dbf_path).map_err(|e| format!("读 DBF 失败: {}", e))?;
+/// 手动解析 dBase III+ DBF（作为 dbase 解析 panic/Err 时的回退，也用于非 UTF-8 编码）。
+/// 仅覆盖 C/N/F/I/L/D 字段类型；字节与编码由调用方传入（DBF 只读一次、编码只判一次）。
+fn read_dbf_manual(
+    data: &[u8],
+    encoding: &'static encoding_rs::Encoding,
+) -> Result<(Vec<String>, Vec<Vec<String>>), String> {
     if data.len() < 32 {
         return Err("DBF 文件过小".into());
     }
     let num_records = u32::from_le_bytes([data[4], data[5], data[6], data[7]]) as usize;
     let header_len = u16::from_le_bytes([data[8], data[9]]) as usize;
     let record_len = u16::from_le_bytes([data[10], data[11]]) as usize;
-    let encoding = detect_dbf_encoding(dbf_path);
 
     // 字段描述符：offset 32 起，每项 32 字节；name(11) / type(+11) / len(+16)；遇 0x0D 终止
     let mut fields: Vec<(String, u8, usize)> = Vec::new();

@@ -267,28 +267,6 @@ fn pick_shp_files(app: tauri::AppHandle) -> Result<ShpImportResult, String> {
     })
 }
 
-/// 从 SHP 采样计算坐标范围（东坐标/经度）
-fn compute_extent_from_shp(shp_path: &PathBuf) -> (Option<f64>, Option<f64>, Option<f64>, Option<f64>) {
-    match shp::read_shp(shp_path) {
-        Ok(features) => {
-            let mut xs: Vec<f64> = Vec::new();
-            let mut ys: Vec<f64> = Vec::new();
-            for f in features.iter() {
-                for p in f.surface.parts.iter() {
-                    for (x, y) in p.exterior.iter() {
-                        xs.push(*x);
-                        ys.push(*y);
-                    }
-                }
-            }
-            xs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-            ys.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-            (xs.first().copied(), ys.first().copied(), xs.last().copied(), ys.last().copied())
-        }
-        Err(_) => (None, None, None, None),
-    }
-}
-
 /// 从一组 SHP 路径收集导入项——「选择文件」与「拖放」两个入口共用同一实现。
 /// err_label：读取失败时的日志前缀（两个入口的历史文案不同，逐字保留）。
 /// 返回 (可导入项, 被拒收的非面状文件名)。
@@ -300,10 +278,10 @@ fn collect_shp_items(paths: &[PathBuf], err_label: &str) -> (Vec<ShpFileItem>, V
             continue;
         }
         match shp::read_shp_file_group(shp_path) {
-            Ok(info) => {
+            Ok((info, features)) => {
                 // 仅接收面状 SHP；非面状（点/线等）拒收并记录
                 if is_polygon_geometry_type(&info.shape_type) {
-                    let (xmin, ymin, xmax, ymax) = compute_extent_from_shp(shp_path);
+                    let (xmin, ymin, xmax, ymax) = shp::extent_of(&features);
                     items.push(ShpFileItem {
                         shp_path: info.shp_path,
                         dbf_path: info.dbf_path,

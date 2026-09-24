@@ -1393,8 +1393,7 @@ fn single_shp_to_source(
     options: &ShpToTxtOptions,
     proj_cfg: Option<&ProjectionConfig>,
 ) -> Result<ImportSource, String> {
-    let info = shp::read_shp_file_group(shp_path)?;
-    let features = shp::read_shp(shp_path)?;
+    let (info, features) = shp::read_shp_file_group(shp_path)?;
     let stem = shp_path
         .file_stem()
         .map(|s| s.to_string_lossy().to_string())

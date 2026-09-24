@@ -161,7 +161,7 @@ fn read_shp_consistency_and_extent_matches_header() {
     let shp_dir = tempfile::tempdir().expect("shp tmp");
     let shp_path = write_rect_shp(shp_dir.path(), "consistency", 500_000.0, 3_000_000.0, 7);
 
-    let info = shp::read_shp_file_group(&shp_path).expect("读 SHP 组");
+    let (info, _features) = shp::read_shp_file_group(&shp_path).expect("读 SHP 组");
     let features = shp::read_shp(&shp_path).expect("读 SHP 要素");
 
     // 同一文件的两种读法必须报告同样的要素数（S4 让二者共用同一次解析）

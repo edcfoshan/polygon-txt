@@ -502,7 +502,10 @@ pub fn find_companion_files(shp_path: &Path) -> (Option<PathBuf>, Option<PathBuf
 }
 
 /// 读取完整 SHP 文件组信息
-pub fn read_shp_file_group(shp_path: &Path) -> Result<ShpFileInfo, String> {
+/// 读 SHP 文件组（.shp/.dbf/.prj），返回文件信息与**已解析的要素**。
+/// 要素随信息一并返回：调用方（导入列表 + 坐标范围）此前必须再 read_shp 一次，
+/// 同一个文件因此被完整解析两遍。
+pub fn read_shp_file_group(shp_path: &Path) -> Result<(ShpFileInfo, Vec<ShpFeature>), String> {
     let name = shp_path
         .file_stem()
         .unwrap_or_default()
@@ -510,16 +513,19 @@ pub fn read_shp_file_group(shp_path: &Path) -> Result<ShpFileInfo, String> {
         .to_string();
     let (dbf_path, prj_path) = find_companion_files(shp_path);
 
-    // SHP header 校验
-    let buf = std::fs::read(shp_path).map_err(|e| format!("读 SHP: {}", e))?;
-    if buf.len() < 100 {
-        return Err("文件太小，不是有效的 SHP".into());
+    // SHP header 校验：只读 100 字节头（不必为此载入整个文件）
+    let mut head = [0u8; 100];
+    {
+        let mut f = std::fs::File::open(shp_path).map_err(|e| format!("读 SHP: {}", e))?;
+        if std::io::Read::read_exact(&mut f, &mut head).is_err() {
+            return Err("文件太小，不是有效的 SHP".into());
+        }
     }
-    let file_code = i32::from_be_bytes([buf[0], buf[1], buf[2], buf[3]]);
+    let file_code = i32::from_be_bytes([head[0], head[1], head[2], head[3]]);
     if file_code != 9994 {
         return Err("不是有效的 SHP 文件".into());
     }
-    let st = i32::from_le_bytes([buf[32], buf[33], buf[34], buf[35]]);
+    let st = i32::from_le_bytes([head[32], head[33], head[34], head[35]]);
     let shape_type_str = match st {
         1 => "Point",
         3 => "PolyLine",
@@ -546,18 +552,39 @@ pub fn read_shp_file_group(shp_path: &Path) -> Result<ShpFileInfo, String> {
     };
     let prj_text_opt = if prj_text.is_empty() { None } else { Some(prj_text) };
 
-    Ok(ShpFileInfo {
-        name,
-        shp_path: shp_path.to_string_lossy().to_string(),
-        dbf_path: dbf_path.map(|p| p.to_string_lossy().to_string()),
-        prj_path: prj_path.map(|p| p.to_string_lossy().to_string()),
-        field_names,
-        field_records,
-        num_features,
-        shape_type: shape_type_str,
-        prj_text: prj_text_opt,
-        crs_info,
-    })
+    Ok((
+        ShpFileInfo {
+            name,
+            shp_path: shp_path.to_string_lossy().to_string(),
+            dbf_path: dbf_path.map(|p| p.to_string_lossy().to_string()),
+            prj_path: prj_path.map(|p| p.to_string_lossy().to_string()),
+            field_names,
+            field_records,
+            num_features,
+            shape_type: shape_type_str,
+            prj_text: prj_text_opt,
+            crs_info,
+        },
+        features,
+    ))
+}
+
+/// 由要素坐标计算范围 (xmin, ymin, xmax, ymax)——导入列表展示与坐标系识别用。
+/// 与 read_shp_file_group 配套：调用方已持有 features 时无需再读盘。
+pub fn extent_of(features: &[ShpFeature]) -> (Option<f64>, Option<f64>, Option<f64>, Option<f64>) {
+    let mut xs: Vec<f64> = Vec::new();
+    let mut ys: Vec<f64> = Vec::new();
+    for f in features.iter() {
+        for p in f.surface.parts.iter() {
+            for (x, y) in p.exterior.iter() {
+                xs.push(*x);
+                ys.push(*y);
+            }
+        }
+    }
+    xs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    ys.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    (xs.first().copied(), ys.first().copied(), xs.last().copied(), ys.last().copied())
 }
 
 /// 写 .prj 文件

@@ -52,7 +52,7 @@ fn test_txt_path() -> PathBuf {
 #[test]
 fn test_read_shp() {
     let shp_path = test_shp_stem();
-    let info = shp::read_shp_file_group(&shp_path).expect("读取 SHP 文件组失败");
+    let (info, _features) = shp::read_shp_file_group(&shp_path).expect("读取 SHP 文件组失败");
 
     println!("SHP 文件名: {}", info.name);
     println!("要素数量: {}", info.num_features);
@@ -112,7 +112,7 @@ fn test_read_polygonz_shp() {
     drop(swriter);
 
     // 1) 文件组信息：shape_type=15 应识别为 PolygonZ
-    let info = shp::read_shp_file_group(&shp_path).expect("读取 PolygonZ 文件组失败");
+    let (info, _features) = shp::read_shp_file_group(&shp_path).expect("读取 PolygonZ 文件组失败");
     assert_eq!(info.shape_type, "PolygonZ", "shape_type=15 应映射为 PolygonZ");
     assert_eq!(info.num_features, 1, "应有 1 个要素");
 

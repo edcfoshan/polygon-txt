@@ -401,7 +401,7 @@ fn test_txt_to_shp_fieldn_and_standard() {
             .find(|f| f.ends_with(".shp"))
             .expect("应输出 .shp"),
     );
-    let info = shp::read_shp_file_group(&shp_path).expect("读回 SHP 失败");
+    let (info, _features) = shp::read_shp_file_group(&shp_path).expect("读回 SHP 失败");
     // 字段名：12 个 FIELD（read_dbf 的 dbase Record 迭代顺序随机，文件头顺序由 test_dbf_header_field_order 校验）
     let fieldn = info.field_names.iter().filter(|f| f.starts_with("FIELD")).count();
     assert_eq!(fieldn, 12, "应有 12 个 FIELD 字段: {:?}", info.field_names);
@@ -443,7 +443,7 @@ fn test_txt_to_shp_fieldn_and_standard() {
         .expect("旧格式转 SHP 失败");
     assert!(result2.success, "{}", result2.message);
 
-    let info2 = shp::read_shp_file_group(&PathBuf::from(&result2.output_files[0])).expect("读回 SHP 失败");
+    let (info2, _features) = shp::read_shp_file_group(&PathBuf::from(&result2.output_files[0])).expect("读回 SHP 失败");
     assert!(info2.field_names.iter().any(|f| f == "DKMC"), "标准格式应输出 DKMC: {:?}", info2.field_names);
     assert!(!info2.field_names.iter().any(|f| f.starts_with("FIELD")), "标准格式不应有 FIELD 字段");
     let rec2 = &info2.field_records[0];

@@ -333,6 +333,32 @@ fn format_coord(val: f64, decimals: u32) -> String {
     format!("{:.prec$}", val, prec = decimals as usize)
 }
 
+/// 对地块的全部坐标做一次变换，避免调用方同时遍历 coords 与 rings（同一批点被算两遍）。
+///
+/// 约定：`coords` 恒为 `rings` 的展平（顺序 = 环序 × 环内点序，见 txt 解析与 collect_import_sources），
+/// 因此以 rings 为唯一数据源、变换后重新展平回 coords 与原实现等价。
+/// 例外：rings 为空时（仅 coords 的兜底数据）只变换 coords，保持 rings 为空。
+pub fn for_each_coord_mut(plot: &mut PlotData, mut f: impl FnMut(&mut (f64, f64))) {
+    if plot.rings.is_empty() {
+        for coord in plot.coords.iter_mut() {
+            f(coord);
+        }
+        return;
+    }
+    // coords 必须恰好等于 rings 展平；否则本函数会丢掉 rings 之外的坐标（refactor 的隐含前提）
+    debug_assert_eq!(
+        plot.coords.len(),
+        plot.rings.iter().map(|r| r.coords.len()).sum::<usize>(),
+        "coords 应恰好等于 rings 展平，存在 rings 之外的坐标"
+    );
+    for ring in plot.rings.iter_mut() {
+        for coord in ring.coords.iter_mut() {
+            f(coord);
+        }
+    }
+    plot.coords = plot.rings.iter().flat_map(|r| r.coords.iter().copied()).collect();
+}
+
 /// 单地块界址点编号（与 generate_txt 输出口径完全一致，地图标注复用）：
 /// rings 空时 coords 整体当单环；每地块从 1 起跨环（外环/洞/多部件）连续递增；
 /// 闭合点（末点与环首点重合，仅 oo=true 时存在）oc=false 用环首号不占号、oc=true 续编；

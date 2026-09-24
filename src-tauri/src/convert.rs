@@ -392,14 +392,9 @@ pub fn apply_dynamic_projection_to_sources(
             let zone_f = z as f64 * 1_000_000.0;
             for src in sources.iter_mut() {
                 for pws in src.plots.iter_mut() {
-                    for coord in pws.plot.coords.iter_mut() {
+                    txt::for_each_coord_mut(&mut pws.plot, |coord| {
                         adjust_zone_prefix(coord, zone_f, options.proj_no_prefix, data_zone_f);
-                    }
-                    for ring in pws.plot.rings.iter_mut() {
-                        for coord in ring.coords.iter_mut() {
-                            adjust_zone_prefix(coord, zone_f, options.proj_no_prefix, data_zone_f);
-                        }
-                    }
+                    });
                 }
             }
         }
@@ -520,19 +515,13 @@ fn transform_sources_dynamic(
 ) -> Result<(), String> {
     for src in sources.iter_mut() {
         for pws in src.plots.iter_mut() {
-            for coord in pws.plot.coords.iter_mut() {
+            // rings 为唯一数据源；变换后重新展平 coords。
+            // （generate_txt 优先使用 rings，两者不一致会导致导出用原始坐标）
+            txt::for_each_coord_mut(&mut pws.plot, |coord| {
                 let (nx, ny) = transform_xy(coord.0, coord.1, mode, src_band, src_zone, dst_band, dst_zone, datum, no_prefix);
                 coord.0 = ny;
                 coord.1 = nx;
-            }
-            // 同步更新 rings（generate_txt 优先使用 rings，漏更会导致导出用原始坐标）
-            for ring in pws.plot.rings.iter_mut() {
-                for coord in ring.coords.iter_mut() {
-                    let (nx, ny) = transform_xy(coord.0, coord.1, mode, src_band, src_zone, dst_band, dst_zone, datum, no_prefix);
-                    coord.0 = ny;
-                    coord.1 = nx;
-                }
-            }
+            });
         }
     }
     Ok(())

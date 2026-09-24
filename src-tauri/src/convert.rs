@@ -807,29 +807,35 @@ pub fn plot_table_geo(
                 pws.plot.rings.iter().map(|r| &r.coords[..]).collect()
             };
             let mut rings = Vec::with_capacity(ring_coords.len());
+            // 投影结果顺带展平一份：number_plot_points 的输出与「环序 × 环内点序」同序，
+            // 标签直接按下标取已算好的坐标，不再对同一批点二次投影
+            let mut flat_projected: Vec<[f64; 2]> = Vec::new();
             for rc in ring_coords {
                 let mut ring = Vec::with_capacity(rc.len());
                 for &(y, x) in rc {
                     let (lon, lat) = to_wgs84(y, x);
-                    ring.push([(lon * 1e6).round() / 1e6, (lat * 1e6).round() / 1e6]);
+                    let xy = [(lon * 1e6).round() / 1e6, (lat * 1e6).round() / 1e6];
+                    ring.push(xy);
+                    flat_projected.push(xy);
                 }
                 rings.push(ring);
             }
             // 界址点标签：与 generate_txt 编号口径一致（oj/oc 生效）；degraded 源无坐标不标
-            let points = if degraded {
+            let labels = if degraded {
                 Vec::new()
             } else {
                 txt::number_plot_points(&pws.plot, options.oj, options.oc)
-                    .into_iter()
-                    .map(|(label, _part, y, x)| {
-                        let (lon, lat) = to_wgs84(y, x);
-                        PlotPointLabel {
-                            xy: [(lon * 1e6).round() / 1e6, (lat * 1e6).round() / 1e6],
-                            label,
-                        }
-                    })
-                    .collect()
             };
+            debug_assert_eq!(
+                labels.len(),
+                flat_projected.len(),
+                "编号数与投影坐标数应一致（两者同序同源）"
+            );
+            let points: Vec<PlotPointLabel> = labels
+                .into_iter()
+                .zip(flat_projected)
+                .map(|((label, _part, _y, _x), xy)| PlotPointLabel { xy, label })
+                .collect();
             // 属性表 = 源数据字段全集（按字段区顺序，含 OBJECTID/Shape_* 等），
             // 而非 TXT 输出列——GIS 用户按源表查看/筛选，别名切换也基于源字段名
             let attrs: Vec<(String, String)> = src

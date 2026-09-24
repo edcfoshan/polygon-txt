@@ -3,13 +3,34 @@
 
 use jisig_bpoint_converter_lib::convert::*;
 use jisig_bpoint_converter_lib::projection::{gauss_kruger_forward, gauss_kruger_inverse, Ellipsoid};
+use jisig_bpoint_converter_lib::txt::PlotData;
 use std::collections::HashMap;
+
+/// 测试用：根据坐标列表构造 PlotData
+/// （原为 convert::__plot_with_coords，测试辅助函数不该编译进 release）
+fn plot_with_coords(c: Vec<(f64, f64)>) -> PlotData {
+    PlotData {
+        point_count: c.len() as u32,
+        area: String::new(),
+        fid: String::new(),
+        name: String::new(),
+        geom_type: "polygon".to_string(),
+        tfh: String::new(),
+        use_field: String::new(),
+        dlbm: String::new(),
+        coords: c,
+        rings: vec![],
+        fields: Vec::new(),
+        stake: String::new(),
+        custom_values: HashMap::new(),
+    }
+}
 
 fn make_test_source(coords: Vec<(f64, f64)>) -> ImportSource {
     ImportSource {
         stem: "t".to_string(),
         plots: vec![PlotWithSource {
-            plot: __plot_with_coords(coords),
+            plot: plot_with_coords(coords),
             source_stem: "t".to_string(),
             index_in_source: 0,
             attributes: HashMap::new(),

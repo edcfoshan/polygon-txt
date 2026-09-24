@@ -66,7 +66,10 @@ fn read_table_schema_meta(
         Ok(h) => h,
         Err(_) => return none,
     };
-    r.seek(hdr.field_desc_offset as usize);
+    // 定位失败按本函数既有约定返回 none（同一段的 parse_table_header/parse_field_section 同样处理）
+    if r.seek(hdr.field_desc_offset as usize).is_err() {
+        return none;
+    }
     let fs = match fgdb::table::parse_field_section(&mut r) {
         Ok(fs) => fs,
         Err(_) => return none,

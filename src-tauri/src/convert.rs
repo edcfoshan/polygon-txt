@@ -314,71 +314,6 @@ pub struct ImportSource {
     pub source_band: Option<u8>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ShpSourceInfo {
-    pub file_type: String,
-    pub shp_paths: Vec<String>,
-    pub source_path: Option<String>,
-    pub field_names: Vec<String>,
-    pub field_records: Vec<Vec<String>>,
-    pub num_features: usize,
-    pub crs_info: HashMap<String, String>,
-    pub layers: Vec<GdbLayerItem>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GdbLayerItem {
-    pub name: String,
-    pub field_names: Vec<String>,
-    pub num_features: usize,
-}
-
-pub fn read_shp_source(shp_paths: &[PathBuf]) -> Result<ShpSourceInfo, String> {
-    if shp_paths.is_empty() {
-        return Err("没有选择 SHP 文件".to_string());
-    }
-
-    let first = shp::read_shp_file_group(&shp_paths[0])?;
-
-    Ok(ShpSourceInfo {
-        file_type: "shp".to_string(),
-        shp_paths: shp_paths
-            .iter()
-            .map(|p| p.to_string_lossy().to_string())
-            .collect(),
-        source_path: None,
-        field_names: first.field_names.clone(),
-        field_records: first.field_records.clone(),
-        num_features: first.num_features,
-        crs_info: first.crs_info.clone(),
-        layers: vec![],
-    })
-}
-
-pub fn read_gdb_source(gdb_path: &Path) -> Result<ShpSourceInfo, String> {
-    let info = gdb::read_gdb(gdb_path)?;
-
-    let layers = info
-        .layers
-        .iter()
-        .map(|l| GdbLayerItem {
-            name: l.name.clone(),
-            field_names: l.field_names.clone(),
-            num_features: l.num_features,
-        })
-        .collect();
-
-    Ok(ShpSourceInfo {
-        file_type: "gdb".to_string(),
-        shp_paths: vec![],
-        source_path: Some(gdb_path.to_string_lossy().to_string()),
-        field_names: info.all_field_names.first().cloned().unwrap_or_default(),
-        field_records: vec![],
-        num_features: info.layers.first().map(|l| l.num_features).unwrap_or(0),
-        crs_info: HashMap::new(),
-        layers,
-    })
-}
 
 pub fn shp_to_txt_preview(
     shp_paths: &[PathBuf],
@@ -1164,9 +1099,6 @@ fn txt_to_shp_one_to_one(
         // 无声明时才用前缀推断兜底，矛盾时记提示。
         let extracted = extract_zone_from_coords(&parsed.plots);
         let declared = parsed.attrs.get("带号").map(|s| s.as_str());
-        let declared_zone = declared
-            .and_then(|d| d.trim().parse::<i32>().ok())
-            .filter(|z| (1..=60).contains(z));
         let final_zone = match resolve_txt_zone(
             extracted,
             declared,
@@ -1846,26 +1778,6 @@ fn plots_to_surfaces_and_attributes(
     (geometries, attributes)
 }
 
-fn get_field_value(field_name: &str, field_names: &[String], record: &[String]) -> String {
-    if field_name.is_empty() {
-        return String::new();
-    }
-    if let Some(pos) = field_names.iter().position(|n| n == field_name) {
-        if pos < record.len() {
-            return record[pos].clone();
-        }
-    }
-    String::new()
-}
-
-fn get_field_value_map<'a>(field_name: &str, attrs: &'a HashMap<String, String>) -> &'a str {
-    if field_name.is_empty() {
-        return "";
-    }
-    attrs.get(field_name).map(|s| s.as_str()).unwrap_or("")
-}
-
-
 // ═══ 统一字段映射解析 ═══
 
 /// 各字段对应的占位文字
@@ -2157,21 +2069,3 @@ mod tests {
 }
 
 
-/// 测试用：根据坐标列表构造 PlotData
-pub fn __plot_with_coords(c: Vec<(f64, f64)>) -> crate::txt::PlotData {
-    crate::txt::PlotData {
-        point_count: c.len() as u32,
-        area: String::new(),
-        fid: String::new(),
-        name: String::new(),
-        geom_type: "polygon".to_string(),
-        tfh: String::new(),
-        use_field: String::new(),
-        dlbm: String::new(),
-        coords: c,
-        rings: vec![],
-        fields: Vec::new(),
-        stake: String::new(),
-        custom_values: HashMap::new(),
-    }
-}

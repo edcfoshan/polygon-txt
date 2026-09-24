@@ -17,9 +17,6 @@ path = "bin/diag_read_gdb.rs"
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
-[features]
-default = []
-
 [dependencies]
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
@@ -31,17 +28,17 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 shapefile = "0.8"
 dbase = "0.3"
-tempfile = "3"
 encoding_rs = "0.8"
 geonative-core = "0.2"
 geonative-filegdb = "0.2"
-geonative-shapefile = "0.2"
-geo-types = "0.7"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 proj-core = "0.9"
 # 纯计算小 crate，全平台无条件引入：selfheal 的签名规范化（平台无关顶层函数）与测试都要用
 base64 = "0.22"
 minisign-verify = "0.2"
+
+[dev-dependencies]
+tempfile = "3"
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.52"

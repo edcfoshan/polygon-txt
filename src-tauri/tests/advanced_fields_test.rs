@@ -98,6 +98,7 @@ fn adv_options() -> convert::ShpToTxtOptions {
 // ─── 1. 新格式解析：列表行识别 + 说明块跳过 + 按名解析 + 槽位回填 ───
 
 #[test]
+#[ignore = "本地专用：依赖 00测试数据/（.gitignore 未入库）"]
 fn test_parse_advanced_template() {
     let text = txt::read_text_file(template_txt()).expect("读模板失败");
     let parsed = txt::parse_txt(&text);
@@ -236,6 +237,7 @@ fn test_legacy_format_unchanged() {
 // ─── 4. 往返：导出值 + 带列表行导入按名解析（导出本身不含列表行） ───
 
 #[test]
+#[ignore = "本地专用：依赖 00测试数据/（.gitignore 未入库）"]
 fn test_roundtrip_advanced() {
     let text = txt::read_text_file(template_txt()).expect("读模板失败");
     let parsed = txt::parse_txt(&text);
@@ -376,6 +378,7 @@ fn test_custom_field_names_and_renamed_count() {
 // ─── 6. TXT→SHP 分支：FIELDn 动态字段 / 标准格式 6 拼音 + DKBH 修复 ───
 
 #[test]
+#[ignore = "本地专用：依赖 00测试数据/（.gitignore 未入库）"]
 fn test_txt_to_shp_fieldn_and_standard() {
     // 6a. 12 字段模板 → FIELD1~FIELD12 全字段
     let out_dir = tempfile::tempdir().expect("temp dir");
@@ -453,6 +456,7 @@ fn test_txt_to_shp_fieldn_and_standard() {
 
 // DBF 文件头字段顺序校验（read_dbf 的 dbase Record 迭代顺序随机，须直接读二进制头）
 #[test]
+#[ignore = "本地专用：依赖 00测试数据/（.gitignore 未入库）"]
 fn test_dbf_header_field_order() {
     let out_dir = tempfile::tempdir().expect("temp dir");
     let options = convert::TxtToShpOptions {

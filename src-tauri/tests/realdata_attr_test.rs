@@ -37,6 +37,7 @@ fn field_mapping() -> convert::FieldMapping {
 }
 
 #[test]
+#[ignore = "本地专用：依赖 00测试数据 绝对路径（未入库）"]
 fn real_shp_to_txt_custom_attr_descriptions() {
     let shp: PathBuf = format!("{}/试验数据0626.shp", DATA_DIR).into();
     assert!(shp.exists(), "测试数据不存在: {:?}", shp);
@@ -76,6 +77,7 @@ fn real_shp_to_txt_custom_attr_descriptions() {
 }
 
 #[test]
+#[ignore = "本地专用：依赖 00测试数据 绝对路径（未入库）"]
 fn real_txt_to_shp_unaffected_by_attr_descriptions() {
     let txt_path: PathBuf = format!("{}/新建txt.txt", DATA_DIR).into();
     assert!(txt_path.exists(), "测试数据不存在: {:?}", txt_path);

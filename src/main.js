@@ -78,6 +78,8 @@ let projMode = "keep"; // prototype: dynamic projection selection
 let projZone = null;   // dynamic projection zone (A/B: dst zone; C: src zone; F/G: auto or user)
 let previewTimer = null;
 let autoSaveTimer = null;
+// 预览请求序号：只有最新一次请求的响应可以落地（快速连续改动时，旧响应可能后到并覆盖新结果）
+let previewSeq = 0;
 let theme = "light";
 let sourceType = null;
 let sourcePath = null;
@@ -1672,9 +1674,11 @@ function resetFilterOnImport() {
 }
 
 // 属性表/地图的结构化地块数据（全量口径，不吃筛选；预览/导出走 options.plot_filter）
-async function refreshPlotGeo(shpPaths, cfg, opt) {
+// seq：调用方的请求序号，响应返回时若已过期则整包丢弃（避免旧数据覆盖新数据）
+async function refreshPlotGeo(shpPaths, cfg, opt, seq) {
   try {
     const geo = await tauriInvoke("read_plot_table_geo", { shpPaths, sourceType, sourcePath, headerCfg: cfg.h, fieldMapping: cfg.f, options: { ...opt, plot_filter: null }, selectedLayers: sourceType === "gdb" ? selectedLayers : [] });
+    if (seq !== previewSeq) return;
     TV.setData(geo);
     MV.setData(geo);
     // 部备案埋桩来源字段下拉随源字段刷新（保留当前选择）
@@ -1683,12 +1687,14 @@ async function refreshPlotGeo(shpPaths, cfg, opt) {
     QB.setFields(TV.getFieldNames());
     TV.applyFromBuilder(QB.getWhere());
   } catch (e) {
+    if (seq !== previewSeq) return;
     console.error("plot geo error:", e);
     toast("读取地块数据失败: " + (e?.message || e), "err");
   }
 }
 
 const up = async function () {
+  const seq = ++previewSeq;
   const hpi = $("hpi")?.value || "";
   const attrLines = collectAttrRows()
     .filter((r) => r.k.trim() !== "" || r.v.trim() !== "")
@@ -1707,9 +1713,11 @@ const up = async function () {
     try {
       if (spin) spin.classList.add('on');
       // 先发地块数据请求（不 await：与预览并行；预览失败也不影响属性表/地图）
-      const geoP = refreshPlotGeo(shpPaths, cfg, opt);
+      const geoP = refreshPlotGeo(shpPaths, cfg, opt, seq);
       setBbStatus("正在生成坐标行列预览…");
       const txt = await tauriInvoke("read_shp_to_txt_preview", { shpPaths, sourceType, sourcePath, headerCfg: cfg.h, fieldMapping: cfg.f, options: opt, selectedLayers: sourceType === "gdb" ? selectedLayers : [] });
+      // 期间又触发了新的预览请求 → 本次响应已过期，丢弃（不写预览文本/状态）
+      if (seq !== previewSeq) return;
       if (txt) {
         const pv = $("pv");
         if (pv) pv.textContent = txt;
@@ -1719,12 +1727,13 @@ const up = async function () {
       }
       setBbStatus("没有可输出的坐标内容：请检查导入数据和筛选条件。", true);
     } catch (e) {
+      if (seq !== previewSeq) return; // 过期请求的失败不打扰用户
       console.error("Preview error:", e);
       const message = e?.message || e;
       setBbStatus("预览失败：" + message, true);
       toast("预览失败: " + message, "err");
     }
-    finally { if (spin) spin.classList.remove('on'); }
+    finally { if (seq === previewSeq && spin) spin.classList.remove('on'); }
   }
   const pv = $("pv");
   if (pv) pv.textContent = out || "请先导入 SHP 或 GDB 文件";
@@ -2805,7 +2814,13 @@ function initWindowState() {
         if (rec.w >= 800 && rec.h >= 540) localStorage.setItem("tg_win", JSON.stringify(rec));
       } catch (e) {}
     };
-    appWin.onResized(() => { quickSave(); fullSave(); }).catch(() => {});
+    // 拖动窗口时 onResized 每帧触发，而 fullSave 要 3 个 IPC + localStorage 读写。
+    // 尾部去抖：拖动过程中不落盘，停手 200ms 后存一次（关闭前的尺寸由 beforeunload→quickSave 兜底）
+    let resizeSaveTimer = null;
+    appWin.onResized(() => {
+      clearTimeout(resizeSaveTimer);
+      resizeSaveTimer = setTimeout(() => { quickSave(); fullSave(); }, 200);
+    }).catch(() => {});
     appWin.onMoved(() => fullSave()).catch(() => {});
     window.addEventListener("beforeunload", quickSave);
   } catch (e) { /* 浏览器 dev 环境无窗口 API，跳过 */ }

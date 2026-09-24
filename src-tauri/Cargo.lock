@@ -1163,17 +1163,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "geonative-shapefile"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ebbafa954e13f227cf185469ad3438063ee821f620043addc5f03ee36b8370bf"
-dependencies = [
- "geonative-core",
- "memmap2",
- "thiserror 2.0.18",
-]
-
-[[package]]
 name = "getrandom"
 version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1752,10 +1741,8 @@ dependencies = [
  "chrono",
  "dbase 0.3.0",
  "encoding_rs",
- "geo-types",
  "geonative-core",
  "geonative-filegdb",
- "geonative-shapefile",
  "minisign-verify",
  "proj-core",
  "reqwest 0.12.28",

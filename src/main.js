@@ -10,9 +10,14 @@ import { getVersion } from '@tauri-apps/api/app';
 import aboutContent from '../content/about.md?raw';
 import aboutQrImage from '../content/讨论群.jpg?inline';
 import sponsorQrImage from '../content/关注、赞赏码.png?inline';
+import brandMark from './assets/brand-mark.png?inline';
 import { TV } from './tableview.js';
 import { MV } from './mapview.js';
 import { QB } from './querybuilder.js';
+
+// 品牌标记：单色 PNG 作为 CSS mask 使用（随色系着色 → 暗色主题下不会变成一块黑方块）。
+// ?inline 保证 vite-plugin-singlefile 构建时内联成 data URL，不产生额外资源请求。
+document.documentElement.style.setProperty("--brand-mark", `url("${brandMark}")`);
 
 // 右栏属性表/地图模块（HTML onclick 经 window.* 调用）
 window.TV = TV;
@@ -51,7 +56,7 @@ async function runWindowCommand(command) {
     await tauriInvoke(command);
   } catch (e) {
     console.error(`[Tauri] ${command} failed:`, e);
-    toast(`窗口控制失败: ${e}`);
+    toast(`窗口控制失败: ${e}`, "err");
     throw e;
   }
 }
@@ -134,14 +139,52 @@ const PP = [
 
 const $ = (id) => document.getElementById(id);
 
+// ═══ 拖动手柄图标（SVG 替代 ⠿ 字形：字形随字体/平台变化，且无法继承 stroke 粗细）═══
+const GRIP_SVG = '<svg viewBox="0 0 12 12" width="10" height="10" fill="currentColor" aria-hidden="true"><circle cx="4" cy="3" r="1"/><circle cx="8" cy="3" r="1"/><circle cx="4" cy="6" r="1"/><circle cx="8" cy="6" r="1"/><circle cx="4" cy="9" r="1"/><circle cx="8" cy="9" r="1"/></svg>';
+const GRIP_HTML = `<span class="grip" role="button" tabindex="0" title="拖动，或用 ↑↓ 调整顺序" aria-label="调整顺序，上下方向键移动">${GRIP_SVG}</span>`;
+const ICON_X = '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+const ICON_LAYERS = '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 3 7.5l9 4.5 9-4.5z"/><path d="M3 12.5 12 17l9-4.5"/></svg>';
+
+// ═══ 拖动排序的键盘等价操作（鼠标拖拽依赖 mousemove，键盘用户无法使用；此处复用同一套 collect/render）═══
+function bindGripReorder(box, collect, render) {
+  if (!box) return;
+  box.addEventListener("keydown", (e) => {
+    if (!["ArrowUp", "ArrowDown", "Home", "End"].includes(e.key)) return;
+    if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return; // 不抢系统/输入法组合键
+    const grip = e.target.closest(".grip");
+    if (!grip || grip.parentElement?.parentElement !== box) return;
+    e.preventDefault();
+    const row = grip.parentElement;
+    const from = Array.from(box.children).indexOf(row);
+    const last = box.children.length - 1;
+    if (from < 0) return;
+    const to = e.key === "ArrowUp" ? from - 1 : e.key === "ArrowDown" ? from + 1 : e.key === "Home" ? 0 : last;
+    if (to < 0 || to > last || to === from) return;
+    const rows = collect();
+    const [moved] = rows.splice(from, 1);
+    if (moved === undefined) return;
+    rows.splice(to, 0, moved);
+    render(rows);
+    box.children[to]?.querySelector(".grip")?.focus();
+    updatePreview();
+  });
+}
+
 // ═══ Toast ═══
-function toast(m) {
+// kind："ok" 成功 / "err" 错误 / 省略 = 普通提示。
+// 错误停留更久（需读完原因）且以 role=alert 交给读屏；提示类 3.5s 自动消失。
+// pointer-events:none（见 CSS）→ 提示不会挡住下方控件点击，因此无需关闭按钮。
+const TOAST_MS = { ok: 3500, err: 9000, info: 3500 };
+function toast(m, kind) {
   const t = $("toast");
   if (!t) return;
+  const k = kind === "err" || kind === "ok" ? kind : "info";
   t.textContent = m;
-  t.classList.add("on");
+  t.className = "toast on " + k;
+  t.setAttribute("role", k === "err" ? "alert" : "status");
+  t.setAttribute("aria-live", k === "err" ? "assertive" : "polite");
   clearTimeout(t._h);
-  t._h = setTimeout(() => t.classList.remove("on"), 20000);
+  t._h = setTimeout(() => t.classList.remove("on"), TOAST_MS[k]);
 }
 
 // ═══ Theme（主题：浅/暗 + 8 色系，v3.0；v3.1 起入口收进设置面板） ═══
@@ -237,7 +280,7 @@ window.importShp = async function () {
   try {
     const result = await tauriInvoke("pick_shp_files");
     if (result.skipped && result.skipped.length) {
-      toast(`以下文件不是面状要素，已忽略：${result.skipped.join("、")}`);
+      toast(`以下文件不是面状要素，已忽略：${result.skipped.join("、")}`, "err");
     }
     if (!result.files || result.files.length === 0) return;
     loadedFiles = result.files;
@@ -249,7 +292,7 @@ window.importShp = async function () {
     processImport();
     autoSetOutputDirS(loadedFiles[0]?.shp_path);
   } catch (e) {
-    toast("导入失败: " + e);
+    toast("导入失败: " + e, "err");
   }
 };
 
@@ -261,7 +304,7 @@ window.importGdb = async function () {
     const result = await tauriInvoke("import_gdb");
     if (!result || !result.path) return;
     if (result.skipped && result.skipped.length) {
-      toast(`以下图层不是面状要素，已过滤：${result.skipped.join("、")}`);
+      toast(`以下图层不是面状要素，已过滤：${result.skipped.join("、")}`, "err");
     }
     sourceType = "gdb";
     sourcePath = result.path;
@@ -284,7 +327,7 @@ window.importGdb = async function () {
     renderLeftGdbSummary();     // 左栏先显示"待选择"占位行
     openGdbSelectModal();       // 直接弹出要素类选择框
   } catch (e) {
-    toast("导入 GDB 失败: " + e);
+    toast("导入 GDB 失败: " + e, "err");
   }
 };
 
@@ -312,7 +355,7 @@ window.closeGdbSelectModal = function (e) {
 // 确认：提交临时态 → 关闭 → 刷新左栏汇总 + 右栏预览
 window.confirmGdbSelect = function () {
   if (gdbTempSelected.length === 0) {
-    toast("请至少选择一个要素类");
+    toast("请至少选择一个要素类", "err");
     return;
   }
   selectedLayers = [...gdbTempSelected];
@@ -339,7 +382,7 @@ window.confirmGdbSelect = function () {
     });
   const uniq = [...new Set(zones)];
   if (uniq.length > 1) {
-    toast(`⚠ 所选图层坐标系不一致：${zones.join("、")}，请分开处理`);
+    toast(`⚠ 所选图层坐标系不一致：${zones.join("、")}，请分开处理`, "err");
   }
   resetFilterOnImport();
   window.closeGdbSelectModal();
@@ -354,7 +397,7 @@ window.confirmGdbSelect = function () {
     syncOgGate(selCrs);
   }
   renderLeftGdbSummary();
-  toast(`已选定 ${selectedLayers.length}/${gdbLayers.length} 个要素类`);
+  toast(`已选定 ${selectedLayers.length}/${gdbLayers.length} 个要素类`, "ok");
   autoEnableProjPrefix();
   updateProjButton();
   updatePreview();
@@ -377,7 +420,7 @@ function renderGdbSelectList() {
 
   const header = '<div class="gdb-sel-th"><span>要素类名</span><span>几何类型</span><span>要素数</span></div>';
   const toolbar = '<div class="gdb-sel-toolbar">'
-    + '<a data-act="all">全选</a><a data-act="none">全不选</a><a data-act="invert">反选</a>'
+    + '<button type="button" data-act="all">全选</button><button type="button" data-act="none">全不选</button><button type="button" data-act="invert">反选</button>'
     + '</div>';
   const rows = gdbLayers.map((layer) => {
     const checked = gdbTempSelected.includes(layer.name) ? "checked" : "";
@@ -401,10 +444,10 @@ function renderGdbSelectList() {
   });
 
   // 全选/全不选/反选
-  list.querySelectorAll("a[data-act]").forEach((a) => {
-    a.addEventListener("click", (e) => {
+  list.querySelectorAll("button[data-act]").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
       e.preventDefault();
-      const act = a.dataset.act;
+      const act = btn.dataset.act;
       if (act === "all") {
         gdbTempSelected = gdbLayers.map((l) => l.name);
       } else if (act === "none") {
@@ -432,17 +475,26 @@ function renderLeftGdbSummary() {
   const cntText = sel === 0 ? "待选择" : `选中 ${sel}/${total}`;
   // 单图层显示 库名.gdb\图层名（用户能看到具体导入了哪层）；多图层维持库名+计数
   const dispName = sel === 1 ? `${name}.gdb\\` + selectedLayers[0] : `${name}.gdb`;
-  fl.innerHTML = `<div class="gitem${sel === 0 ? " gitem-pending" : ""}" id="gdbSumRow" title="点击选择要素类">`
-    + `<span class="gicon">◈</span>`
+  fl.innerHTML = `<div class="gitem${sel === 0 ? " gitem-pending" : ""}" id="gdbSumRow" role="button" tabindex="0" title="点击选择要素类" aria-label="选择要素类：${dispName}">`
+    + `<span class="gicon" aria-hidden="true">${ICON_LAYERS}</span>`
     + `<span class="gname" title="${dispName}">${dispName}</span>`
     + `<span class="gcnt">${cntText}</span>`
-    + `<span class="gclose" id="gdbSumClose" title="移除 GDB 导入">×</span>`
+    + `<button type="button" class="gclose" id="gdbSumClose" title="移除 GDB 导入" aria-label="移除 GDB 导入">${ICON_X}</button>`
     + `</div>`;
   const row = $("gdbSumRow");
-  if (row) row.addEventListener("click", (e) => {
-    if (e.target.id === "gdbSumClose") return;   // × 单独处理
-    openGdbSelectModal();
-  });
+  if (row) {
+    row.addEventListener("click", (e) => {
+      if (e.target.closest("#gdbSumClose")) return;   // × 单独处理
+      openGdbSelectModal();
+    });
+    // 行本身是"按钮"：键盘 Enter/Space 等价于点击
+    row.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter" && e.key !== " ") return;
+      if (e.target !== row) return;                    // 焦点在内部 × 按钮时不代理
+      e.preventDefault();
+      openGdbSelectModal();
+    });
+  }
   const close = $("gdbSumClose");
   if (close) close.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -462,7 +514,7 @@ function clearGdbImport() {
   renderFileList();   // 复用现有函数清空 #fl
   updateProjButton();
   updatePreview();
-  toast("已移除 GDB 导入");
+  toast("已移除 GDB 导入", "ok");
 }
 
 
@@ -471,7 +523,7 @@ function renderFileList() {
   if (!fl) return;
   fl.innerHTML = "";
   loadedFiles.forEach((g, i) => {
-    fl.innerHTML += `<div class="fitem"><span class="fn">◈ ${g.name}.shp</span><span class="fs">${g.num_features}个</span><button class="fitem-close" data-remove-file="${i}">×</button></div>`;
+    fl.innerHTML += `<div class="fitem"><span class="fn">${ICON_LAYERS} ${g.name}.shp</span><span class="fs">${g.num_features}个</span><button class="fitem-close" data-remove-file="${i}" title="移除" aria-label="移除该文件">${ICON_X}</button></div>`;
   });
   const tag = $("impTag");
   if (tag) tag.textContent = loadedFiles.length ? `${loadedFiles.length} 个文件` : "未导入";
@@ -692,7 +744,7 @@ window.toggleProjPrefix = function () {
   }
   updateProjButton();
   updatePreview();
-  toast(tb.checked ? '已开启：输出东坐标自动加带号前缀' : '已关闭：输出自然值（不含带号前缀）');
+  toast(tb.checked ? '已开启：输出东坐标自动加带号前缀' : '已关闭：输出自然值（不含带号前缀）', "ok");
 };
 
 /// 模式推断：输入形式 + 用户选的目标形式 → A/B/D/F/G/H
@@ -957,7 +1009,7 @@ window.applyProjMode = function () {
     : (projMode + ' ' + bStr + noPre + ' ' + zStr).trim();
   // og 与动态投影互斥
   syncOgGate(currentCrsInfo);
-  toast('动态投影: ' + label);
+  toast('动态投影: ' + label, "ok");
 
   // 同步头表 CRS 字段（键名对齐属性表真实 key：几度分带/计量单位/带号/投影类型）
   const rows = collectAttrRows();
@@ -1002,7 +1054,7 @@ window.resetProjMode = function () {
   syncOgGate(currentCrsInfo);
   updateProjButton();
   updatePreview();
-  toast('动态投影已关闭');
+  toast('动态投影已关闭', "ok");
 };
 
 // 当前导入源的 CRS 信息（og 门禁 / 软提示用）
@@ -1062,7 +1114,7 @@ function processImport() {
   updatePreview();
   updateProjButton();
   autoEnableProjPrefix();
-  toast("已导入 " + loadedFiles.length + " 个文件");
+  toast("已导入 " + loadedFiles.length + " 个文件", "ok");
 }
 
 function autoSetOutputDirS(filePath) {
@@ -1187,9 +1239,9 @@ function renderFieldRows(rows) {
     div.className = "attr-row field-row";
     div.dataset.i = String(i);
     // 左列字段名可编辑（自绘候选弹层 advSuggest）：空值 = 无名值列（placeholder「新行」），候选 = 14 项清单
-    const btnHtml = locked ? "" : `<button class="abtn del" data-act="del" data-i="${i}" title="删除此行">✕</button>`;
+    const btnHtml = locked ? "" : `<button class="abtn del" data-act="del" data-i="${i}" title="删除此行" aria-label="删除此行">${ICON_X}</button>`;
     div.innerHTML =
-      `<span class="grip" title="拖动排序">⠿</span>` +
+      `${GRIP_HTML}` +
       `<input class="fk" data-i="${i}" data-f="name" maxlength="30" autocomplete="off" spellcheck="false" placeholder="新行" value="${escAttr(row.name)}">` +
       `<span class="feq">←</span>` +
       `<select class="fmap" data-i="${i}" data-f="source"${locked ? " disabled" : ""}>${buildAdvSourceOptions(row.name, row.source)}</select>` +
@@ -1262,12 +1314,12 @@ window.confirmAdvTplSave = function () {
   const inp = $("tplNameInput");
   if (!inp || inp.style.display === "none" || tplSaving) return;
   const n = inp.value.trim();
-  if (!n) { toast("方案名不能为空"); inp.focus(); return; }
+  if (!n) { toast("方案名不能为空", "err"); inp.focus(); return; }
   const hit = readAdvTpls().find((t) => t.n === n);
   if (hit && n !== pendingOverwrite) {
     pendingOverwrite = n;
     armVisual($("btnTplOk"), "覆盖?");
-    toast("方案「" + n + "」已存在：再点一次「覆盖?」确认覆盖，或改个名字");
+    toast("方案「" + n + "」已存在：再点一次「覆盖?」确认覆盖，或改个名字", "err");
     return;
   }
   tplSaving = true;
@@ -1285,22 +1337,22 @@ window.confirmAdvTplSave = function () {
     writeAdvTpls(tpls);
     advPreset = (h || tpls[tpls.length - 1]).id; // 保存即选中：内容与预设相同时也显示方案名（否则删除入口找不到 t 前缀态）
     closeTplNameInput();
-    toast(h ? "已更新方案「" + n + "」" : "已保存方案「" + n + "」");
+    toast(h ? "已更新方案「" + n + "」" : "已保存方案「" + n + "」", "ok");
   } finally {
     tplSaving = false;
   }
 };
 window.delAdvTpl = function () {
-  if (!readAdvTpls().length) { toast("还没有保存过自定义方案"); return; }
-  if (!String(advPreset).startsWith("t")) { toast("请先在下拉中选中要删除的方案"); return; }
+  if (!readAdvTpls().length) { toast("还没有保存过自定义方案", "err"); return; }
+  if (!String(advPreset).startsWith("t")) { toast("请先在下拉中选中要删除的方案", "err"); return; }
   const t = readAdvTpls().find((x) => x.id === advPreset);
-  if (!t) { toast("方案数据异常：请重新在下拉中选择后重试"); return; }
+  if (!t) { toast("方案数据异常：请重新在下拉中选择后重试", "err"); return; }
   const id = t.id, name = t.n;
   armButton($("btnDelTpl"), "确认删除?", () => {
     writeAdvTpls(readAdvTpls().filter((x) => x.id !== id));
     advPreset = "custom"; // 行保留不动，仅预设态回自定义
     renderBcgSel();
-    toast("已删除方案「" + name + "」");
+    toast("已删除方案「" + name + "」", "ok");
   });
 };
 
@@ -1519,7 +1571,7 @@ window.importTxt = async function () {
   try {
     const result = await tauriInvoke("pick_txt_files");
     if (result.failed && result.failed.length) {
-      toast("以下文件解析失败：" + result.failed.join("、"));
+      toast("以下文件解析失败：" + result.failed.join("、"), "err");
     }
     if (!result.files || result.files.length === 0) return;
     txtFiles = result.files;
@@ -1528,7 +1580,7 @@ window.importTxt = async function () {
     if (txtFiles[0]?.crs_info) autoFillHeaderFromTxt(txtFiles[0].crs_info);
     autoSetOutputDirT(txtFiles[0]?.path);
   } catch (e) {
-    toast("导入失败: " + e);
+    toast("导入失败: " + e, "err");
   }
 };
 
@@ -1537,7 +1589,7 @@ function renderTxtFileList() {
   if (!fl) return;
   fl.innerHTML = "";
   txtFiles.forEach((f, i) => {
-    fl.innerHTML += `<div class="fitem"><span class="fn">◈ ${f.name}</span><span class="fs">${(f.size / 1024).toFixed(0)}KB</span><button class="fitem-close" data-remove-txt="${i}">×</button></div>`;
+    fl.innerHTML += `<div class="fitem"><span class="fn">${ICON_LAYERS} ${f.name}</span><span class="fs">${(f.size / 1024).toFixed(0)}KB</span><button class="fitem-close" data-remove-txt="${i}" title="移除" aria-label="移除该文件">${ICON_X}</button></div>`;
   });
   const tag = $("impTTag");
   if (tag) tag.textContent = txtFiles.length ? `${txtFiles.length} 个文件` : "未导入";
@@ -1562,8 +1614,8 @@ function renderTxtParseLog() {
     : "等待导入 TXT 文件…";
 }
 
-window.clearAllFiles = function () { loadedFiles = []; sourceType = null; sourcePath = null; gdbLayers = []; selectedLayers = []; gdbTempSelected = []; window._gdbName = ""; syncOgGate(null); const fl = $("fl"); if (fl) fl.innerHTML = ""; const out = $("out_dir_s"); if (out) out.value = ""; updateProjButton(); QB.clearRows(); try { localStorage.removeItem("tg_flt2"); } catch (e) {} TV.reset(); MV.reset(); toast("已清空"); };
-window.clearAllFilesTxt = function () { txtFiles = []; const fl = $("flT"); if (fl) fl.innerHTML = ""; const pv = $("pvT"); if (pv) pv.textContent = "等待导入 TXT 文件…"; const out = $("out_dir"); if (out) out.value = ""; toast("已清空"); };
+window.clearAllFiles = function () { loadedFiles = []; sourceType = null; sourcePath = null; gdbLayers = []; selectedLayers = []; gdbTempSelected = []; window._gdbName = ""; syncOgGate(null); const fl = $("fl"); if (fl) fl.innerHTML = ""; const out = $("out_dir_s"); if (out) out.value = ""; updateProjButton(); QB.clearRows(); try { localStorage.removeItem("tg_flt2"); } catch (e) {} TV.reset(); MV.reset(); toast("已清空", "ok"); };
+window.clearAllFilesTxt = function () { txtFiles = []; const fl = $("flT"); if (fl) fl.innerHTML = ""; const pv = $("pvT"); if (pv) pv.textContent = "等待导入 TXT 文件…"; const out = $("out_dir"); if (out) out.value = ""; toast("已清空", "ok"); };
 
 // ═══ Preview ═══
 function updatePreview() {
@@ -1606,7 +1658,7 @@ async function refreshPlotGeo(shpPaths, cfg, opt) {
     TV.applyFromBuilder(QB.getWhere());
   } catch (e) {
     console.error("plot geo error:", e);
-    toast("读取地块数据失败: " + (e?.message || e));
+    toast("读取地块数据失败: " + (e?.message || e), "err");
   }
 }
 
@@ -1645,7 +1697,7 @@ window.up = async function () {
       console.error("Preview error:", e);
       const message = e?.message || e;
       setBbStatus("预览失败：" + message, true);
-      toast("预览失败: " + message);
+      toast("预览失败: " + message, "err");
     }
     finally { if (spin) spin.classList.remove('on'); }
   }
@@ -1655,35 +1707,81 @@ window.up = async function () {
 }
 
 // ═══ Run ═══
+// 转换忙态：后端一次性返回结果、无中间进度事件 → 用不确定进度条 + 禁用按钮，
+// 避免"进度条停在 0% 像卡死"和双击触发两次转换写同一目录。
+async function withBusy(btn, progEl, txtEl, label, fn) {
+  if (btn?.disabled) return;
+  const original = btn?.textContent;
+  if (btn) { btn.disabled = true; btn.textContent = label; }
+  progEl?.classList.add("indet");
+  if (txtEl) txtEl.textContent = label;
+  try {
+    return await fn();
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = original; }
+    progEl?.classList.remove("indet");
+    if (txtEl && txtEl.textContent === label) txtEl.textContent = "就绪";
+  }
+}
+
+// 校验失败时定位到出错字段：切到所在页签 → 滚动到行 → 聚焦 → 短暂高亮
+function focusAttrRow(key) {
+  document.querySelectorAll(".mid-tab").forEach((b) => b.classList.toggle("on", b.dataset.mt === "hdr"));
+  document.querySelectorAll(".mid-pane").forEach((p) => p.classList.toggle("on", p.dataset.mp === "hdr"));
+  if (typeof switchHdrTab === "function") switchHdrTab("attr");
+  const box = $("attrRows");
+  const row = Array.from(box?.querySelectorAll(".attr-row") || [])
+    .find((d) => (d.querySelector(".ak")?.value || "").trim() === key);
+  const ctrl = row?.querySelector(".av");
+  if (!ctrl) return;
+  row.scrollIntoView({ block: "center" });
+  ctrl.focus();
+  row.classList.add("row-err");
+  setTimeout(() => row.classList.remove("row-err"), 2400);
+}
+
 // 统一导出入口：是否追加距离/埋桩等由界址点页签的 point_layout 决定
 window.runShpToTxt = async function () {
   const shpPaths = loadedFiles.map((f) => f.shp_path).filter(Boolean);
-  if (!shpPaths.length && !sourcePath) { toast("请先导入 SHP 或 GDB 文件"); return; }
-    // GDB 已导入但未勾选任何要素类：拦截，避免后端把"空"当作"全选"
-    if (sourceType === "gdb" && selectedLayers.length === 0) {
-      toast("请先在左栏点击 GDB 行，勾选要转换的要素类"); return;
-    }
+  if (!shpPaths.length && !sourcePath) { toast("请先导入 SHP 或 GDB 文件", "err"); return; }
+  // GDB 已导入但未勾选任何要素类：拦截，避免后端把"空"当作"全选"
+  if (sourceType === "gdb" && selectedLayers.length === 0) {
+    toast("请先在左栏点击 GDB 行，勾选要转换的要素类", "err"); return;
+  }
 
-    const zoneVal = collectAttrRows().find((r) => r.k.trim() === "带号")?.v.trim() || "";
-    if (!zoneVal || !/^\d+$/.test(zoneVal)) {
-      toast("请填写带号后再输出"); return;
-    }
+  const zoneVal = collectAttrRows().find((r) => r.k.trim() === "带号")?.v.trim() || "";
+  if (!zoneVal || !/^\d+$/.test(zoneVal)) {
+    toast("请填写带号后再输出（中栏「表头 › 属性描述」的「带号」行）", "err");
+    focusAttrRow("带号");
+    return;
+  }
 
-    const outDir = $("out_dir_s")?.value || "";
-  if (!outDir) { toast("请先导入文件以设置输出路径"); return; }
+  const outDir = $("out_dir_s")?.value || "";
+  if (!outDir) {
+    toast("请先选择输出目录（左栏「输出与选项 › 输出目录」右侧的浏览按钮）", "err");
+    $("btnBrowseS")?.focus();
+    return;
+  }
 
   const cfg = getConfig();
   const opt = getOptions();
   const fr = TV.getFilterUids();
-  if (fr.error) { toast("筛选条件有误：" + fr.error.message); return; }
-  if (fr.empty) { toast("筛选结果为空，请调整筛选条件"); return; }
-  try {
-    const result = await tauriInvoke("run_shp_to_txt", { shpPaths, sourceType, sourcePath, headerCfg: cfg.h, fieldMapping: cfg.f, options: opt, outputDir: outDir, selectedLayers: sourceType === "gdb" ? selectedLayers : [] });
-    toast("✓ " + result.message);
-    const pf = $("pf"); const ps = $("ps");
-    if (pf) pf.style.width = "100%";
-    if (ps) ps.textContent = "完成";
-  } catch (e) { toast("转换失败: " + e); }
+  if (fr.error) { toast("筛选条件有误：" + fr.error.message, "err"); return; }
+  if (fr.empty) { toast("筛选结果为空，请调整筛选条件", "err"); return; }
+
+  const pf = $("pf");
+  await withBusy($("btnRunStt"), pf, $("ps"), "转换中…", async () => {
+    try {
+      const result = await tauriInvoke("run_shp_to_txt", { shpPaths, sourceType, sourcePath, headerCfg: cfg.h, fieldMapping: cfg.f, options: opt, outputDir: outDir, selectedLayers: sourceType === "gdb" ? selectedLayers : [] });
+      if (pf) pf.style.width = "100%";
+      const ps = $("ps");
+      if (ps) ps.textContent = "完成";
+      toast(result.message, "ok");
+    } catch (e) {
+      if (pf) pf.style.width = "0";
+      toast("转换失败: " + e, "err");
+    }
+  });
 };
 
 // ═══ 界址点坐标行列布局（预览/导出共用同一套 PointLayout） ═══
@@ -1725,7 +1823,7 @@ function renderPointRows(rows) {
     div.className = "point-row";
     if (core) {
       div.innerHTML =
-        `<span class="grip" title="拖动排序">⠿</span>` +
+        `${GRIP_HTML}` +
         `<span class="pk" data-kind="${core.kind}">${core.label}</span>` +
         `<span class="pfx">自动</span>`;
     } else {
@@ -1750,11 +1848,11 @@ function renderPointRows(rows) {
           `</select>`;
       }
       div.innerHTML =
-        `<span class="grip" title="拖动排序">⠿</span>` +
+        `${GRIP_HTML}` +
         `<select class="pk">` +
         POINT_CUSTOM_KINDS.map((c) => `<option value="${c.kind}"${c.kind === kind ? " selected" : ""}>${c.label}</option>`).join("") +
         `</select>` + valueCtrl +
-        `<button class="abtn del" data-act="del" data-i="${i}" title="删除此列">✕</button>`;
+        `<button class="abtn del" data-act="del" data-i="${i}" title="删除此列" aria-label="删除此列">${ICON_X}</button>`;
     }
     box.appendChild(div);
   });
@@ -1896,7 +1994,7 @@ function commitPointValueEditor() {
   renderPointRows(rows);
   updatePreview();
   closePointValueEditor();
-  toast("固定值已更新");
+  toast("固定值已更新", "ok");
 }
 
 // 导入后刷新自定义字段下拉（保留当前选择）
@@ -1904,29 +2002,40 @@ function bbSetFieldNames(names) {
   renderPointRows(collectPointRows());
 }
 window.runTxtToShp = async function () {
-  if (!txtFiles.length) { toast("请先导入 TXT 文件"); return; }
+  if (!txtFiles.length) { toast("请先导入 TXT 文件", "err"); return; }
   const outDir = $("out_dir")?.value || "";
-  if (!outDir) { toast("请先导入文件以设置输出路径"); return; }
+  if (!outDir) {
+    toast("请先选择输出目录（左栏「输出设置 › 输出目录」右侧的浏览按钮）", "err");
+    $("out_btn")?.focus();
+    return;
+  }
 
   const txtPaths = txtFiles.map((f) => f.path);
   const cfg = getConfig();
-  try {
-    const result = await tauriInvoke("run_txt_to_shp", {
-      txtPaths,
-      options: {
-        output_shp: true,
-        output_mode: document.querySelector('input[name="t_output_mode"]:checked')?.value || "one_to_one",
-        filename_field: $("t_filename_field")?.value ?? "",
-        output_dir: outDir,
-        keep_lujin: $("t_keep_lujin")?.checked || false,
-        keep_mingc: $("t_keep_mingc")?.checked || false,
-      },
-      headerCfg: cfg.h,
-    });
-    toast("✓ " + result.message);
-    const pf = $("pfT");
-    if (pf) pf.style.width = "100%";
-  } catch (e) { toast("转换失败: " + e); }
+  const pf = $("pfT");
+  await withBusy($("btnRunTts"), pf, $("psT"), "转换中…", async () => {
+    try {
+      const result = await tauriInvoke("run_txt_to_shp", {
+        txtPaths,
+        options: {
+          output_shp: true,
+          output_mode: document.querySelector('input[name="t_output_mode"]:checked')?.value || "one_to_one",
+          filename_field: $("t_filename_field")?.value ?? "",
+          output_dir: outDir,
+          keep_lujin: $("t_keep_lujin")?.checked || false,
+          keep_mingc: $("t_keep_mingc")?.checked || false,
+        },
+        headerCfg: cfg.h,
+      });
+      if (pf) pf.style.width = "100%";
+      const psT = $("psT");
+      if (psT) psT.textContent = "完成";
+      toast(result.message, "ok");
+    } catch (e) {
+      if (pf) pf.style.width = "0";
+      toast("转换失败: " + e, "err");
+    }
+  });
 };
 
 // ═══ Config ═══
@@ -2014,7 +2123,7 @@ function escAttr(s) {
 async function uiConfirm(msg) {
   if (window.__TAURI_INTERNALS__) {
     try { return await dialogAsk(msg, { title: "确认" }); }
-    catch (e) { console.warn("ask:", e); toast("确认框失败: " + (e && e.message ? e.message : e)); return false; }
+    catch (e) { console.warn("ask:", e); toast("确认框失败: " + (e && e.message ? e.message : e), "err"); return false; }
   }
   return window.confirm(msg);
 }
@@ -2096,9 +2205,9 @@ function renderAttrRows(attrs) {
     // 标准行（i < defaultCount）无 ✕ 按钮；用户新增行才可删
     const btnHtml = i < defaultCount
       ? ""
-      : `<button class="abtn del" data-act="del" data-i="${i}" title="删除此行">✕</button>`;
+      : `<button class="abtn del" data-act="del" data-i="${i}" title="删除此行" aria-label="删除此行">${ICON_X}</button>`;
     div.innerHTML =
-      `<span class="grip" title="拖动排序">⠿</span>` +
+      `${GRIP_HTML}` +
       `<input class="ak" data-i="${i}" data-f="k" value="${escAttr(row.k)}" placeholder="键名">` +
       `<span class="aeq">=</span>` +
       valueCtrl +
@@ -2232,10 +2341,9 @@ window.resetDefaults = function () {
   // 立即落盘「已恢复默认」的结果，避免下次加载时旧自定义值再次复活
   clearTimeout(autoSaveTimer);
   flushAutoSave();
-  toast("已恢复默认");
+  toast("已恢复默认", "ok");
 };
 
-window.tp = function (id) { const el = $(id); if (el) el.classList.toggle("hide"); };
 
 window.selectOutputDir = async function () {
   const dir = await tauriInvoke("pick_output_dir");
@@ -2253,7 +2361,7 @@ function renderChips() {
   if (!ch) return;
   ch.innerHTML = "";
   Object.values(cfgs).forEach((c) => {
-    ch.innerHTML += `<span class="chip${c.id === cur ? " on" : ""}" data-chip="${c.id}">${c.n}</span>`;
+    ch.innerHTML += `<button type="button" class="chip${c.id === cur ? " on" : ""}" data-chip="${c.id}">${c.n}</button>`;
   });
 }
 
@@ -2302,12 +2410,12 @@ window.saveOnly = function () {
   const cn = $("cn");
   if (!cn) return;
   const newName = (cn.textContent || "").trim();
-  if (!newName) { toast("请输入配置名称"); return; }
+  if (!newName) { toast("请输入配置名称", "err"); return; }
   let dupId = null;
   for (const [, v] of Object.entries(cfgs)) {
     if (v.n === newName) {
       if (v.id === cur) { dupId = cur; break; }
-      toast("配置名「" + newName + "」已存在"); return;
+      toast("配置名「" + newName + "」已存在", "err"); return;
     }
   }
   const c = getConfig();
@@ -2317,7 +2425,7 @@ window.saveOnly = function () {
   cur = cfgObj.id;
   cn.textContent = cfgObj.n;
   renderChips();
-  toast("已保存 「" + cfgObj.n + "」");
+  toast("已保存 「" + cfgObj.n + "」", "ok");
 };
 
 const doDelCfg = () => {
@@ -2326,7 +2434,7 @@ const doDelCfg = () => {
   cur = "usr";
   ld("usr");
   renderChips();
-  toast("已删除");
+  toast("已删除", "ok");
 };
 window.delCfg = doDelCfg;
 
@@ -2437,13 +2545,13 @@ async function checkAppUpdate(manual = false) {
     } else {
       pendingUpdate = null;
       setUpdateBtnState("idle");
-      if (manual) toast("已是最新版本");
+      if (manual) toast("已是最新版本", "ok");
     }
   } catch (e) {
     console.warn("checkAppUpdate:", e);
     // 检查失败：恢复到已知态（若有），避免一直 loading
     applyKnownState();
-    if (manual) toast("检查更新失败，请稍后重试");
+    if (manual) toast("检查更新失败，请稍后重试", "err");
   }
 }
 
@@ -2489,7 +2597,7 @@ window.skipCurrentVersion = function () {
   writeSkipped(pendingUpdate.version);
   setUpdateBtnState("skipped");
   closeUpdateModal();
-  toast("已跳过 " + pendingUpdate.version + "，下次有更新还会提醒");
+  toast("已跳过 " + pendingUpdate.version + "，下次有更新还会提醒", "ok");
 };
 
 // 下载并安装：监听进度 → 更新进度条 → 重启进新装目录。失败兜底百度云。
@@ -2501,7 +2609,7 @@ window.doUpdate = async function () {
     try {
       pendingUpdate = await checkForUpdater();
     } catch (e) {
-      toast("检查失败，请稍后重试");
+      toast("检查失败，请稍后重试", "err");
       setUpdateBtnState("available");
       return;
     }
@@ -2574,6 +2682,51 @@ document.addEventListener("keydown", function (e) {
   if (e.key === "Escape") { const am = $("aboutModal"); const gm = $("gdbSelectModal"); const um = $("updateModal"); const rm = $("settingsModal"); const pm = $("pointValueModal"); if (am) am.classList.remove("on"); if (gm) gm.classList.remove("on"); if (um && !isUpdating) um.classList.remove("on"); if (rm) rm.classList.remove("on"); if (pm) closePointValueEditor(); }
 });
 
+// ═══ 模态框焦点管理 ═══
+// 各弹窗分散在多处用 classList.add("on") 打开（更新弹窗还会被后台自动打开），
+// 因此用属性观察器统一接管：打开时移入首个可聚焦项并锁定 Tab，关闭时把焦点还给触发元素。
+(function initModalFocusTrap() {
+  const FOCUSABLE = 'button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),a[href],[tabindex]:not([tabindex="-1"])';
+  const visible = (el) => el.offsetParent !== null || el === document.activeElement;
+  const items = (ov) => Array.from(ov.querySelectorAll(FOCUSABLE)).filter(visible);
+  let lastFocus = null;
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Tab") return;
+    const open = document.querySelectorAll(".modal-overlay.on");
+    const ov = open[open.length - 1];
+    if (!ov) return;
+    const list = items(ov);
+    if (!list.length) return;
+    const [first] = list;
+    const last = list[list.length - 1];
+    const active = document.activeElement;
+    if (e.shiftKey && (active === first || !ov.contains(active))) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && (active === last || !ov.contains(active))) { e.preventDefault(); first.focus(); }
+  }, true);
+
+  const obs = new MutationObserver((records) => {
+    for (const r of records) {
+      const ov = r.target;
+      if (!ov.classList || !ov.classList.contains("modal-overlay")) continue;
+      const isOpen = ov.classList.contains("on");
+      if (isOpen === ov._wasOpen) continue;
+      ov._wasOpen = isOpen;
+      if (isOpen) {
+        lastFocus = document.activeElement;
+        items(ov)[0]?.focus();
+      } else {
+        if (lastFocus && document.contains(lastFocus)) lastFocus.focus();
+        lastFocus = null;
+      }
+    }
+  });
+  document.querySelectorAll(".modal-overlay").forEach((ov) => {
+    ov._wasOpen = ov.classList.contains("on");
+    obs.observe(ov, { attributes: true, attributeFilter: ["class"] });
+  });
+})();
+
 // ═══ Display ratio (s-mode three-column) ═══
 const RATIO_PRESETS = [
   { id: "even",    label: "三栏等宽", c1: "100fr", c2: "100fr", c3: "100fr" },
@@ -2596,10 +2749,10 @@ function renderRatioChips() {
   const cur = getCurrentRatioId();
   box.innerHTML = "";
   for (const p of RATIO_PRESETS) {
-    const c = document.createElement("div");
+    const c = document.createElement("button");
+    c.type = "button";
     c.className = "chip" + (p.id === cur ? " on" : "");
     c.textContent = p.label;
-    c.tabIndex = 0;
     c.onclick = () => {
       localStorage.setItem("tg_ratio", p.id);
       applyRatio(p);
@@ -2725,7 +2878,7 @@ async function init() {
   bind("btnSettings", () => openSettings());
   bind("btnSave", () => saveOnly());
   bind("btnDel", () => {
-    if (cur === "usr") { toast("内置预设不可删除"); return; }
+    if (cur === "usr") { toast("内置预设不可删除", "err"); return; }
     armButton($("btnDel"), "确认删除?", doDelCfg);
   });
   bind("btnWinMin", async (e) => {
@@ -2745,7 +2898,11 @@ async function init() {
   });
   bind("dropZone", () => importShp());
   bind("dropGdb", () => importGdb());
-  bind("btnClearS", () => clearAllFiles());
+  // 清空 = 丢弃全部已导入文件与筛选状态且不可撤销 → 复用两段式确认按钮
+  bind("btnClearS", (e) => {
+    if (!loadedFiles.length && !sourcePath) { toast("尚未导入文件", "err"); return; }
+    armButton(e.currentTarget, "确认清空?", clearAllFiles);
+  });
   bind("btnBrowseS", () => selectOutputDirS());
 
   // 分段开关高亮态：与选中 radio 同步（radio 隐藏在 label.seg 内，点 label 切换）
@@ -2856,6 +3013,7 @@ async function init() {
     updatePreview();
   });
   bindFieldRowEvents();
+  bindGripReorder($("fieldRows"), collectFieldRows, renderFieldRows);
 
   // TXT→面 输出模式切换：控制地块拆分文件名下拉框显示
   const tOutputModeRadios = document.querySelectorAll('input[name="t_output_mode"]');
@@ -2881,7 +3039,10 @@ async function init() {
   syncModeSeg("output_mode");
   syncModeSeg("t_output_mode");
   bind("dropZoneTxt", () => importTxt());
-  bind("btnClearT", () => clearAllFilesTxt());
+  bind("btnClearT", (e) => {
+    if (!txtFiles.length) { toast("尚未导入文件", "err"); return; }
+    armButton(e.currentTarget, "确认清空?", clearAllFilesTxt);
+  });
   bind("out_btn", () => selectOutputDir());
   bind("hdrTabAttr", () => switchHdrTab("attr"));
   bind("hdrTabProj", () => switchHdrTab("proj"));
@@ -2910,6 +3071,7 @@ async function init() {
     updatePreview();
   });
   bindAttrRowEvents();
+  bindGripReorder($("attrRows"), collectAttrRows, renderAttrRows);
   // 中栏页签：投影 / 表头 / 字段 / 界址点（默认激活「字段」，HTML 里 .on 控制）
   document.querySelectorAll(".mid-tab").forEach((b) => {
     b.addEventListener("click", () => {
@@ -2976,6 +3138,7 @@ async function init() {
       document.addEventListener("mousemove", onMove);
       document.addEventListener("mouseup", onUp);
     });
+    bindGripReorder(bbRows, collectPointRows, renderPointRows);
   }
   bind("btnPointValueStart", () => {
     const input = $("pointValueInput");
@@ -3014,7 +3177,7 @@ async function init() {
       if (sl) sl.value = "100";
       if (vv) vv.textContent = "100%";
     });
-    toast("字号已恢复默认");
+    toast("字号已恢复默认", "ok");
   });
   bind("btnUpdate", () => {
     // available/skipped 态：打开弹窗；idle/loading 态：手动触发检查
@@ -3101,17 +3264,17 @@ async function init() {
     dz.addEventListener("drop", async (e) => {
       e.preventDefault(); dz.style.borderColor = ""; dz.style.background = "";
       const files = Array.from(e.dataTransfer?.files || []).filter((f) => f.name.toLowerCase().endsWith(".shp"));
-      if (!files.length) { toast("请拖入 .shp 文件"); return; }
+      if (!files.length) { toast("请拖入 .shp 文件", "err"); return; }
       try {
         const paths = files.map((f) => f.path || f.name);
         const result = await tauriInvoke("pick_shp_files_from_paths", { paths });
         if (result.skipped && result.skipped.length) {
-          toast(`以下文件不是面状要素，已忽略：${result.skipped.join("、")}`);
+          toast(`以下文件不是面状要素，已忽略：${result.skipped.join("、")}`, "err");
         }
         if (result.files && result.files.length > 0) {
           loadedFiles = result.files; sourceType = null; sourcePath = null; gdbLayers = []; selectedLayers = []; renderFileList(); processImport();
         }
-      } catch (err) { toast("拖放导入失败: " + err); }
+      } catch (err) { toast("拖放导入失败: " + err, "err"); }
     });
   }
   // Drag & Drop — TXT
@@ -3122,18 +3285,18 @@ async function init() {
     dzT.addEventListener("drop", async (e) => {
       e.preventDefault(); dzT.style.borderColor = ""; dzT.style.background = "";
       const files = Array.from(e.dataTransfer?.files || []).filter((f) => f.name.toLowerCase().endsWith(".txt"));
-      if (!files.length) { toast("请拖入 .txt 文件"); return; }
+      if (!files.length) { toast("请拖入 .txt 文件", "err"); return; }
       try {
         const paths = files.map((f) => f.path || f.name);
         const result = await tauriInvoke("pick_txt_files_from_paths", { paths });
         if (result.failed && result.failed.length) {
-          toast("以下文件解析失败：" + result.failed.join("、"));
+          toast("以下文件解析失败：" + result.failed.join("、"), "err");
         }
         if (result.files && result.files.length > 0) {
           txtFiles = result.files; renderTxtFileList(); renderTxtParseLog();
           if (result.files[0]?.crs_info) autoFillHeaderFromTxt(result.files[0].crs_info);
         }
-      } catch (err) { toast("拖放导入失败: " + err); }
+      } catch (err) { toast("拖放导入失败: " + err, "err"); }
     });
   }
 

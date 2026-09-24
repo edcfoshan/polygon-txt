@@ -83,6 +83,8 @@ content/
   sponsor.md          ← 赞助弹窗内容（Markdown，热更新）
 src/
   main.js             ← Frontend JS (all Tauri IPC + UI logic)
+  assets/
+    brand-mark.png    ← 品牌标记（单色 RGBA，main.js 经 ?inline 内联为 data URL + CSS mask 上色，随色系走 --ac）
 src-tauri/
   Cargo.toml          ← Rust deps
   tauri.conf.json     ← Window/CSP/bundle config
@@ -132,6 +134,11 @@ Requires: `core:default`, `dialog:default/open/save`, `fs:default/read/write/exi
 
 ### DBF Writing
 Manually written binary (avoids `dbase` crate API). Field offset must be 4 bytes (LE), not 2 bytes.
+
+### App Icons & Brand Assets
+- `src-tauri/icons/*`（32x32 / 128x128 / 128x128@2x / icon.icns / icon.ico）由 `npx tauri icon docs/brand/app-icon-source.png` 生成；输入必须是**去白底后的 RGBA PNG**（带白角会导致任务栏出现白方块），生成的多余平台目录（android/ios/Square*Logo）已被删除，只保留 `tauri.conf.json › bundle.icon` 引用到的文件。
+- `docs/brand/social-preview-1280x640.png` 需在 GitHub 仓库 Settings › Social preview 手动上传（无 API）。
+- 标题栏 22px 与关于弹窗 64px 的标记共用一个单色 PNG：`.brand-mark`/`.about-mark` 用 CSS mask + `background:var(--ac)` 上色，因此 8 套色系与明暗主题下都自动适配（不要改回彩色位图，否则暗色主题下会变成隐形的黑方块）。
 
 ### Coordinate Swapping
 SHP stores (X, Y) = (easting, northing). TXT stores (Y, X) = (northing, easting). The conversion layer swaps these.

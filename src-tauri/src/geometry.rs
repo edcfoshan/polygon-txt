@@ -17,6 +17,13 @@ pub struct IndexedRing {
     pub coords: Vec<(f64, f64)>, // (y, x) in TXT order
 }
 
+/// 判断几何类型字符串是否为面状（Polygon / MultiPolygon / 面）。
+/// 导入侧（过滤非面状要素）与转换侧共用同一判定，避免两处实现漂移。
+pub(crate) fn is_polygon_geometry_type(t: &str) -> bool {
+    let s = t.to_lowercase();
+    s.contains("polygon") || s.contains("面") || s == "multipolygon"
+}
+
 pub fn strip_closing_point(points: &[(f64, f64)]) -> Vec<(f64, f64)> {
     if points.len() >= 2 {
         let first = points[0];

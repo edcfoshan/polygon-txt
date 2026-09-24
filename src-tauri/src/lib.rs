@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use crate::projection::{gauss_kruger_forward, gauss_kruger_inverse, reband_projected, infer_zone_from_x, Ellipsoid};
+use crate::geometry::is_polygon_geometry_type;
 
 
 pub mod shp;
@@ -98,12 +99,6 @@ struct ConvertResultPayload {
 }
 
 // ─── Commands ───
-
-/// 判断几何类型字符串是否为面状（Polygon / MultiPolygon / 面）
-fn is_polygon_geometry_type(t: &str) -> bool {
-    let s = t.to_lowercase();
-    s.contains("polygon") || s.contains("面") || s == "multipolygon"
-}
 
 /// 从东坐标采样反推高斯投影带号。中国高斯投影东坐标自带带号前缀
 /// （如 38500000 → 38 度带），与 SHP 从 .prj 中央经线反推口径一致。
@@ -259,50 +254,14 @@ fn pick_shp_files(app: tauri::AppHandle) -> Result<ShpImportResult, String> {
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_default();
 
-    let mut items = Vec::new();
-    let mut skipped = Vec::new();
-    for file in &picked {
-        let shp_path = match file.as_path() {
-            Some(p) => p.to_path_buf(),
-            None => continue,
-        };
-        if shp_path.extension().map(|e| e != "shp").unwrap_or(true) {
-            continue;
-        }
-        match shp::read_shp_file_group(&shp_path) {
-            Ok(info) => {
-                // 仅接收面状 SHP；非面状（点/线等）拒收并记录
-                if is_polygon_geometry_type(&info.shape_type) {
-                    let (xmin, ymin, xmax, ymax) = compute_extent_from_shp(&shp_path);
-                    items.push(ShpFileItem {
-                        shp_path: info.shp_path,
-                        dbf_path: info.dbf_path,
-                        prj_path: info.prj_path,
-                        name: info.name,
-                        field_names: info.field_names,
-                        num_features: info.num_features,
-                        shape_type: info.shape_type,
-                        prj_text: info.prj_text,
-                        crs_info: info.crs_info,
-                        xmin,
-                        ymin,
-                        xmax,
-                        ymax,
-                    });
-                } else {
-                    skipped.push(format!(
-                        "{}.shp（{}）",
-                        info.name, info.shape_type
-                    ));
-                    eprintln!("拒收非面状 SHP: {} ({})", info.name, info.shape_type);
-                }
-            }
-            Err(e) => eprintln!("读 SHP 失败: {}", e),
-        }
-    }
+    let paths: Vec<PathBuf> = picked
+        .iter()
+        .filter_map(|f| f.as_path().map(|p| p.to_path_buf()))
+        .collect();
+    let (files, skipped) = collect_shp_items(&paths, "读 SHP 失败");
 
     Ok(ShpImportResult {
-        files: items,
+        files,
         dir: base_dir,
         skipped,
     })
@@ -328,6 +287,47 @@ fn compute_extent_from_shp(shp_path: &PathBuf) -> (Option<f64>, Option<f64>, Opt
         }
         Err(_) => (None, None, None, None),
     }
+}
+
+/// 从一组 SHP 路径收集导入项——「选择文件」与「拖放」两个入口共用同一实现。
+/// err_label：读取失败时的日志前缀（两个入口的历史文案不同，逐字保留）。
+/// 返回 (可导入项, 被拒收的非面状文件名)。
+fn collect_shp_items(paths: &[PathBuf], err_label: &str) -> (Vec<ShpFileItem>, Vec<String>) {
+    let mut items = Vec::new();
+    let mut skipped = Vec::new();
+    for shp_path in paths {
+        if shp_path.extension().map(|e| e != "shp").unwrap_or(true) {
+            continue;
+        }
+        match shp::read_shp_file_group(shp_path) {
+            Ok(info) => {
+                // 仅接收面状 SHP；非面状（点/线等）拒收并记录
+                if is_polygon_geometry_type(&info.shape_type) {
+                    let (xmin, ymin, xmax, ymax) = compute_extent_from_shp(shp_path);
+                    items.push(ShpFileItem {
+                        shp_path: info.shp_path,
+                        dbf_path: info.dbf_path,
+                        prj_path: info.prj_path,
+                        name: info.name,
+                        field_names: info.field_names,
+                        num_features: info.num_features,
+                        shape_type: info.shape_type,
+                        prj_text: info.prj_text,
+                        crs_info: info.crs_info,
+                        xmin,
+                        ymin,
+                        xmax,
+                        ymax,
+                    });
+                } else {
+                    skipped.push(format!("{}.shp（{}）", info.name, info.shape_type));
+                    eprintln!("拒收非面状 SHP: {} ({})", info.name, info.shape_type);
+                }
+            }
+            Err(e) => eprintln!("{}: {}", err_label, e),
+        }
+    }
+    (items, skipped)
 }
 
 #[tauri::command]
@@ -464,18 +464,25 @@ fn pick_txt_files(app: tauri::AppHandle) -> Result<TxtImportResult, String> {
         None => return Ok(TxtImportResult { files: vec![], failed: vec![] }),
     };
 
+    let paths: Vec<PathBuf> = picked
+        .iter()
+        .filter_map(|f| f.as_path().map(|p| p.to_path_buf()))
+        .collect();
+    let (files, failed) = collect_txt_items(&paths, "读 TXT 失败");
+
+    Ok(TxtImportResult { files, failed })
+}
+
+/// 从一组 TXT 路径收集导入项——「选择文件」与「拖放」两个入口共用同一实现。
+/// err_label：读取失败时的日志前缀（两个入口的历史文案不同，逐字保留）。
+fn collect_txt_items(paths: &[PathBuf], err_label: &str) -> (Vec<TxtFileItem>, Vec<String>) {
     let mut items = Vec::new();
     let mut failed: Vec<String> = Vec::new();
-    for file in &picked {
-        let path = match file.as_path() {
-            Some(p) => p.to_path_buf(),
-            None => continue,
-        };
-
-        let text = match txt::read_text_file(&path) {
+    for path in paths {
+        let text = match txt::read_text_file(path) {
             Ok(t) => t,
             Err(e) => {
-                eprintln!("读 TXT 失败: {}", e);
+                eprintln!("{}: {}", err_label, e);
                 failed.push(
                     path.file_name()
                         .map(|s| s.to_string_lossy().to_string())
@@ -495,7 +502,7 @@ fn pick_txt_files(app: tauri::AppHandle) -> Result<TxtImportResult, String> {
             }
         }
 
-        let log = generate_parse_log(&path, &parsed, total_points);
+        let log = generate_parse_log(path, &parsed, total_points);
 
         items.push(TxtFileItem {
             path: path.to_string_lossy().to_string(),
@@ -503,15 +510,14 @@ fn pick_txt_files(app: tauri::AppHandle) -> Result<TxtImportResult, String> {
                 .file_name()
                 .map(|s| s.to_string_lossy().to_string())
                 .unwrap_or_default(),
-            size: std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0),
+            size: std::fs::metadata(path).map(|m| m.len()).unwrap_or(0),
             parse_log: log,
             plot_count: parsed.plots.len(),
             point_count: total_points,
             crs_info: crs,
         });
     }
-
-    Ok(TxtImportResult { files: items, failed })
+    (items, failed)
 }
 
 #[tauri::command]
@@ -627,81 +633,22 @@ fn pick_output_dir(app: tauri::AppHandle) -> Result<Option<String>, String> {
 
 #[tauri::command]
 fn pick_shp_files_from_paths(paths: Vec<String>) -> Result<ShpImportResult, String> {
-    let mut items = Vec::new();
-    let mut skipped = Vec::new();
     let base_dir = paths
         .first()
         .and_then(|p| Path::new(p).parent())
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_default();
 
-    for p in &paths {
-        let shp_path = PathBuf::from(p);
-        if shp_path.extension().map(|e| e != "shp").unwrap_or(true) {
-            continue;
-        }
-        match shp::read_shp_file_group(&shp_path) {
-            Ok(info) => {
-                if is_polygon_geometry_type(&info.shape_type) {
-                    let (xmin, ymin, xmax, ymax) = compute_extent_from_shp(&shp_path);
-                    items.push(ShpFileItem {
-                        shp_path: info.shp_path,
-                        dbf_path: info.dbf_path,
-                        prj_path: info.prj_path,
-                        name: info.name,
-                        field_names: info.field_names,
-                        num_features: info.num_features,
-                        shape_type: info.shape_type,
-                        prj_text: info.prj_text,
-                        crs_info: info.crs_info,
-                        xmin,
-                        ymin,
-                        xmax,
-                        ymax,
-                    });
-                } else {
-                    skipped.push(format!("{}.shp（{}）", info.name, info.shape_type));
-                    eprintln!("拒收非面状 SHP: {} ({})", info.name, info.shape_type);
-                }
-            }
-            Err(e) => eprintln!("拖放读 SHP 失败: {}", e),
-        }
-    }
-    Ok(ShpImportResult { files: items, dir: base_dir, skipped })
+    let paths: Vec<PathBuf> = paths.iter().map(PathBuf::from).collect();
+    let (files, skipped) = collect_shp_items(&paths, "拖放读 SHP 失败");
+    Ok(ShpImportResult { files, dir: base_dir, skipped })
 }
 
 #[tauri::command]
 fn pick_txt_files_from_paths(paths: Vec<String>) -> Result<TxtImportResult, String> {
-    let mut items = Vec::new();
-    let mut failed: Vec<String> = Vec::new();
-    for p in &paths {
-        let path = PathBuf::from(p);
-        let text = match txt::read_text_file(&path) {
-            Ok(t) => t,
-            Err(e) => {
-                eprintln!("拖放读 TXT 失败: {}", e);
-                failed.push(path.file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_default());
-                continue;
-            }
-        };
-        let parsed = txt::parse_txt(&text);
-        let total_points: usize = parsed.plots.iter().map(|p| p.coords.len()).sum();
-        let mut crs = HashMap::new();
-        for key in &["坐标系", "几度分带", "投影类型", "计量单位", "带号", "精度"] {
-            if let Some(v) = parsed.attrs.get(*key) { crs.insert(key.to_string(), v.clone()); }
-        }
-        let log = generate_parse_log(&path, &parsed, total_points);
-        items.push(TxtFileItem {
-            path: path.to_string_lossy().to_string(),
-            name: path.file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_default(),
-            size: std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0),
-            parse_log: log,
-            plot_count: parsed.plots.len(),
-            point_count: total_points,
-            crs_info: crs,
-        });
-    }
-    Ok(TxtImportResult { files: items, failed })
+    let paths: Vec<PathBuf> = paths.iter().map(PathBuf::from).collect();
+    let (files, failed) = collect_txt_items(&paths, "拖放读 TXT 失败");
+    Ok(TxtImportResult { files, failed })
 }
 
 #[tauri::command]

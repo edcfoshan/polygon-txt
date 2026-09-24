@@ -1,17 +1,11 @@
 use crate::gdb;
-use crate::geometry::{indexed_rings_to_surface, surface_to_indexed_rings, SurfaceGeometry};
+use crate::geometry::{indexed_rings_to_surface, is_polygon_geometry_type, surface_to_indexed_rings, SurfaceGeometry};
 use crate::projection;
 use crate::shp;
 use crate::txt;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-
-/// 判断几何类型字符串是否为面状（与 lib.rs::is_polygon_geometry_type 保持一致）
-fn is_polygon_geometry_type(t: &str) -> bool {
-    let s = t.to_lowercase();
-    s.contains("polygon") || s.contains("面") || s == "multipolygon"
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FieldMapping {

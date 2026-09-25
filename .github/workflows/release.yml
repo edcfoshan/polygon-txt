@@ -120,25 +120,34 @@ jobs:
           prerelease: false
           args: --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
 
-      # Windows：setup 产物名恢复中文（productName 恒定），ASCII 名改为构建后重命名；
-      # 顺序铁律：tauri-action → 重命名+生成 latest.json → upload clobber（覆盖 tauri-action 自动生成的 latest.json 与中文资产）
-      # Windows：资产名必须 ASCII（GitHub 服务端会吃掉中文字符，极思G界址点互转工具 → "G."），
-      # 因此复制一份 polygon-txt_{maj.min} 别名供 updater 使用；签名基于字节，重命名不影响 .sig
-      - name: Publish ASCII-named setup and latest.json (Windows only)
+      # Windows：生成 latest.json。资产有两层名字：slug（name，进 URL）会被 GitHub 静默剥掉
+      # 非 ASCII（极思G界址点互转工具_X.exe → G._X.exe），label 才是 Release 列表显示的名字
+      # （tauri-action 会自动把 label 设成中文原名）。所以 url 必须取 API 的真实
+      # browser_download_url，绝不能再拼中文名——v4.4.0 就是拼了中文名导致 updater url 404。
+      # 签名基于 exe 字节，与文件名无关。
+      - name: Publish latest.json (Windows only)
         if: matrix.platform == 'windows-latest'
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VER=$(node -p "require('./src-tauri/tauri.conf.json').version")
-          SHORT=${VER%.*}
           D="src-tauri/target/${{ matrix.target }}/release/bundle/nsis"
-          SETUP_SRC=$(ls "$D"/*_x64-setup.exe | head -1)
-          cp "$SETUP_SRC" "$D/polygon-txt_${SHORT}_x64-setup.exe"
-          cp "${SETUP_SRC}.sig" "$D/polygon-txt_${SHORT}_x64-setup.exe.sig"
-          node scripts/gen-latest-json.js --version "$VER" --tag "${{ github.ref_name }}" --nsis-dir "$D"
-          gh release upload "${{ github.ref_name }}" "$D/polygon-txt_${SHORT}_x64-setup.exe" "$D/polygon-txt_${SHORT}_x64-setup.exe.sig" latest.json --clobber
-          echo "已上传: polygon-txt_${SHORT}_x64-setup.exe(.sig) + latest.json"
+          REL_API="repos/${{ github.repository }}/releases/tags/${{ github.ref_name }}"
+          # 优先取带 label 的那份（tauri-action 会把 label 设成中文原名；手工 ASCII 别名副本没有 label）
+          SETUP_URL=$(gh api "$REL_API" -q '.assets[] | select((.label // "") | endswith("_x64-setup.exe")) | .browser_download_url' | head -1)
+          if [ -z "$SETUP_URL" ]; then
+            SETUP_URL=$(gh api "$REL_API" -q '.assets[] | select(.name | endswith("_x64-setup.exe")) | .browser_download_url' | head -1)
+          fi
+          if [ -z "$SETUP_URL" ]; then echo "::error::Release 上找不到 setup 资产，tauri-action 上传可能失败"; exit 1; fi
+          DUPES=$(gh api "$REL_API" -q '[.assets[] | select((.name | endswith("_x64-setup.exe")) or ((.label // "") | endswith("_x64-setup.exe")))] | length')
+          [ "$DUPES" -gt 1 ] && echo "::warning::Release 上有 $DUPES 份 setup，重复资产要清理（本次 updater 用 $SETUP_URL）"
+          curl -sfIL --max-time 60 "$SETUP_URL" >/dev/null || { echo "::error::setup 下载链接不可达：$SETUP_URL"; exit 1; }
+          if [ -z "$SETUP_URL" ]; then echo "::error::Release 上找不到 setup 资产，tauri-action 上传可能失败"; exit 1; fi
+          curl -sfIL --max-time 60 "$SETUP_URL" >/dev/null || { echo "::error::setup 下载链接不可达：$SETUP_URL"; exit 1; }
+          node scripts/gen-latest-json.js --version "$VER" --tag "${{ github.ref_name }}" --nsis-dir "$D" --download-url "$SETUP_URL"
+          gh release upload "${{ github.ref_name }}" latest.json --clobber
+          echo "已上传: latest.json（url=$SETUP_URL，已实测可达）"
 
       # Windows：用 CHANGELOG 具体更新内容替换 tauri-action 模板 notes（用户要求：Release 页直接展示更新内容）
       - name: Update release notes from CHANGELOG (Windows only)
@@ -152,7 +161,10 @@ jobs:
           gh release edit "${{ github.ref_name }}" --notes-file release-notes.md --repo ${{ github.repository }}
           echo "Release notes 已更新为 CHANGELOG $VER 内容"
 
-      # Windows 便携版：复制裸 exe 并上传到 Release
+      # Windows 便携版：复制裸 exe 上传，并补 label。
+      # gh release upload 不支持 label，而 GitHub 会把 slug 里的非 ASCII 剥成 "G._"——
+      # 不补 label 时 Release 列表里就只有便携版显示成 G._*（tauri-action 会自动设 label）。
+      # label 用 node 从 tauri.conf.json 读 productName 生成，避免中文经 shell 参数被改码。
       - name: Upload portable executable (Windows only)
         if: matrix.platform == 'windows-latest'
         shell: bash
@@ -161,10 +173,18 @@ jobs:
         run: |
           VER=$(node -p "require('./src-tauri/tauri.conf.json').version")
           EXE="src-tauri/target/${{ matrix.target }}/release/jisig-bpoint-converter.exe"
-          PORTABLE="src-tauri/target/${{ matrix.target }}/release/bundle/nsis/polygon-txt_${VER%.*}_x64-portable.exe"
+          PORTABLE="src-tauri/target/${{ matrix.target }}/release/bundle/nsis/极思G界址点互转工具_${VER}_x64-portable.exe"
           cp "$EXE" "$PORTABLE"
           gh release upload "${{ github.ref_name }}" "$PORTABLE" --clobber
-          echo "已上传便携版: $PORTABLE"
+          node -e "
+            const fs = require('fs');
+            const c = JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json', 'utf8'));
+            fs.writeFileSync('asset-label.json', JSON.stringify({ label: c.productName + '_' + process.argv[1] + '_x64-portable.exe' }));
+          " "$VER"
+          AID=$(gh api "repos/${{ github.repository }}/releases/tags/${{ github.ref_name }}" \
+            -q '.assets[] | select(.name | endswith("_x64-portable.exe")) | .id' | head -1)
+          gh api -X PATCH "repos/${{ github.repository }}/releases/assets/$AID" --input asset-label.json \
+            -q '"便携版显示名 label=\(.label)"'
 
   # 最后一步：用 CHANGELOG 对应版本段落替换 latest.json 的 notes。
   # 根因：各平台 job 结束时 tauri-action 会合并平台条目并重传 latest.json，

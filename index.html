@@ -1318,7 +1318,7 @@ body{
           <button type="button" class="mid-tab" data-mt="bb">界址点</button>
         </div>
         <div class="mid-pane" data-mp="proj">
-        <div class="slabel">动态投影</div>
+        <div class="slabel" style="display:flex;align-items:center;justify-content:space-between">动态投影<button class="btn" id="btnResetProj" style="font-size:9.5px;padding:2px 8px" title="动态投影与带号前缀恢复默认">恢复默认</button></div>
         <div class="proj-crs-line" id="projCrsStatus">导入后显示坐标系</div>
         <div class="proj-switch-row">
           <div class="proj-switch" id="projSwitch">
@@ -1353,7 +1353,7 @@ body{
         </div>
         </div>
         <div class="mid-pane on" data-mp="fld">
-        <div class="slabel">字段映射 <span id="fmTag">简单模式</span><label class="accsw" onclick="event.stopPropagation()"><input type="checkbox" id="advMode">高级</label></div>
+        <div class="slabel" style="display:flex;align-items:center">字段映射 <span id="fmTag">简单模式</span><label class="accsw" onclick="event.stopPropagation()"><input type="checkbox" id="advMode">高级</label><button class="btn" id="btnResetFld" style="font-size:9.5px;padding:2px 8px;margin-left:auto" title="字段映射恢复默认（简单模式 + 标准字段）">恢复默认</button></div>
         <div class="fgrid" id="fieldSimple">
           <div class="fcell"><label>地块名称</label><select id="fn"><option value="">不填</option><option value="__placeholder__" selected>DKMC (占位)</option></select></div>
           <div class="fcell"><label>地块编号</label><select id="fi"><option value="">不填</option><option value="__placeholder__" selected>DKBH (占位)</option></select></div>
@@ -1382,7 +1382,7 @@ body{
         </div>
         </div>
         <div class="mid-pane" data-mp="bb">
-        <div class="slabel">坐标行列 · <span id="bbTag">4列</span></div>
+        <div class="slabel" style="display:flex;align-items:center">坐标行列 · <span id="bbTag">4列</span><button class="btn" id="btnResetBb" style="font-size:9.5px;padding:2px 8px;margin-left:auto" title="坐标行列恢复默认 4 列">恢复默认</button></div>
         <div class="bb-add">
           <span>新增</span>
           <select id="bbNewKind" title="选择要新增的列类型">

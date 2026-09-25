@@ -2343,6 +2343,7 @@ const prefillProject = function () {
 
 const resetDefaults = function () {
   renderAttrRows(DEFAULT_ATTRS.map((r) => ({ ...r })));
+  if ($("hpi")) $("hpi").value = "";
   updatePreview();
   // 立即落盘「已恢复默认」的结果，避免下次加载时旧自定义值再次复活
   clearTimeout(autoSaveTimer);
@@ -3076,6 +3077,31 @@ function initClickBindings() {
   bind("hdrTabProj", () => switchHdrTab("proj"));
   bind("btnPrefill", () => prefillProject());
   bind("btnResetDefaults", () => resetDefaults());
+  bind("btnResetProj", () => {
+    resetProjMode();
+    window._projNoPrefix = true;
+    updateProjButton();
+    updatePreview();
+    clearTimeout(autoSaveTimer);
+    flushAutoSave();
+    toast("投影已恢复默认", "ok");
+  });
+  bind("btnResetFld", () => {
+    ["fn", "fi", "fa", "fu", "fm", "fd"].forEach((k) => { const e = $(k); if (e) e.value = PP[0].f[k]; });
+    applyAdvConfig(null);
+    syncAdvPresetState();
+    updatePreview();
+    clearTimeout(autoSaveTimer);
+    flushAutoSave();
+    toast("字段映射已恢复默认", "ok");
+  });
+  bind("btnResetBb", () => {
+    applyPointLayoutConfig(null);
+    updatePreview();
+    clearTimeout(autoSaveTimer);
+    flushAutoSave();
+    toast("界址点列已恢复默认", "ok");
+  });
   bind("projSwitchToggle", () => { projMode === 'keep' ? openProjModal() : resetProjMode(); });
   bind("projSwitchLabel", () => openProjModal());
   const ppToggle = $('projPrefixToggle');

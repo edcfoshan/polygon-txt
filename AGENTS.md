@@ -139,6 +139,9 @@ Manually written binary (avoids `dbase` crate API). Field offset must be 4 bytes
 - `src-tauri/icons/*`（32x32 / 128x128 / 128x128@2x / icon.icns / icon.ico）由 `npx tauri icon docs/brand/app-icon-source.png` 生成；输入必须是**去白底后的 RGBA PNG**（带白角会导致任务栏出现白方块），生成的多余平台目录（android/ios/Square*Logo）已被删除，只保留 `tauri.conf.json › bundle.icon` 引用到的文件。
 - `docs/brand/social-preview-1280x640.png` 需在 GitHub 仓库 Settings › Social preview 手动上传（无 API）。
 - 标题栏 22px 与关于弹窗 64px 的标记共用一个单色 PNG：`.brand-mark`/`.about-mark` 用 CSS mask + `background:var(--ac)` 上色，因此 8 套色系与明暗主题下都自动适配（不要改回彩色位图，否则暗色主题下会变成隐形的黑方块）。
+- 品牌视觉为青绿渐变底（左上 #047887 → 右下 #067298）+ 米白「开口界址点环双追箭」图形，与应用内青色系主题同族。`docs/brand/app-icon-source-doubao-original.jpeg` 是未处理原始稿（带水印、全出血方角）；`app-icon-source.png`（去水印 + RGBA 圆角）、单色 `src/assets/brand-mark.png`（亮度 smoothstep 取 alpha）、`social-preview-1280x640.png`（渐变底 + 左图形 + 右产品名自动字号）均由 `docs/brand/make-brand-assets.ps1` 一键派生——换源图后先跑该脚本再跑 `npx tauri icon`。
+- **Release 资产命名**：前缀一律 `极思G界址点互转工具_X.X.0_`（如 `极思G界址点互转工具_4.4.0_x64-setup.exe`），配套 `.sig` 与 `latest.json`（updater 依赖）；v4.3.0 时代的 `polygon-txt_4.3_*` 命名已废弃。暂存目录为根目录 `其他相关tbx放进去release/`。
+- **图标嵌入两个坑**：① NSIS 安装包图标历史上回退 NSIS 默认图标（v4.3.0 的安装包就是），现由 `bundle.windows.nsis.installerIcon: icons/icon.ico` 显式指定；② 换图标后 exe 仍嵌旧图 = tauri build.rs 的资源编译被 cargo 缓存，改 `tauri.conf.json`（或 cargo clean -p 本 crate）触发重跑即可。
 
 ### Coordinate Swapping
 SHP stores (X, Y) = (easting, northing). TXT stores (Y, X) = (northing, easting). The conversion layer swaps these.

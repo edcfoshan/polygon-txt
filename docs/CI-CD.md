@@ -92,11 +92,13 @@ git push origin v3.2.0
 
 | 产物 | 说明 |
 |------|------|
-| `polygon-txt_{ver}_x64-setup.exe` + `.sig` | Windows NSIS 安装版（签名） |
-| `polygon-txt_{ver}_x64-portable.exe` | Windows 便携版（额外步骤上传） |
-| `polygon-txt_{ver}_aarch64.dmg` / `_x64.dmg` | macOS 安装包 |
-| `polygon-txt_{ver}_{arch}.app.tar.gz` + `.sig` | macOS 更新包（updater 用） |
-| `polygon-txt_{ver}_amd64.AppImage` + `.deb` 各 + `.sig` | Linux |
+| `极思G界址点互转工具_{ver}_x64-setup.exe` + `.sig` | Windows NSIS 安装版（签名） |
+| `极思G界址点互转工具_{ver}_x64-portable.exe` | Windows 便携版（额外步骤上传） |
+| `极思G界址点互转工具_{ver}_aarch64.dmg` / `_x64.dmg` | macOS 安装包 |
+| `极思G界址点互转工具_{ver}_{arch}.app.tar.gz` + `.sig` | macOS 更新包（updater 用） |
+| `极思G界址点互转工具_{ver}_amd64.AppImage` + `.deb` 各 + `.sig` | Linux |
+
+> 命名铁律：全部资产用中文 productName 前缀 `极思G界址点互转工具_X.X.0_`（与 tauri 默认产物一致）；`latest.json` 的 url 直接指向中文命名 setup（URL 会做 percent-encoding）。旧的 `polygon-txt_{short}_*` ASCII 别名自 4.4.0 起废弃。
 | `latest.json` | 全平台自动更新清单（含签名） |
 
 ### 已解决的坑（勿回退）

@@ -12,8 +12,7 @@ if (!version) {
   console.error('用法：node scripts/extract-changelog.js <X.Y.Z>');
   process.exit(1);
 }
-// 发布资产用短版本命名（polygon-txt_4.4_x64-setup.exe），与 gen-latest-json.js 保持一致
-const shortVer = version.split('.').slice(0, 2).join('.');
+// 发布资产用中文 productName 前缀（极思G界址点互转工具_X.X.0_*），与 tauri 默认产物一致
 
 const cl = join(root, 'CHANGELOG.md');
 let body = '';
@@ -33,13 +32,13 @@ console.log(`${body}
 
 | 平台 | 文件 | 说明 |
 | --- | --- | --- |
-| Windows | \`polygon-txt_${shortVer}_x64-setup.exe\` | **安装版（推荐）**：双击安装，写入开始菜单/桌面快捷方式，支持应用内自动更新 |
-| Windows | \`polygon-txt_${shortVer}_x64-portable.exe\` | **便携版**：免安装，双击即用；换机器直接拷走 |
-| macOS | \`*.dmg\` | Intel 芯片选 \`x64\`，Apple Silicon 选 \`aarch64\` |
-| Linux | \`*.AppImage\` / \`*.deb\` | AppImage 免安装（\`chmod +x\` 后直接运行），deb 用系统包管理器安装 |
+| Windows | \`极思G界址点互转工具_${version}_x64-setup.exe\` | **安装版（推荐）**：双击安装，写入开始菜单/桌面快捷方式，支持应用内自动更新 |
+| Windows | \`极思G界址点互转工具_${version}_x64-portable.exe\` | **便携版**：免安装，双击即用；换机器直接拷走 |
+| macOS | \`极思G界址点互转工具_${version}_aarch64.dmg\` / \`_x64.dmg\` | Intel 芯片选 \`x64\`，Apple Silicon 选 \`aarch64\` |
+| Linux | \`极思G界址点互转工具_${version}_amd64.AppImage\` / \`_amd64.deb\` | AppImage 免安装（\`chmod +x\` 后直接运行），deb 用系统包管理器安装 |
 
 **Windows 安装步骤**（首次运行可能被 SmartScreen 拦下）：
-1. 下载 \`polygon-txt_${shortVer}_x64-setup.exe\`
+1. 下载 \`极思G界址点互转工具_${version}_x64-setup.exe\`
 2. 双击运行；若出现「Windows 已保护你的电脑」，点「更多信息」→「仍要运行」
 3. 按向导完成安装（勾选项含创建桌面快捷方式）
 

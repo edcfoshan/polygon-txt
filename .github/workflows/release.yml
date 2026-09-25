@@ -122,21 +122,19 @@ jobs:
 
       # Windows：setup 产物名恢复中文（productName 恒定），ASCII 名改为构建后重命名；
       # 顺序铁律：tauri-action → 重命名+生成 latest.json → upload clobber（覆盖 tauri-action 自动生成的 latest.json 与中文资产）
-      - name: Publish ASCII-named setup and latest.json (Windows only)
+      # Windows：生成 latest.json（url 指向 tauri-action 上传的中文命名 setup）并覆盖
+      # tauri-action 自动生成的 latest.json；setup 与 .sig 已由 tauri-action 按 productName 命名上传
+      - name: Publish latest.json (Windows only)
         if: matrix.platform == 'windows-latest'
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VER=$(node -p "require('./src-tauri/tauri.conf.json').version")
-          SHORT=${VER%.*}
           D="src-tauri/target/${{ matrix.target }}/release/bundle/nsis"
-          SETUP_SRC=$(ls "$D"/*_x64-setup.exe | head -1)
-          cp "$SETUP_SRC" "$D/polygon-txt_${SHORT}_x64-setup.exe"
-          cp "${SETUP_SRC}.sig" "$D/polygon-txt_${SHORT}_x64-setup.exe.sig"
           node scripts/gen-latest-json.js --version "$VER" --tag "${{ github.ref_name }}" --nsis-dir "$D"
-          gh release upload "${{ github.ref_name }}" "$D/polygon-txt_${SHORT}_x64-setup.exe" "$D/polygon-txt_${SHORT}_x64-setup.exe.sig" latest.json --clobber
-          echo "已上传: polygon-txt_${SHORT}_x64-setup.exe(.sig) + latest.json"
+          gh release upload "${{ github.ref_name }}" latest.json --clobber
+          echo "已上传: latest.json（setup/.sig 用 tauri-action 中文命名产物）"
 
       # Windows：用 CHANGELOG 具体更新内容替换 tauri-action 模板 notes（用户要求：Release 页直接展示更新内容）
       - name: Update release notes from CHANGELOG (Windows only)
@@ -159,7 +157,7 @@ jobs:
         run: |
           VER=$(node -p "require('./src-tauri/tauri.conf.json').version")
           EXE="src-tauri/target/${{ matrix.target }}/release/jisig-bpoint-converter.exe"
-          PORTABLE="src-tauri/target/${{ matrix.target }}/release/bundle/nsis/polygon-txt_${VER%.*}_x64-portable.exe"
+          PORTABLE="src-tauri/target/${{ matrix.target }}/release/bundle/nsis/极思G界址点互转工具_${VER}_x64-portable.exe"
           cp "$EXE" "$PORTABLE"
           gh release upload "${{ github.ref_name }}" "$PORTABLE" --clobber
           echo "已上传便携版: $PORTABLE"

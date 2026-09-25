@@ -52,10 +52,9 @@ if (!existsSync(join(nsisDir, sourceExeName))) {
   process.exit(1);
 }
 
-// 发布时按 release skill 规范重命名为英文前缀 + 简短版本（如 polygon-txt_1.2_x64-setup.exe）
-// 签名内容基于 exe 字节，与文件名无关，重命名后 .sig 仍有效
-const shortVer = version.split('.').slice(0, 2).join('.');
-const publishedExeName = `polygon-txt_${shortVer}_x64-setup.exe`;
+// 发布资产命名与 tauri 默认产物一致：中文 productName 前缀（极思G界址点互转工具_X.X.0_*）
+// 签名内容基于 exe 字节，与文件名无关
+const publishedExeName = `极思G界址点互转工具_${version}_x64-setup.exe`;
 
 const signature = readFileSync(join(nsisDir, sigName), 'utf8').trim();
 const notes = args.notes || readNotesFromChangelog(version) || `版本 ${version} 更新`;

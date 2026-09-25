@@ -46,38 +46,63 @@ src-tauri/target/release/bundle/nsis/极思G界址点互转工具_X.Y.Z_x64-setu
 src-tauri/target/release/bundle/nsis/极思G界址点互转工具_X.Y.Z_x64-setup.exe.sig   ← 新增
 ```
 
-### B. 生成 latest.json
+### B. 上传产物，取回真实下载链接，再生成 latest.json
 
-```powershell
-node scripts/gen-latest-json.js --notes "本次更新内容……"
+**先上传后生成**，因为资产链接里的文件名不是你以为的那个：GitHub 有两层名字。
+
+| 层 | 字段 | 规则 |
+|---|---|---|
+| URL slug | `name` | GitHub 服务端静默吃掉非 ASCII：连续一段折叠成一个 `.`、开头整段删除。`极思G界址点互转工具_4.4.0_x64-setup.exe` → `G._4.4.0_x64-setup.exe`。**无法避免**，换上传工具/换平台都没用 |
+| 列表显示名 | `label` | 可以是中文。`tauri-action` 会自动设成中文原名；`gh release upload` **不会**设，得补一次 PATCH |
+
+```bash
+# 下面以 4.4.0 为例，实际发版把 4.4.0 / v4.4.0 换成本次版本号
+# 以下命令在 Git Bash 里执行（与 CI 同语法）；PowerShell 需自行转换 $() 与变量写法
+# 1) 上传安装包与便携版（slug 会被 GitHub 折叠，属正常）
+gh release upload v4.4.0 "src-tauri/target/release/bundle/nsis/极思G界址点互转工具_4.4.0_x64-setup.exe" "…exe.sig" "…_x64-portable.exe" --clobber
+
+# 2) gh 传的资产没有 label，补上，否则 Release 页只有它显示成 G._*
+#    label 值用 node 从 tauri.conf.json 读 productName 生成——不要把中文经 shell 参数传给 gh
+node -e "const c=require('./src-tauri/tauri.conf.json');require('fs').writeFileSync('label.json',JSON.stringify({label:c.productName+'_4.4.0_x64-portable.exe'}))"
+AID=$(gh api repos/edcfoshan/polygon-txt/releases/tags/v4.4.0 -q '.assets[] | select(.name | endswith("_x64-portable.exe")) | .id' | head -1)
+gh api -X PATCH repos/edcfoshan/polygon-txt/releases/assets/$AID --input label.json
+
+# 3) 取真实下载链接（只信 API，别信页面文本；slug 才是链接）
+SETUP_URL=$(gh api repos/edcfoshan/polygon-txt/releases/tags/v4.4.0 -q '.assets[] | select((.label // "") | endswith("_x64-setup.exe")) | .browser_download_url' | head -1)
+
+# 4) 用真实链接生成 latest.json
+node scripts/gen-latest-json.js --version 4.4.0 --tag v4.4.0 --download-url "$SETUP_URL"
 ```
 
-脚本会自动：
-- 从 `package.json` 读版本号
-- 扫描 NSIS 目录的 `.sig` 文件读签名
-- 组装 URL（默认 GitHub releases 直连；`--mirror` 可加 ghproxy 前缀，文件名含中文自动 `encodeURI`）
-- 写出仓库根目录 `latest.json`（jsDelivr 端点从这里取）
+脚本会自动：从 `package.json`（或 `--version`）读版本号 → 取 NSIS 目录里**最新**的 `.sig` → 用 `--download-url` 的链接 → 写仓库根 `latest.json`（jsDelivr 端点从这里取）。
 
-如不需要镜像：`--no-mirror`。
+不带 `--download-url` 时脚本只能按 `productName` 拼链接，含中文会打 **警告**且该链接上传后必 404（v4.4.0 就是这么坏的）。`.sig` 签的是 exe 字节，与文件名/label 无关，改名不影响验签。
 
-### C. 上传到 GitHub Release + 提交 latest.json
+### C. 提交并验收
 
-把以下文件上传到 Release `vX.Y.Z`：
-- `极思G界址点互转工具_X.Y_x64-setup.exe`（NSIS 安装包，按原 skill 重命名）
-- `latest.json`（**必须**上传，否则 GitHub 端点拉不到）
-- 绿色 exe、tbx 等按原 skill 习惯
+上传 `latest.json` 到同一 Release，并提交到仓库：
+```bash
+gh release upload v4.4.0 latest.json --clobber
+git add latest.json && git commit -m "release: vX.Y.Z latest.json" && git push
+curl "https://purge.jsdelivr.net/gh/edcfoshan/polygon-txt@master/latest.json"   # 必须 purge
+```
 
-并提交 latest.json 到仓库：
-```powershell
-git add latest.json
-git commit -m "release: vX.Y.Z latest.json"
-git push
+**发版后逐条验收（少一条就可能全量翻车）**：
+
+```bash
+# ① 资产显示名与重复项：14 个左右，label 全中文，不能出现两份 setup / polygon-txt_* 副本
+gh api repos/edcfoshan/polygon-txt/releases/tags/v4.4.0 -q '.assets[] | "\(.name)\t| \(.label)"'
+# ② 两个端点都要返回新版本号，且 url 一致
+curl -sL https://cdn.jsdelivr.net/gh/edcfoshan/polygon-txt@master/latest.json | node -pe "JSON.parse(require('fs').readFileSync(0,'utf8')).version"
+curl -sL https://github.com/edcfoshan/polygon-txt/releases/download/v4.4.0/latest.json | node -pe "JSON.parse(require('fs').readFileSync(0,'utf8')).platforms['windows-x86_64'].url"
+# ③ 该 url 必须实测可达（404 = 老客户端点了更新就失败）
+curl -sfIL --max-time 60 "<上一条输出的 url>" && echo "updater OK"
 ```
 
 > **为什么 latest.json 要同时放 Release 资产 + 仓库根目录？**
 > - GitHub 端点 `releases/latest/download/latest.json` 取的是 Release 资产
 > - jsDelivr 端点 `cdn.jsdelivr.net/gh/.../latest.json` 取的是仓库根文件（国内首选，秒级）
-> - 两份内容必须一致，脚本生成的同一文件分别上传/提交即可
+> - 两份内容必须一致；注意 Windows job 结束后 `finalize-notes` 会合并平台条目并重传 Release 那份
 
 ---
 
@@ -85,17 +110,19 @@ git push
 
 ```json
 {
-  "version": "1.2.1",
+  "version": "4.4.0",
   "notes": "更新说明……",
-  "pub_date": "2026-06-26T00:00:00.000Z",
+  "pub_date": "2026-09-25T00:00:00.000Z",
   "platforms": {
     "windows-x86_64": {
       "signature": "<.sig 文件全文>",
-      "url": "https://mirror.ghproxy.com/https://github.com/edcfoshan/polygon-txt/releases/download/v1.2.1/%E6%9E%81%E6%80%9DG%E7%95%8C%E5%9D%80%E7%82%B9%E4%BA%92%E8%BD%AC%E5%B7%A5%E5%85%B7_1.2_x64-setup.exe"
+      "url": "https://github.com/edcfoshan/polygon-txt/releases/download/v4.4.0/G._4.4.0_x64-setup.exe"
     }
   }
 }
 ```
+
+url 里是 `G._…` 而不是中文名，是对的——那是 GitHub 折叠后的真实 slug（见 B 节）。若某次发版这里出现中文/percent-encode 的中文，说明忘了传 `--download-url`，客户端下载会 404。
 
 ---
 
@@ -125,4 +152,4 @@ git push
 
 ## 进阶：GitHub Action 自动发版（强烈推荐）
 
-避免本地维护私钥，建议用 `tauri-apps/tauri-action@v0`，把 `TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` 放到 repo Secrets。该 action 自动：构建 → 签名 → 生成 `.sig` → 创建 Release → 上传全部资产。latest.json 仍需脚本生成后一并上传（或在 action 里追加一步）。本步骤暂未落地，等发版流程稳定后再做。
+**已落地（自 v3.3.0 起，v4.4.0 在用）**：`.github/workflows/release.yml` 用 `tauri-apps/tauri-action@v1` + repo Secrets（`TAURI_SIGNING_PRIVATE_KEY` / `..._PASSWORD`）在 push `v*` tag 时四平台构建并签名，Windows job 会自动完成 B/C 节里手工做的那几步（查真实 slug → 生成 latest.json → 给便携版补 label → 重传 latest.json），`finalize-notes` job 最后把 notes 换成 CHANGELOG 段落。**日常发版只需 push tag**，B/C 节是本地补签或排查时才用。发版后仍要按 C 节的三条验收实测一遍。详见 [CI/CD](CI-CD.md)。

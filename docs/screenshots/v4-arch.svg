@@ -1,0 +1,102 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 560">
+  <defs>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&amp;family=Noto+Sans+SC:wght@400;500;600;700&amp;display=swap');
+      text { font-family: 'JetBrains Mono', 'Noto Sans SC', 'PingFang SC', sans-serif; }
+    </style>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/>
+    </pattern>
+    <marker id="arrow-cyan" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#22d3ee"/>
+    </marker>
+    <marker id="arrow-emerald" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#34d399"/>
+    </marker>
+    <marker id="arrow-violet" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#a78bfa"/>
+    </marker>
+  </defs>
+
+  <rect width="100%" height="100%" fill="#0f172a"/>
+  <rect width="100%" height="100%" fill="url(#grid)"/>
+
+  <!-- title -->
+  <text x="30" y="40" fill="#f8fafc" font-size="16" font-weight="700">极思G界址点互转工具 · 技术架构</text>
+  <text x="30" y="60" fill="#94a3b8" font-size="9">Tauri v2 全离线桌面应用 · Rust 原生转换 · 无 ArcPy / 无 Python 依赖</text>
+
+  <!-- Row 1: frontend -->
+  <rect x="120" y="84" width="760" height="66" rx="6" fill="#0f172a"/>
+  <rect x="120" y="84" width="760" height="66" rx="6" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+  <text x="500" y="110" fill="white" font-size="12" font-weight="600" text-anchor="middle">WebView 前端层</text>
+  <text x="500" y="130" fill="#94a3b8" font-size="9" text-anchor="middle">index.html + main.js · Vite 单文件内联 · 三栏四页签 · 16 主题 · 实时预览</text>
+
+  <!-- arrows row1 -> ipc -->
+  <line x1="420" y1="150" x2="420" y2="184" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arrow-cyan)"/>
+  <line x1="580" y1="184" x2="580" y2="150" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arrow-cyan)"/>
+
+  <!-- Row 2: IPC bus -->
+  <rect x="120" y="188" width="760" height="34" rx="6" fill="#0f172a"/>
+  <rect x="120" y="188" width="760" height="34" rx="6" fill="rgba(251,146,60,0.3)" stroke="#fb923c" stroke-width="1.5"/>
+  <text x="500" y="210" fill="white" font-size="10" font-weight="600" text-anchor="middle">Tauri IPC 总线 · window.__TAURI__.core.invoke()</text>
+
+  <!-- arrows ipc -> services -->
+  <line x1="250" y1="222" x2="250" y2="256" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrow-emerald)"/>
+  <line x1="500" y1="222" x2="500" y2="256" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrow-emerald)"/>
+  <line x1="750" y1="222" x2="750" y2="256" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrow-emerald)"/>
+
+  <!-- Row 3: rust modules -->
+  <g>
+    <rect x="70" y="260" width="164" height="88" rx="6" fill="#0f172a"/>
+    <rect x="70" y="260" width="164" height="88" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
+    <text x="152" y="288" fill="white" font-size="11" font-weight="600" text-anchor="middle">shp.rs</text>
+    <text x="152" y="306" fill="#94a3b8" font-size="9" text-anchor="middle">SHP / DBF / PRJ</text>
+    <text x="152" y="322" fill="#94a3b8" font-size="9" text-anchor="middle">读写 · 编码探测</text>
+
+    <rect x="246" y="260" width="164" height="88" rx="6" fill="#0f172a"/>
+    <rect x="246" y="260" width="164" height="88" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
+    <text x="328" y="288" fill="white" font-size="11" font-weight="600" text-anchor="middle">txt.rs</text>
+    <text x="328" y="306" fill="#94a3b8" font-size="9" text-anchor="middle">三段式 TXT 解析</text>
+    <text x="328" y="322" fill="#94a3b8" font-size="9" text-anchor="middle">自定义列布局</text>
+
+    <rect x="422" y="260" width="164" height="88" rx="6" fill="#0f172a"/>
+    <rect x="422" y="260" width="164" height="88" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
+    <text x="504" y="288" fill="white" font-size="11" font-weight="600" text-anchor="middle">gdb.rs</text>
+    <text x="504" y="306" fill="#94a3b8" font-size="9" text-anchor="middle">OpenFileGDB</text>
+    <text x="504" y="322" fill="#94a3b8" font-size="9" text-anchor="middle">读取 + 最小写入</text>
+
+    <rect x="598" y="260" width="164" height="88" rx="6" fill="#0f172a"/>
+    <rect x="598" y="260" width="164" height="88" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
+    <text x="680" y="288" fill="white" font-size="11" font-weight="600" text-anchor="middle">convert.rs</text>
+    <text x="680" y="306" fill="#94a3b8" font-size="9" text-anchor="middle">转换编排</text>
+    <text x="680" y="322" fill="#94a3b8" font-size="9" text-anchor="middle">一对一/拆分/合并</text>
+
+    <rect x="774" y="260" width="164" height="88" rx="6" fill="#0f172a"/>
+    <rect x="774" y="260" width="164" height="88" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
+    <text x="856" y="288" fill="white" font-size="11" font-weight="600" text-anchor="middle">投影引擎</text>
+    <text x="856" y="306" fill="#94a3b8" font-size="9" text-anchor="middle">高斯-克吕格 3°/6°</text>
+    <text x="856" y="322" fill="#94a3b8" font-size="9" text-anchor="middle">换带 · 带号前缀</text>
+  </g>
+
+  <!-- arrows services -> fs -->
+  <line x1="500" y1="348" x2="500" y2="386" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arrow-violet)"/>
+
+  <!-- Row 4: filesystem -->
+  <rect x="120" y="390" width="760" height="64" rx="6" fill="#0f172a"/>
+  <rect x="120" y="390" width="760" height="64" rx="6" fill="rgba(76,29,149,0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+  <text x="500" y="416" fill="white" font-size="12" font-weight="600" text-anchor="middle">std::fs · 本地文件系统直读直写</text>
+  <text x="500" y="436" fill="#94a3b8" font-size="9" text-anchor="middle">全程离线 · 数据不出本机 · 安装包约 6MB · 秒级启动</text>
+
+  <!-- side badges -->
+  <rect x="70" y="486" width="180" height="30" rx="6" fill="#0f172a"/>
+  <rect x="70" y="486" width="180" height="30" rx="6" fill="rgba(120,53,15,0.3)" stroke="#fbbf24" stroke-width="1.2"/>
+  <text x="160" y="505" fill="#fbbf24" font-size="10" font-weight="600" text-anchor="middle">零 ArcPy 依赖</text>
+
+  <rect x="270" y="486" width="220" height="30" rx="6" fill="#0f172a"/>
+  <rect x="270" y="486" width="220" height="30" rx="6" fill="rgba(120,53,15,0.3)" stroke="#fbbf24" stroke-width="1.2"/>
+  <text x="380" y="505" fill="#fbbf24" font-size="10" font-weight="600" text-anchor="middle">无损往返：转过去再转回来</text>
+
+  <rect x="510" y="486" width="220" height="30" rx="6" fill="#0f172a"/>
+  <rect x="510" y="486" width="220" height="30" rx="6" fill="rgba(136,19,55,0.4)" stroke="#fb7185" stroke-width="1.2"/>
+  <text x="620" y="505" fill="#fb7185" font-size="10" font-weight="600" text-anchor="middle">应用内自动更新（签名校验）</text>
+</svg>

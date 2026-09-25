@@ -1,0 +1,126 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1020 470">
+  <defs>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&amp;family=Noto+Sans+SC:wght@400;500;600;700&amp;display=swap');
+      text { font-family: 'JetBrains Mono', 'Noto Sans SC', 'PingFang SC', sans-serif; }
+    </style>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/>
+    </pattern>
+    <marker id="arrow-em" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#34d399"/>
+    </marker>
+    <marker id="arrow-cy" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#22d3ee"/>
+    </marker>
+    <marker id="arrow-am" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#fbbf24"/>
+    </marker>
+  </defs>
+
+  <rect width="100%" height="100%" fill="#0f172a"/>
+  <rect width="100%" height="100%" fill="url(#grid)"/>
+
+  <!-- title -->
+  <text x="30" y="40" fill="#f8fafc" font-size="16" font-weight="700">双向转换 · 无损往返数据流</text>
+  <text x="30" y="60" fill="#94a3b8" font-size="9">面 → TXT 与 TXT → 面 全链路 · 环向归一化与界址线号是往返一致性的锚点</text>
+
+  <!-- lane A label -->
+  <text x="70" y="84" fill="#34d399" font-size="10" font-weight="700">面 → TXT</text>
+
+  <!-- Lane A: 面→TXT (y=90..170) -->
+  <g>
+    <rect x="70" y="92" width="160" height="64" rx="6" fill="#0f172a"/>
+    <rect x="70" y="92" width="160" height="64" rx="6" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+    <text x="150" y="118" fill="white" font-size="11" font-weight="600" text-anchor="middle">导入 SHP / GDB</text>
+    <text x="150" y="136" fill="#94a3b8" font-size="9" text-anchor="middle">面要素 + DBF + PRJ</text>
+
+    <line x1="230" y1="124" x2="266" y2="124" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrow-em)"/>
+
+    <rect x="270" y="92" width="160" height="64" rx="6" fill="#0f172a"/>
+    <rect x="270" y="92" width="160" height="64" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
+    <text x="350" y="118" fill="white" font-size="11" font-weight="600" text-anchor="middle">环向归一化</text>
+    <text x="350" y="136" fill="#94a3b8" font-size="9" text-anchor="middle">外环逆时针 · 洞顺时针</text>
+
+    <line x1="430" y1="124" x2="466" y2="124" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrow-em)"/>
+
+    <rect x="470" y="92" width="160" height="64" rx="6" fill="#0f172a"/>
+    <rect x="470" y="92" width="160" height="64" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
+    <text x="550" y="118" fill="white" font-size="11" font-weight="600" text-anchor="middle">逐环编号</text>
+    <text x="550" y="136" fill="#94a3b8" font-size="9" text-anchor="middle">界址线号 · J 序号跨环连续</text>
+
+    <line x1="630" y1="124" x2="666" y2="124" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrow-em)"/>
+
+    <rect x="670" y="92" width="160" height="64" rx="6" fill="#0f172a"/>
+    <rect x="670" y="92" width="160" height="64" rx="6" fill="rgba(120,53,15,0.3)" stroke="#fbbf24" stroke-width="1.5"/>
+    <text x="750" y="118" fill="white" font-size="11" font-weight="600" text-anchor="middle">投影 · 字段 · 表头</text>
+    <text x="750" y="136" fill="#94a3b8" font-size="9" text-anchor="middle">高斯-克吕格 · 列布局</text>
+
+    <line x1="830" y1="124" x2="866" y2="124" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrow-em)"/>
+
+    <rect x="870" y="92" width="120" height="64" rx="6" fill="#0f172a"/>
+    <rect x="870" y="92" width="120" height="64" rx="6" fill="rgba(59,130,246,0.3)" stroke="#60a5fa" stroke-width="1.5"/>
+    <text x="930" y="118" fill="white" font-size="11" font-weight="600" text-anchor="middle">界址点 TXT</text>
+    <text x="930" y="136" fill="#94a3b8" font-size="9" text-anchor="middle">三段式标准格式</text>
+  </g>
+
+  <!-- round-trip connector between lanes -->
+  <path d="M 930 160 L 930 292" fill="none" stroke="#fbbf24" stroke-width="1.5" stroke-dasharray="6,4" marker-end="url(#arrow-am)"/>
+  <text x="944" y="230" fill="#fbbf24" font-size="9">无损往返</text>
+  <text x="944" y="244" fill="#94a3b8" font-size="8">坐标一根不差</text>
+  <path d="M 150 292 L 150 160" fill="none" stroke="#fbbf24" stroke-width="1.5" stroke-dasharray="6,4" marker-end="url(#arrow-am)"/>
+  <text x="164" y="230" fill="#fbbf24" font-size="9">质检回流</text>
+
+  <!-- lane B label -->
+  <text x="70" y="292" fill="#22d3ee" font-size="10" font-weight="700">TXT → 面</text>
+
+  <!-- Lane B: TXT→面 (y=300..380) right-to-left flow -->
+  <g>
+    <rect x="870" y="300" width="120" height="64" rx="6" fill="#0f172a"/>
+    <rect x="870" y="300" width="120" height="64" rx="6" fill="rgba(59,130,246,0.3)" stroke="#60a5fa" stroke-width="1.5"/>
+    <text x="930" y="326" fill="white" font-size="11" font-weight="600" text-anchor="middle">解析 TXT</text>
+    <text x="930" y="344" fill="#94a3b8" font-size="9" text-anchor="middle">标准 4 列 / 部备案 6 列</text>
+
+    <line x1="870" y1="332" x2="834" y2="332" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arrow-cy)"/>
+
+    <rect x="670" y="300" width="160" height="64" rx="6" fill="#0f172a"/>
+    <rect x="670" y="300" width="160" height="64" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
+    <text x="750" y="326" fill="white" font-size="11" font-weight="600" text-anchor="middle">按界址线号切环</text>
+    <text x="750" y="344" fill="#94a3b8" font-size="9" text-anchor="middle">外环 / 洞 / 多部件重建</text>
+
+    <line x1="670" y1="332" x2="634" y2="332" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arrow-cy)"/>
+
+    <rect x="470" y="300" width="160" height="64" rx="6" fill="#0f172a"/>
+    <rect x="470" y="300" width="160" height="64" rx="6" fill="rgba(120,53,15,0.3)" stroke="#fbbf24" stroke-width="1.5"/>
+    <text x="550" y="326" fill="white" font-size="11" font-weight="600" text-anchor="middle">校验与回填</text>
+    <text x="550" y="344" fill="#94a3b8" font-size="9" text-anchor="middle">首末闭合 · 坐标系 · 带号</text>
+
+    <line x1="470" y1="332" x2="434" y2="332" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arrow-cy)"/>
+
+    <rect x="270" y="300" width="160" height="64" rx="6" fill="#0f172a"/>
+    <rect x="270" y="300" width="160" height="64" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
+    <text x="350" y="326" fill="white" font-size="11" font-weight="600" text-anchor="middle">DBF 属性重建</text>
+    <text x="350" y="344" fill="#94a3b8" font-size="9" text-anchor="middle">地块信息 → 属性表</text>
+
+    <line x1="270" y1="332" x2="234" y2="332" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arrow-cy)"/>
+
+    <rect x="70" y="300" width="160" height="64" rx="6" fill="#0f172a"/>
+    <rect x="70" y="300" width="160" height="64" rx="6" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+    <text x="150" y="326" fill="white" font-size="11" font-weight="600" text-anchor="middle">输出 SHP + PRJ</text>
+    <text x="150" y="344" fill="#94a3b8" font-size="9" text-anchor="middle">直入 ArcMap / QGIS / Pro</text>
+  </g>
+
+  <!-- legend -->
+  <g>
+    <rect x="70" y="404" width="14" height="14" rx="3" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1.2"/>
+    <text x="92" y="415" fill="#94a3b8" font-size="9">输入 / 输出</text>
+    <rect x="180" y="404" width="14" height="14" rx="3" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.2"/>
+    <text x="202" y="415" fill="#94a3b8" font-size="9">几何处理</text>
+    <rect x="290" y="404" width="14" height="14" rx="3" fill="rgba(120,53,15,0.3)" stroke="#fbbf24" stroke-width="1.2"/>
+    <text x="312" y="415" fill="#94a3b8" font-size="9">配置 / 校验</text>
+    <rect x="410" y="404" width="14" height="14" rx="3" fill="rgba(59,130,246,0.3)" stroke="#60a5fa" stroke-width="1.2"/>
+    <text x="432" y="415" fill="#94a3b8" font-size="9">TXT 三段式</text>
+    <line x1="530" y1="411" x2="570" y2="411" stroke="#fbbf24" stroke-width="1.5" stroke-dasharray="6,4"/>
+    <text x="578" y="415" fill="#94a3b8" font-size="9">往返闭环</text>
+  </g>
+</svg>

@@ -52,9 +52,11 @@ if (!existsSync(join(nsisDir, sourceExeName))) {
   process.exit(1);
 }
 
-// 发布资产命名与 tauri 默认产物一致：中文 productName 前缀（极思G界址点互转工具_X.X.0_*）
-// 签名内容基于 exe 字节，与文件名无关
-const publishedExeName = `极思G界址点互转工具_${version}_x64-setup.exe`;
+// 发布资产名必须 ASCII：GitHub 服务端会吃掉非 ASCII 字符（极思G界址点互转工具 → "G."），
+// 因此 updater url 固定指向 ASCII 别名 polygon-txt_{maj.min}_x64-setup.exe（与 v4.3.0 起一致）。
+// 签名内容基于 exe 字节，与文件名无关，重命名后 .sig 仍有效
+const shortVer = version.split('.').slice(0, 2).join('.');
+const publishedExeName = `polygon-txt_${shortVer}_x64-setup.exe`;
 
 const signature = readFileSync(join(nsisDir, sigName), 'utf8').trim();
 const notes = args.notes || readNotesFromChangelog(version) || `版本 ${version} 更新`;

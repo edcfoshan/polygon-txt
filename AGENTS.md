@@ -140,7 +140,7 @@ Manually written binary (avoids `dbase` crate API). Field offset must be 4 bytes
 - `docs/brand/social-preview-1280x640.png` 需在 GitHub 仓库 Settings › Social preview 手动上传（无 API）。
 - 标题栏 22px 与关于弹窗 64px 的标记共用一个单色 PNG：`.brand-mark`/`.about-mark` 用 CSS mask + `background:var(--ac)` 上色，因此 8 套色系与明暗主题下都自动适配（不要改回彩色位图，否则暗色主题下会变成隐形的黑方块）。
 - 品牌视觉为青绿渐变底（左上 #047887 → 右下 #067298）+ 米白「开口界址点环双追箭」图形，与应用内青色系主题同族。`docs/brand/app-icon-source-doubao-original.jpeg` 是未处理原始稿（带水印、全出血方角）；`app-icon-source.png`（去水印 + RGBA 圆角）、单色 `src/assets/brand-mark.png`（亮度 smoothstep 取 alpha）、`social-preview-1280x640.png`（渐变底 + 左图形 + 右产品名自动字号）均由 `docs/brand/make-brand-assets.ps1` 一键派生——换源图后先跑该脚本再跑 `npx tauri icon`。
-- **Release 资产命名**：前缀一律 `极思G界址点互转工具_X.X.0_`（如 `极思G界址点互转工具_4.4.0_x64-setup.exe`），配套 `.sig` 与 `latest.json`（updater 依赖）；v4.3.0 时代的 `polygon-txt_4.3_*` 命名已废弃。暂存目录为根目录 `其他相关tbx放进去release/`。
+- **Release 资产命名（ASCII 铁律）**：GitHub 服务端会静默吃掉资产名中的非 ASCII 字符（`极思G界址点互转工具` → `G.`），因此 updater 链路（`latest.json` url 指向的 setup、便携版）必须用 ASCII 名 `polygon-txt_{maj.min}_x64-setup.exe` / `-portable.exe`（v4.3.0 起约定，release.yml 有专门复制步骤），配套 `.sig` + `latest.json` 一起上传。tauri-action 自动产生的中文命名资产退化成 `G._*` 属已知现象，中文名只放 Release 标题/正文。暂存目录为根目录 `其他相关tbx放进去release/`（本地暂存可用中文名）。
 - **图标嵌入两个坑**：① NSIS 安装包图标历史上回退 NSIS 默认图标（v4.3.0 的安装包就是），现由 `bundle.windows.nsis.installerIcon: icons/icon.ico` 显式指定；② 换图标后 exe 仍嵌旧图 = tauri build.rs 的资源编译被 cargo 缓存，改 `tauri.conf.json`（或 cargo clean -p 本 crate）触发重跑即可。
 
 ### Coordinate Swapping

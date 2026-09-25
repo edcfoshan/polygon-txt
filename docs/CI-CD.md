@@ -92,13 +92,13 @@ git push origin v3.2.0
 
 | 产物 | 说明 |
 |------|------|
-| `极思G界址点互转工具_{ver}_x64-setup.exe` + `.sig` | Windows NSIS 安装版（签名） |
-| `极思G界址点互转工具_{ver}_x64-portable.exe` | Windows 便携版（额外步骤上传） |
-| `极思G界址点互转工具_{ver}_aarch64.dmg` / `_x64.dmg` | macOS 安装包 |
+| `polygon-txt_{maj.min}_x64-setup.exe` + `.sig` | Windows NSIS 安装版（签名，ASCII 别名供 updater） |
+| `polygon-txt_{maj.min}_x64-portable.exe` | Windows 便携版（额外步骤上传） |
+| `极思G界址点互转工具_{ver}_aarch64.dmg` / `_x64.dmg` | macOS 安装包（实际资产名会被 GitHub 吃掉中文 → `G._{ver}_*`，下载链接以资产页为准） |
 | `极思G界址点互转工具_{ver}_{arch}.app.tar.gz` + `.sig` | macOS 更新包（updater 用） |
-| `极思G界址点互转工具_{ver}_amd64.AppImage` + `.deb` 各 + `.sig` | Linux |
+| `极思G界址点互转工具_{ver}_amd64.AppImage` / `_amd64.deb` | Linux |
 
-> 命名铁律：全部资产用中文 productName 前缀 `极思G界址点互转工具_X.X.0_`（与 tauri 默认产物一致）；`latest.json` 的 url 直接指向中文命名 setup（URL 会做 percent-encoding）。旧的 `polygon-txt_{short}_*` ASCII 别名自 4.4.0 起废弃。
+> 命名铁律：**Windows updater 链路（latest.json url 指向的 setup + portable）必须用 ASCII 名 `polygon-txt_{maj.min}_x64-*`**——GitHub 服务端会静默吃掉资产名中的非 ASCII 字符（极思G界址点互转工具 → "G."），中文名只能出现在 Release 标题与正文里。tauri-action 自动上传的中文命名资产会退化成 `G._*`，属已知现象，用户下载引导一律走 ASCII 别名。
 | `latest.json` | 全平台自动更新清单（含签名） |
 
 ### 已解决的坑（勿回退）

@@ -90,19 +90,20 @@ git push origin v3.2.0
 
 ### Release 自动生成的内容
 
-| 产物（显示名 = 资产 label） | 说明 |
-|------|------|
-| `极思G界址点互转工具_{ver}_x64-setup.exe` + `.sig` | Windows NSIS 安装版（签名），slug 为 `G._{ver}_x64-setup.exe` |
-| `极思G界址点互转工具_{ver}_x64-portable.exe` | Windows 便携版（额外步骤上传，并必须补 label） |
-| `极思G界址点互转工具_{ver}_aarch64.dmg` / `_x64.dmg` | macOS 安装包 |
-| `极思G界址点互转工具_{ver}_{arch}.app.tar.gz` + `.sig` | macOS 更新包（updater 用） |
-| `极思G界址点互转工具_{ver}_amd64.AppImage` / `_amd64.deb` | Linux |
-| `latest.json` | 全平台自动更新清单（含签名），url 指向 setup 的 `browser_download_url` |
+| 显示名（资产 label） | slug（`name`，进 URL 与落盘文件名） | 说明 |
+|------|------|------|
+| `极思G界址点互转工具_{ver}_x64-setup.exe` + `.sig` | `JisigG_{ver}_x64-setup.exe` | Windows NSIS 安装版（签名） |
+| `极思G界址点互转工具_{ver}_x64-portable.exe` | `JisigG_{ver}_x64-portable.exe` | Windows 便携版（额外步骤上传） |
+| `极思G界址点互转工具_{ver}_aarch64.dmg` / `_x64.dmg` | `JisigG_{ver}_aarch64.dmg` / `_x64.dmg` | macOS 安装包 |
+| `极思G界址点互转工具_{ver}_{arch}.app.tar.gz` + `.sig` | `JisigG_{ver}_{arch}.app.tar.gz` | macOS 更新包（updater 用） |
+| `极思G界址点互转工具_{ver}_amd64.AppImage` / `_amd64.deb` | `JisigG_{ver}_amd64.AppImage` / `.deb` | Linux |
+| `latest.json` | `latest.json` | 全平台自动更新清单（含签名），url 指向 setup 的 `browser_download_url` |
 
-> **资产有两层名字，别再搞混（GitHub 服务端规则）**
-> - `name`（slug，进下载 URL）：非 ASCII 字符被静默吃掉——连续一段折叠成一个 `.`，位于开头的整段直接删除。`极思G界址点互转工具_4.4.0_x64-setup.exe` → `G._4.4.0_x64-setup.exe`。中文 slug 物理上不可能，换上传工具/换 runner 平台都无用。
-> - `label`（Release 列表显示名）：`tauri-action` 会自动设成中文原名，所以页面上仍显示中文；`gh release upload` **不设 label**，要补一次 `gh api -X PATCH repos/.../releases/assets/{id} --input label.json`（label 值用 node 从 `tauri.conf.json` 读 `productName` 生成，别把中文经 shell 参数传）。v4.4.0 的便携版就因缺 label 在页面上露出 `G._*`。
-> - 因此 `latest.json` 的 url 必须是 API 返回的 `browser_download_url`（CI 里现查现用），绝不能再拼中文文件名——v4.4.0 拼了中文名，url 实测 404，装有 ≤4.3.0 的 Windows 客户端收到更新提示后下载必失败。
+> **资产有两层名字，各管各的（GitHub 服务端规则）**
+> - `name`（slug）：决定下载 URL 和 `Content-Disposition` 里的落盘文件名。非 ASCII 会被静默吃掉——连续一段折叠成一个 `.`、位于开头的整段直接删除，所以中文原名传上去会变成 `G._{ver}_*`。中文 slug 物理上不可能，换上传工具/换 runner 平台都无用。
+> - `label`：Release 列表里显示的名字，可以是中文。`tauri-action` 会自动设成中文原名；`gh release upload` 不设。
+> - 解法是两者分开放：`Build and Release Tauri app`（+ 便携版上传）之后跑 `Normalize asset names` 步骤 = `node scripts/normalize-release-assets.mjs --repo <owner/repo> --tag <vX.Y.Z>`，把 slug 统一改成品牌 ASCII `JisigG_{ver}_*`、label 保留中文原名。只 PATCH 元数据，不重传文件；`.sig` 签的是 exe 字节，与文件名无关，所以签名照旧有效。脚本幂等，可 `--dry-run` 预览。
+> - 因此 `latest.json` 的 url 必须在 normalize **之后**取 API 的 `browser_download_url`（CI 里现查现用），绝不能再拼中文文件名——v4.4.0 拼了中文名，url 实测 404，装有 ≤4.3.0 的 Windows 客户端收到更新提示后下载必失败。
 > - 核对资产一律用 `gh api repos/.../releases/tags/<tag> -q '.assets[] | "\(.name) | \(.label)"'`，不要看页面文本或摘要工具猜（slug 才是真实链接）。
 
 ### 已解决的坑（勿回退）
@@ -110,7 +111,7 @@ git push origin v3.2.0
 1. **`bundle.targets: "nsis"` 导致 mac/Linux 不打包** → CI 在 `args` 里显式传 `--bundles nsis` / `dmg,app` / `appimage,deb`
 2. **未配置私钥时构建失败**（`A public key has been found, but no private key`）→ 工作流 `Patch Tauri config for CI` 步骤：无私钥则删 `pubkey` + 关 `createUpdaterArtifacts`；有则保留并签名
 3. **`TAURI_SIGNING_PRIVATE_KEY` 空字符串会报 `Missing comment in secret key`** → 不能无条件设置该 env；条件分支处理
-4. **中文 productName 使 GitHub 资产 slug 损坏**（`极思G界址点互转工具_3.1.0.dmg` → `G._3.1.0.dmg`）→ **不要改 productName**（NSIS 卸载键/安装目录/快捷方式名派生自它，v3.2 改写曾致更新后安装目录漂移）：slug 认命，中文显示靠 label，`latest.json` url 取 `browser_download_url`（见上一节）
+4. **中文 productName 使 GitHub 资产 slug 损坏**（`极思G界址点互转工具_3.1.0.dmg` → `G._3.1.0.dmg`，落盘文件名也跟着难看）→ **不要改 productName**（NSIS 卸载键/安装目录/快捷方式名派生自它，v3.2 改写曾致更新后安装目录漂移），也不要再复制一份 ASCII 别名副本（会出现两套重复资产）。正解：上传后跑 `Normalize asset names` 步骤把 slug 改成 `JisigG_*`、中文留在 label（见上一节）
 5. **`TAURI_CONFIG` 环境变量在本 Tauri 版本不生效** → 用 node 直接改 `tauri.conf.json`（勿用 PowerShell 写 JSON，会加 BOM）
 
 ### 发布后必须同步的 `latest.json`

@@ -38,6 +38,8 @@ console.log(`${body}
 | macOS | \`极思G界址点互转工具_${version}_aarch64.dmg\` / \`_x64.dmg\` | Intel 芯片选 \`x64\`，Apple Silicon 选 \`aarch64\` |
 | Linux | \`极思G界址点互转工具_${version}_amd64.AppImage\` / \`_amd64.deb\` | AppImage 免安装（\`chmod +x\` 后直接运行），deb 用系统包管理器安装 |
 
+> 上表是 Release 资产列表里的显示名；GitHub 会把下载链接与存盘文件名里的中文换成品牌前缀，实际存到磁盘的是 \`JisigG_${version}_x64-setup.exe\` 这类名字，二者是同一个文件。
+
 **Windows 安装步骤**（首次运行可能被 SmartScreen 拦下）：
 1. 下载 \`极思G界址点互转工具_${version}_x64-setup.exe\`
 2. 双击运行；若出现「Windows 已保护你的电脑」，点「更多信息」→「仍要运行」

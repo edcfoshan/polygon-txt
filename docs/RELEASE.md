@@ -52,8 +52,9 @@ src-tauri/target/release/bundle/nsis/极思G界址点互转工具_X.Y.Z_x64-setu
 
 | 层 | 字段 | 规则 |
 |---|---|---|
-| URL slug | `name` | GitHub 服务端静默吃掉非 ASCII：连续一段折叠成一个 `.`、开头整段删除。`极思G界址点互转工具_4.4.0_x64-setup.exe` → `G._4.4.0_x64-setup.exe`。**无法避免**，换上传工具/换平台都没用 |
-| 列表显示名 | `label` | 可以是中文。`tauri-action` 会自动设成中文原名；`gh release upload` **不会**设，得补一次 PATCH |
+| URL 与落盘名 | `name`（slug） | GitHub 服务端静默吃掉非 ASCII：连续一段折叠成一个 `.`、开头整段删除。`极思G界址点互转工具_4.4.0_x64-setup.exe` → `G._4.4.0_x64-setup.exe`，且它同时是 `Content-Disposition` 里的存盘文件名。**无法避免**，换上传工具/换平台都没用 |
+| 列表显示名 | `label` | 可以是中文。`tauri-action` 会自动设成中文原名；`gh release upload` **不会**设 |
+| 解法 | 两者分开放 | `scripts/normalize-release-assets.mjs`：slug → `JisigG_{ver}_*`（品牌 ASCII，可辨识），label → 中文原名（列表照旧显示中文）。只改元数据，不重传，签名不受影响 |
 
 ```bash
 # 下面以 4.4.0 为例，实际发版把 4.4.0 / v4.4.0 换成本次版本号
@@ -61,14 +62,13 @@ src-tauri/target/release/bundle/nsis/极思G界址点互转工具_X.Y.Z_x64-setu
 # 1) 上传安装包与便携版（slug 会被 GitHub 折叠，属正常）
 gh release upload v4.4.0 "src-tauri/target/release/bundle/nsis/极思G界址点互转工具_4.4.0_x64-setup.exe" "…exe.sig" "…_x64-portable.exe" --clobber
 
-# 2) gh 传的资产没有 label，补上，否则 Release 页只有它显示成 G._*
-#    label 值用 node 从 tauri.conf.json 读 productName 生成——不要把中文经 shell 参数传给 gh
-node -e "const c=require('./src-tauri/tauri.conf.json');require('fs').writeFileSync('label.json',JSON.stringify({label:c.productName+'_4.4.0_x64-portable.exe'}))"
-AID=$(gh api repos/edcfoshan/polygon-txt/releases/tags/v4.4.0 -q '.assets[] | select(.name | endswith("_x64-portable.exe")) | .id' | head -1)
-gh api -X PATCH repos/edcfoshan/polygon-txt/releases/assets/$AID --input label.json
+# 2) 规范化资产名：slug 改成品牌 ASCII（JisigG_…），中文原名放 label（列表显示名）。
+#    不跑这一步，用户复制链接与存盘拿到的都是 G._4.4.0_x64-setup.exe。
+#    只 PATCH 元数据、不重传文件；.sig 签的是 exe 字节，签名照旧有效。幂等，可加 --dry-run 预览。
+node scripts/normalize-release-assets.mjs --repo edcfoshan/polygon-txt --tag v4.4.0
 
-# 3) 取真实下载链接（只信 API，别信页面文本；slug 才是链接）
-SETUP_URL=$(gh api repos/edcfoshan/polygon-txt/releases/tags/v4.4.0 -q '.assets[] | select((.label // "") | endswith("_x64-setup.exe")) | .browser_download_url' | head -1)
+# 3) 取规范化之后的真实下载链接（只信 API——slug 同时决定 URL 和落盘文件名）
+SETUP_URL=$(gh api repos/edcfoshan/polygon-txt/releases/tags/v4.4.0 -q '.assets[] | select(.name | startswith("JisigG_")) | select(.name | endswith("_x64-setup.exe")) | .browser_download_url' | head -1)
 
 # 4) 用真实链接生成 latest.json
 node scripts/gen-latest-json.js --version 4.4.0 --tag v4.4.0 --download-url "$SETUP_URL"
@@ -90,13 +90,15 @@ curl "https://purge.jsdelivr.net/gh/edcfoshan/polygon-txt@master/latest.json"   
 **发版后逐条验收（少一条就可能全量翻车）**：
 
 ```bash
-# ① 资产显示名与重复项：14 个左右，label 全中文，不能出现两份 setup / polygon-txt_* 副本
+# ① 资产名与重复项：label 全中文、slug 全 JisigG_*，且不能出现两份 setup（或 polygon-txt_* / G._* 残留）
 gh api repos/edcfoshan/polygon-txt/releases/tags/v4.4.0 -q '.assets[] | "\(.name)\t| \(.label)"'
 # ② 两个端点都要返回新版本号，且 url 一致
 curl -sL https://cdn.jsdelivr.net/gh/edcfoshan/polygon-txt@master/latest.json | node -pe "JSON.parse(require('fs').readFileSync(0,'utf8')).version"
 curl -sL https://github.com/edcfoshan/polygon-txt/releases/download/v4.4.0/latest.json | node -pe "JSON.parse(require('fs').readFileSync(0,'utf8')).platforms['windows-x86_64'].url"
 # ③ 该 url 必须实测可达（404 = 老客户端点了更新就失败）
 curl -sfIL --max-time 60 "<上一条输出的 url>" && echo "updater OK"
+# ④ 落盘文件名必须是 JisigG_…，出现 G._… 说明 Normalize 步骤没跑或没生效
+curl -sIL --max-time 60 "<上一条输出的 url>" | grep -i "^content-disposition"
 ```
 
 > **为什么 latest.json 要同时放 Release 资产 + 仓库根目录？**

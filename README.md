@@ -61,7 +61,7 @@
 | macOS 10.15+ | `*_x64.dmg` | Intel 芯片 |
 | Linux x64 | `*_amd64.AppImage` 或 `*_amd64.deb` | AppImage 或 Debian 安装包；需要 WebKit2GTK |
 
-Windows 7 不受支持。首次运行若出现 SmartScreen 提示，请确认文件来自本仓库 Releases，再按系统提示继续。已安装的版本会检查更新；有新版本时可从应用内升级。
+Windows 7 不受支持。首次运行若出现 SmartScreen 提示，请确认文件来自本仓库 Releases，再按系统提示继续。Windows 安装版支持在应用内检查并安装更新。
 
 ## TXT 坐标行长什么样
 

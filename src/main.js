@@ -538,6 +538,7 @@ function renderGdbSelectList() {
 // 渲染为一行 ◈ xxx.gdb 选中N/M ×，点行重开弹窗、点×清空导入
 // selectedLayers 为空（尚未确认选择）时显示"待选择"提示，避免误触发后端"空=全选"
 function renderLeftGdbSummary() {
+  syncMergeOutputOption();
   const fl = $("fl");
   if (!fl) return;
   if (sourceType !== "gdb" || !gdbLayers.length) { fl.innerHTML = ""; return; }
@@ -590,7 +591,22 @@ function clearGdbImport() {
 }
 
 
+function syncMergeOutputOption() {
+  const merge = document.querySelector('input[name="output_mode"][value="merge_all"]');
+  if (!merge) return;
+  const count = sourceType === "gdb" ? selectedLayers.length : loadedFiles.length;
+  const available = count > 1;
+  merge.disabled = !available;
+  merge.closest(".seg").hidden = !available;
+  if (!available && merge.checked) {
+    const fallback = document.querySelector('input[name="output_mode"][value="one_to_one"]');
+    fallback.checked = true;
+    fallback.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+}
+
 function renderFileList() {
+  syncMergeOutputOption();
   const fl = $("fl");
   if (!fl) return;
   fl.innerHTML = loadedFiles.map((g, i) => `<div class="fitem"><span class="fn">${ICON_LAYERS} ${g.name}.shp</span><span class="fs">${g.num_features}个</span><button class="fitem-close" data-remove-file="${i}" title="移除" aria-label="移除该文件">${ICON_X}</button></div>`).join("");
@@ -600,12 +616,12 @@ function renderFileList() {
 
 const removeFile = function (i) {
   loadedFiles.splice(i, 1);
+  renderFileList();
   if (!loadedFiles.length) {
     syncOgGate(null);
     updateProjButton();
     const fl = $("fl"); if (fl) fl.innerHTML = ""; updatePreview(); return;
   }
-  renderFileList();
   if (loadedFiles.length === 1) syncOgGate(loadedFiles[0].crs_info || null);
   updatePreview();
   updateProjButton();
@@ -1207,6 +1223,22 @@ function autoSetOutputDirT(filePath) {
 }
 
 const FIELD_PLACEHOLDER = { fn: "DKMC", fi: "DKBH", fa: "MJ", fu: "DKYT", fm: "TFH", fd: "DLBM" };
+const AREA_UNITS = [
+  { source: "__area_sqm__", label: "平方米" },
+  { source: "__area_mu__", label: "亩" },
+  { source: "__area_ha__", label: "公顷" },
+  { source: "__area_km2__", label: "平方千米" },
+];
+const isAutoArea = (source) => AREA_UNITS.some(u => u.source === source);
+const areaDecimals = (source, value) => value == null
+  ? (source === "__area_sqm__" ? 2 : 4)
+  : Math.min(6, Math.max(0, Number.parseInt(value, 10) || 0));
+function areaSourceOptions(cur) {
+  return AREA_UNITS.map(u => `<option value="${u.source}"${cur === u.source ? " selected" : ""}>${u.label}(自动)</option>`).join("");
+}
+function syncSimpleAreaControls() {
+  $("simpleAreaPrecision").hidden = !isAutoArea($("fa")?.value);
+}
 
 function autoMatchFields(fieldNames) {
   // 统一三段式下拉：① 不填 ② 占位文字 ③ 数据字段名
@@ -1220,8 +1252,7 @@ function autoMatchFields(fieldNames) {
     let html = '<option value="">不填</option>';
     html += `<option value="__placeholder__">${FIELD_PLACEHOLDER[key]} (占位)</option>`;
     if (isArea) {
-      html += '<option value="__area_sqm__">平方米(自动)</option>';
-      html += '<option value="__area_ha__" selected>公顷(自动)</option>';
+      html += areaSourceOptions("__area_ha__");
     }
     fieldNames.forEach((fn) => {
       html += `<option value="${fn}">${fn}</option>`;
@@ -1229,6 +1260,7 @@ function autoMatchFields(fieldNames) {
     sel.innerHTML = html;
     if (!isArea) sel.value = ""; // 非面积字段默认不填
   }
+  syncSimpleAreaControls();
   // 高级模式开启时同步重建行内映射源下拉（保留仍存在的选中值）
   if ($("advMode")?.checked && advInitialized) {
     renderFieldRows(collectFieldRows());
@@ -1284,14 +1316,13 @@ function buildAdvSourceOptions(name, cur) {
     html += `<option value="__placeholder__"${cur === "__placeholder__" ? " selected" : ""}>${ADV_PLACEHOLDER[name]} (占位)</option>`;
   }
   if (ADV_AREA_FIELDS.includes(name) || (cur && cur.startsWith("__area_"))) {
-    html += `<option value="__area_sqm__"${cur === "__area_sqm__" ? " selected" : ""}>平方米(自动)</option>`;
-    html += `<option value="__area_ha__"${cur === "__area_ha__" ? " selected" : ""}>公顷(自动)</option>`;
+    html += areaSourceOptions(cur);
   }
   lastFieldNames.forEach((fn) => {
     html += `<option value="${escAttr(fn)}"${cur === fn ? " selected" : ""}>${escAttr(fn)}</option>`;
   });
   // 当前值不在候选（如源字段已移除）→ 置顶保留，避免静默丢配置
-  if (cur && cur !== "__placeholder__" && cur !== "__area_sqm__" && cur !== "__area_ha__"
+  if (cur && cur !== "__placeholder__" && !isAutoArea(cur)
       && !lastFieldNames.includes(cur)) {
     html = `<option value="${escAttr(cur)}" selected>${escAttr(cur)}</option>` + html;
   }
@@ -1314,7 +1345,9 @@ function renderFieldRows(rows) {
       `<input class="fk" data-i="${i}" data-f="name" maxlength="30" autocomplete="off" spellcheck="false" placeholder="新行" value="${escAttr(row.name)}">` +
       `<span class="feq">←</span>` +
       `<select class="fmap" data-i="${i}" data-f="source"${locked ? " disabled" : ""}>${buildAdvSourceOptions(row.name, row.source)}</select>` +
-      btnHtml;
+      btnHtml +
+      `<div class="area-precision"${isAutoArea(row.source) ? "" : " hidden"}><label for="advAreaDecimals${i}">小数位</label><select class="area-decimals" id="advAreaDecimals${i}" aria-label="${escAttr(row.name || "新字段")}小数位">` +
+      [0,1,2,3,4,5,6].map(n => `<option value="${n}"${n === areaDecimals(row.source, row.area_decimals) ? " selected" : ""}>${n} 位</option>`).join("") + `</select></div>`;
     box.appendChild(div);
   });
   hideAdvSuggest();
@@ -1328,6 +1361,7 @@ function collectFieldRows() {
     rows.push({
       name: div.querySelector(".fk")?.value ?? "",
       source: div.querySelector(".fmap")?.value ?? "",
+      area_decimals: Number(div.querySelector(".area-decimals")?.value ?? 4),
     });
   });
   return rows;
@@ -1335,7 +1369,11 @@ function collectFieldRows() {
 
 function advRowsMatchPreset(rows, preset) {
   const p = preset === "bcg" ? BCG_ADV_ROWS : STD_ADV_ROWS;
-  return rows.length === p.length && rows.every((r, i) => r.name === p[i].name && r.source === p[i].source);
+  return rows.length === p.length && rows.every((r, i) => sameFieldRow(r, p[i]));
+}
+function sameFieldRow(a, b) {
+  return a.name === b.name && a.source === b.source
+    && (!isAutoArea(a.source) || areaDecimals(a.source, a.area_decimals) === areaDecimals(b.source, b.area_decimals));
 }
 
 // ─── 用户字段方案 CRUD（localStorage tg_adv_tpl）───
@@ -1353,7 +1391,7 @@ function writeAdvTpls(tpls) {
 }
 function matchAdvTpl(rows) {
   for (const t of readAdvTpls()) {
-    if (t.rows.length === rows.length && t.rows.every((r, i) => r.name === rows[i].name && r.source === rows[i].source)) return t.id;
+    if (t.rows.length === rows.length && t.rows.every((r, i) => sameFieldRow(r, rows[i]))) return t.id;
   }
   return null;
 }
@@ -1393,9 +1431,9 @@ window.confirmAdvTplSave = function () {
   }
   tplSaving = true;
   try {
-    const rows = collectFieldRows().map((r) => ({ name: r.name, source: r.source }));
+    const rows = collectFieldRows();
     // 内容与预设/已有方案完全相同 → 拒绝保存（防冗余方案与「切换后名字不变化」的困惑）
-    const sameAs = (p) => p.length === rows.length && p.every((r, i) => r.name === rows[i].name && r.source === rows[i].source);
+    const sameAs = (p) => p.length === rows.length && p.every((r, i) => sameFieldRow(r, rows[i]));
     if (advRowsMatchPreset(rows, "std")) { closeTplNameInput(); toast("与预设「8 字段标准」内容完全相同，无需另存方案"); return; }
     if (advRowsMatchPreset(rows, "bcg")) { closeTplNameInput(); toast("与预设「补充耕地模式」内容完全相同，无需另存方案"); return; }
     const dup = readAdvTpls().find((t) => t.n !== n && sameAs(t.rows));
@@ -1522,7 +1560,11 @@ function bindFieldRowEvents() {
   box.addEventListener("scroll", hideAdvSuggest, { passive: true });
   box.addEventListener("change", (e) => {
     if (e.target.matches("input.fk")) { commitFieldName(e.target); return; }
-    if (e.target.closest("select.fmap")) {
+    if (e.target.matches("select.fmap, select.area-decimals")) {
+      if (e.target.matches("select.fmap")) {
+        const row = e.target.closest(".field-row");
+        row.querySelector(".area-precision").hidden = !isAutoArea(e.target.value);
+      }
       syncAdvPresetState();
       updatePreview();
     }
@@ -1540,10 +1582,12 @@ function inheritAdvFromSimple() {
     "图幅号": $("fm")?.value || "",
     "地类": $("fd")?.value || "",
   };
-  return STD_ADV_ROWS.map((r) => ({ ...r, source: byName[r.name] !== undefined ? byName[r.name] : r.source }));
+  return STD_ADV_ROWS.map((r) => ({ ...r, source: byName[r.name] !== undefined ? byName[r.name] : r.source,
+    area_decimals: r.name === "地块面积" ? Number($("areaDecimals").value) : 4 }));
 }
 
 function setAdvModeOn(on) {
+  $("advMode").checked = on;
   if (on && !advInitialized) {
     advInitialized = true;
     renderFieldRows(inheritAdvFromSimple());
@@ -1553,20 +1597,33 @@ function setAdvModeOn(on) {
   const advBox = $("fieldAdv");
   if (simple) simple.style.display = on ? "none" : "";
   if (advBox) advBox.style.display = on ? "" : "none";
+  syncFieldModeTabs(on);
   updatePreview();
+}
+
+function syncFieldModeTabs(on) {
+  document.querySelectorAll(".field-mode-tab").forEach(tab => {
+    const selected = (tab.dataset.fieldMode === "advanced") === on;
+    tab.setAttribute("aria-selected", String(selected));
+    tab.tabIndex = selected ? 0 : -1;
+  });
 }
 
 // 恢复配置（ld 用）：adv = { on, preset, rows } 或 null（旧配置 → 关闭态）
 function applyAdvConfig(adv) {
   const on = !!(adv && adv.on);
-  if (on) {
+  if (adv && Array.isArray(adv.rows) && adv.rows.length) {
     advInitialized = true;
     const rows = Array.isArray(adv.rows) && adv.rows.length
-      ? adv.rows.map((r) => ({ name: r?.name || "", source: r?.source || "" }))
+      ? adv.rows.map((r) => ({ name: r?.name || "", source: r?.source || "", area_decimals: areaDecimals(r?.source, r?.area_decimals) }))
       : inheritAdvFromSimple();
     renderFieldRows(rows);
     advPreset = adv.preset || "std";
     syncAdvPresetState();
+  } else if (on) {
+    advInitialized = true;
+    renderFieldRows(inheritAdvFromSimple());
+    advPreset = "std";
   } else {
     advInitialized = false;
     advPreset = "std";
@@ -1577,6 +1634,7 @@ function applyAdvConfig(adv) {
   const advBox = $("fieldAdv");
   if (simple) simple.style.display = on ? "none" : "";
   if (advBox) advBox.style.display = on ? "" : "none";
+  syncFieldModeTabs(on);
 }
 
 // 简写 → 中文键名（autoFillHeader 的 info 可能用简写或中文键）
@@ -1645,7 +1703,7 @@ function renderTxtParseLog() {
     : "等待导入 TXT 文件…";
 }
 
-const clearAllFiles = function () { loadedFiles = []; sourceType = null; sourcePath = null; gdbLayers = []; selectedLayers = []; gdbTempSelected = []; window._gdbName = ""; syncOgGate(null); const fl = $("fl"); if (fl) fl.innerHTML = ""; const out = $("out_dir_s"); if (out) out.value = ""; updateProjButton(); QB.clearRows(); try { localStorage.removeItem("tg_flt2"); } catch (e) {} TV.reset(); MV.reset(); toast("已清空", "ok"); };
+const clearAllFiles = function () { loadedFiles = []; sourceType = null; sourcePath = null; gdbLayers = []; selectedLayers = []; gdbTempSelected = []; window._gdbName = ""; syncMergeOutputOption(); syncOgGate(null); const fl = $("fl"); if (fl) fl.innerHTML = ""; const out = $("out_dir_s"); if (out) out.value = ""; updateProjButton(); QB.clearRows(); try { localStorage.removeItem("tg_flt2"); } catch (e) {} TV.reset(); MV.reset(); toast("已清空", "ok"); };
 const clearAllFilesTxt = function () { txtFiles = []; const fl = $("flT"); if (fl) fl.innerHTML = ""; const pv = $("pvT"); if (pv) pv.textContent = "等待导入 TXT 文件…"; const out = $("out_dir"); if (out) out.value = ""; toast("已清空", "ok"); };
 
 // ═══ Preview ═══
@@ -1828,10 +1886,12 @@ const POINT_CORE = [
   { kind: "x", label: "X坐标" },
 ];
 const POINT_CUSTOM_KINDS = [
+  { kind: "sequence", label: "序号" },
   { kind: "fixed", label: "固定值" },
   { kind: "field", label: "源字段" },
   { kind: "distance", label: "点距离" },
 ];
+let seqContinuous = true;
 
 function corePointRows() {
   return POINT_CORE.map(({ kind }) => ({ kind, source: "", value: "" }));
@@ -1865,7 +1925,13 @@ function renderPointRows(rows) {
     } else {
       const kind = POINT_CUSTOM_KINDS.some((c) => c.kind === row.kind) ? row.kind : "field";
       let valueCtrl;
-      if (kind === "field") {
+      if (kind === "sequence") {
+        valueCtrl =
+          `<div class="seq-seg" role="group" aria-label="序号跨地块编号方式" title="序号每个 TXT 从 1 开始、跨环连续；此处选择跨地块是否连续编号">` +
+          `<button type="button" class="seq-seg-btn${seqContinuous ? " on" : ""}" data-seq-cont="1">跨地块连续</button>` +
+          `<button type="button" class="seq-seg-btn${seqContinuous ? "" : " on"}" data-seq-cont="0">每地块重置</button>` +
+          `</div>`;
+      } else if (kind === "field") {
         valueCtrl = `<select class="psource" title="选择输出到每条界址点的源字段">${buildPointFieldOptions(row.source)}</select>`;
       } else if (kind === "fixed") {
         const display = row.value || "";
@@ -1880,7 +1946,7 @@ function renderPointRows(rows) {
           `<option value="cm"${row.unit === "cm" ? " selected" : ""}>厘米</option>` +
           `</select>` +
           `<select class="pprec" title="距离小数位">` +
-          [0, 1, 2, 3, 4, 5, 6].map((n) => `<option value="${n}"${String(row.decimals || "3") === String(n) ? " selected" : ""}>${n}位</option>`).join("") +
+          [0, 1, 2, 3, 4, 5, 6].map((n) => `<option value="${n}"${String(row.decimals ?? "3") === String(n) ? " selected" : ""}>${n}位</option>`).join("") +
           `</select>`;
       }
       div.innerHTML =
@@ -1892,6 +1958,7 @@ function renderPointRows(rows) {
     }
     box.appendChild(div);
   });
+  bbSyncTag();
 }
 
 function collectPointRows() {
@@ -1929,6 +1996,7 @@ function getPointLayout() {
   const distance = rows.find((row) => row.kind === "distance");
   return {
     columns,
+    sequence_continuous: seqContinuous,
     stake_field: "",
     stake_default: "",
     distance_unit: distance?.unit || "m",
@@ -1939,6 +2007,7 @@ function getPointLayout() {
 }
 
 function applyPointLayoutConfig(config) {
+  seqContinuous = config?.sequence_continuous ?? true;
   if (!config || !Array.isArray(config.columns) || !config.columns.length) {
     renderPointRows(corePointRows());
     bbSyncTag();
@@ -1949,27 +2018,23 @@ function applyPointLayoutConfig(config) {
       kind: row?.kind || "point",
       source: row?.source || "",
       value: row?.value || "",
-      unit: row?.unit || config.distance_unit || "m",
-      decimals: row?.decimals || config.distance_decimals || "3",
+      unit: row?.distance_unit || row?.unit || config.distance_unit || "m",
+      decimals: row?.distance_decimals ?? row?.decimals ?? config.distance_decimals ?? "3",
     }))
     .filter((row) => POINT_CORE.some((core) => core.kind === row.kind)
       || POINT_CUSTOM_KINDS.some((kind) => kind.kind === row.kind));
   const seenCore = new Set();
-  const coreRows = [];
-  const customRows = [];
+  const normalized = [];
   rows.forEach((row) => {
     if (POINT_CORE.some((core) => core.kind === row.kind)) {
       if (seenCore.has(row.kind)) return;
       seenCore.add(row.kind);
-      coreRows.push(row);
-    } else {
-      customRows.push(row);
     }
+    normalized.push(row);
   });
   POINT_CORE.forEach((core) => {
-    if (!seenCore.has(core.kind)) coreRows.push({ kind: core.kind, source: "", value: "" });
+    if (!seenCore.has(core.kind)) normalized.push({ kind: core.kind, source: "", value: "" });
   });
-  const normalized = [...coreRows, ...customRows];
   renderPointRows(normalized.length ? normalized : corePointRows());
   bbSyncTag();
 }
@@ -2081,11 +2146,12 @@ function getConfig() {
     h: { attrs: collectAttrRows(), project_info: $("hpi")?.value || "" },
     f: {
       name: $("fn")?.value || "", id: $("fi")?.value || "", area: $("fa")?.value || "", use_field: $("fu")?.value || "", tfh: $("fm")?.value || "", dlbm: $("fd")?.value || "",
+      area_decimals: Number($("areaDecimals")?.value ?? 4),
       // 高级模式：on=开关态 / preset=预设态 / rows=行状态（持久化用）
       adv: { on: advOn, preset: advPreset, rows: advInitialized ? collectFieldRows() : null },
       // 发给 Rust FieldMapping.columns（高级模式开启才非空；空字段名行 = 占位「新行N」，输出空值列）
       columns: advOn && advInitialized
-        ? collectFieldRows().map((r) => ({ name: r.name, source: r.source }))
+        ? collectFieldRows()
         : [],
     },
   };
@@ -2111,6 +2177,7 @@ function getOptions() {
     proj_no_prefix: !!window._projNoPrefix,
     output_mode: outputMode,
     filename_field: filenameField,
+    txt_encoding: $("txtEncoding")?.value || "utf8",
     // 地块级筛选（属性表求值）：预览/导出共用同一 uid 口径；语句有误时为 null（导出前另有拦截）
     plot_filter: (window.TV && TV.getFilterUids ? TV.getFilterUids().uids : null),
     // 界址点列布局：null = 标准4列；界面切换部备案/自定义后所有预览和导出共用
@@ -2380,6 +2447,7 @@ const ld = function (id) {
     if ($("hpi")) $("hpi").value = hn.project_info;
   }
   if (c.p) {
+    $("txtEncoding").value = c.p.txt_encoding || "utf8";
     if ($("ox")) $("ox").checked = !!c.p.ox;
     if ($("oj")) $("oj").checked = !!c.p.oj;
     if ($("on")) $("on").checked = !!c.p.on;
@@ -2397,7 +2465,13 @@ const ld = function (id) {
   }
   if (c.f) {
     // 6 槽位按元素 ID 恢复（f 键名为 DOM id：fn/fi/fa/fu/fm/fd）
-    ["fn", "fi", "fa", "fu", "fm", "fd"].forEach((k) => { const e = $(k); if (e && typeof c.f[k] === "string") e.value = c.f[k]; });
+    const fieldKeys = { fn: "name", fi: "id", fa: "area", fu: "use_field", fm: "tfh", fd: "dlbm" };
+    Object.entries(fieldKeys).forEach(([id, key]) => {
+      const value = c.f[id] ?? c.f[key];
+      if (typeof value === "string") $(id).value = value;
+    });
+    $("areaDecimals").value = String(areaDecimals($("fa").value, c.f.area_decimals));
+    syncSimpleAreaControls();
     // 高级模式配置恢复（旧配置无 adv → 关闭态）
     applyAdvConfig(c.f.adv || null);
   }
@@ -2979,12 +3053,23 @@ function initClickBindings() {
   // 字段映射下拉框改选后刷新预览（fn/fi/fa/fu/fm/fd = 地块名/编号/面积/用途/图幅号/地类编码）
   ["fn", "fi", "fa", "fu", "fm", "fd"].forEach((id) => {
     const el = $(id);
-    if (el) el.addEventListener("change", () => { updatePreview(); });
+    if (el) el.addEventListener("change", () => { if (id === "fa") syncSimpleAreaControls(); updatePreview(); });
   });
 
   // 字段映射高级模式：开关 / 补充耕地预设开关 / 添加 / 恢复默认 / 动态行事件
   const advModeEl = $("advMode");
   if (advModeEl) advModeEl.addEventListener("change", () => setAdvModeOn(advModeEl.checked));
+  const fieldTabs = [...document.querySelectorAll(".field-mode-tab")];
+  fieldTabs.forEach((tab, i) => {
+    tab.addEventListener("click", () => setAdvModeOn(tab.dataset.fieldMode === "advanced"));
+    tab.addEventListener("keydown", e => {
+      if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) return;
+      e.preventDefault();
+      const next = e.key === "Home" ? 0 : e.key === "End" ? 1 : 1 - i;
+      setAdvModeOn(fieldTabs[next].dataset.fieldMode === "advanced");
+      fieldTabs[next].focus();
+    });
+  });
   // 预设下拉（v3.0 取代补充耕地 checkbox）：选预设即重填列表；「自定义」仅是状态不主动载入
   const bcgSelEl = $("bcgSel");
   if (bcgSelEl) {
@@ -2998,7 +3083,7 @@ function initClickBindings() {
         // 用户方案（id 前缀 t）：选中即载入整套字段清单
         const t = readAdvTpls().find((x) => x.id === v);
         if (t) {
-          renderFieldRows(t.rows.map((r) => ({ name: r.name || "", source: r.source || "" })));
+          renderFieldRows(t.rows.map((r) => ({ name: r.name || "", source: r.source || "", area_decimals: areaDecimals(r.source, r.area_decimals) })));
           advPreset = v;
         }
       }
@@ -3064,6 +3149,7 @@ function initClickBindings() {
     const tf = $("t_filenameFieldRow");
     if (tf) tf.style.display = tMode === "split_by_plot" ? "block" : "none";
   }
+  syncMergeOutputOption();
   syncFilenameRows();
   syncModeSeg("output_mode");
   syncModeSeg("t_output_mode");
@@ -3088,6 +3174,8 @@ function initClickBindings() {
   });
   bind("btnResetFld", () => {
     ["fn", "fi", "fa", "fu", "fm", "fd"].forEach((k) => { const e = $(k); if (e) e.value = PP[0].f[k]; });
+    $("areaDecimals").value = "4";
+    syncSimpleAreaControls();
     applyAdvConfig(null);
     syncAdvPresetState();
     updatePreview();
@@ -3139,12 +3227,25 @@ function initClickBindings() {
     const kind = $("bbNewKind")?.value || "field";
     rows.push({ kind, source: "", value: "", unit: "m", decimals: "3" });
     renderPointRows(rows);
+    bbSyncTag();
     $("bbRows")?.scrollTo({ top: $("bbRows").scrollHeight });
     updatePreview();
   });
   const bbRows = $("bbRows");
   if (bbRows) {
     bbRows.addEventListener("click", (e) => {
+      const seqBtn = e.target.closest("[data-seq-cont]");
+      if (seqBtn) {
+        const next = seqBtn.dataset.seqCont === "1";
+        if (next !== seqContinuous) {
+          seqContinuous = next;
+          document.querySelectorAll("#bbRows .seq-seg-btn").forEach((btn) => {
+            btn.classList.toggle("on", (btn.dataset.seqCont === "1") === seqContinuous);
+          });
+          updatePreview();
+        }
+        return;
+      }
       const editBtn = e.target.closest("button[data-act='edit']");
       if (editBtn) {
         openPointValueEditor(parseInt(editBtn.dataset.i, 10));

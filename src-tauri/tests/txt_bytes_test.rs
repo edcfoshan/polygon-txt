@@ -31,6 +31,7 @@ fn make_header() -> convert::HeaderConfig {
 
 fn make_mapping() -> convert::FieldMapping {
     convert::FieldMapping {
+        area_decimals: None,
         name: String::new(), id: String::new(), area: String::new(),
         use_field: String::new(), tfh: String::new(), dlbm: String::new(),
         columns: Vec::new(),
@@ -39,6 +40,7 @@ fn make_mapping() -> convert::FieldMapping {
 
 fn base_options() -> convert::ShpToTxtOptions {
     convert::ShpToTxtOptions {
+        txt_encoding: String::new(),
         proj_mode: "keep".to_string(),
         proj_zone: None,
         ox: false, oj: true, on: false, oo: true, oc: false,

@@ -12,6 +12,9 @@ pub struct FieldMapping {
     pub name: String,
     pub id: String,
     pub area: String,
+    /// 自动面积的小数位；旧方案省略时保留平方米2位、公顷4位。
+    #[serde(default)]
+    pub area_decimals: Option<u32>,
     pub use_field: String,
     pub tfh: String,
     pub dlbm: String,
@@ -28,6 +31,8 @@ pub struct FieldColumn {
     /// 映射源："" 不填 | "__placeholder__" 占位 | "__area_sqm__"/"__area_ha__" 面积自动
     /// | "__count__" 坐标点个数(锁定) | "__geom__" 图形属性(固定"面") | 源字段名
     pub source: String,
+    #[serde(default)]
+    pub area_decimals: Option<u32>,
 }
 
 /// `__count__` 列在 resolve 阶段的占位哨兵：generate_txt 按 value==哨兵替换为真实点数。
@@ -101,6 +106,9 @@ pub struct ShpToTxtOptions {
     /// 界址点列布局：None = 标准 4 列；Some = 按界面配置列序输出。
     #[serde(default)]
     pub point_layout: Option<txt::PointLayout>,
+    /// UTF-8（默认，无 BOM）或 GBK。
+    #[serde(default)]
+    pub txt_encoding: String,
 }
 
 fn default_zone_type() -> u8 {
@@ -609,6 +617,16 @@ pub fn convert_shp_to_txt(
     // 地块级筛选（与预览同一 uid 口径）：在 output_mode 分发前过滤，三种模式天然覆盖
     apply_plot_filter_to_sources(&mut sources, options)?;
 
+    // 整批校验后再写文件：后面的地块含生僻字时也不会留下半批GBK结果。
+    if options.txt_encoding != "" && options.txt_encoding != "utf8" && options.txt_encoding != "utf-8" {
+        for src in &sources {
+            let plots: Vec<_> = src.plots.iter().map(|p| p.plot.clone()).collect();
+            let content = txt::generate_txt_ex(&header_for_convert.project_info, &header_for_convert.attrs,
+                &plots, options.oj, options.oc, options.point_layout.as_ref());
+            txt::encode_txt(&content, &options.txt_encoding)?;
+        }
+    }
+
     match options.output_mode.as_str() {
         "split_by_plot" => convert_split_by_plot(sources, &header_for_convert, options, output_dir),
         "merge_all" => convert_merge_all(sources, &header_for_convert, options, output_dir),
@@ -879,7 +897,7 @@ fn convert_one_to_one(
             conflict_count += 1;
         }
         let txt_path = output_dir.join(format!("{}.txt", final_name));
-        std::fs::write(&txt_path, &txt_content)
+        std::fs::write(&txt_path, txt::encode_txt(&txt_content, &options.txt_encoding)?)
             .map_err(|e| format!("写 TXT 失败: {}", e))?;
         output_files.push(txt_path.to_string_lossy().to_string());
     }
@@ -961,7 +979,7 @@ fn convert_split_by_plot(
                 options.point_layout.as_ref(),
             );
             let txt_path = subdir.join(format!("{}.txt", final_name));
-            std::fs::write(&txt_path, &txt_content)
+            std::fs::write(&txt_path, txt::encode_txt(&txt_content, &options.txt_encoding)?)
                 .map_err(|e| format!("写 TXT 失败: {}", e))?;
             output_files.push(txt_path.to_string_lossy().to_string());
         }
@@ -1008,7 +1026,7 @@ fn convert_merge_all(
         options.point_layout.as_ref(),
     );
     let txt_path = output_dir.join(&filename);
-    std::fs::write(&txt_path, &txt_content).map_err(|e| format!("写 TXT 失败: {}", e))?;
+    std::fs::write(&txt_path, txt::encode_txt(&txt_content, &options.txt_encoding)?).map_err(|e| format!("写 TXT 失败: {}", e))?;
 
     let output_files = vec![txt_path.to_string_lossy().to_string()];
     Ok(ConvertResult {
@@ -1431,7 +1449,7 @@ fn single_shp_to_source(
             &feat.surface
         };
         let plot_name = resolve_value(&field_mapping.name, "name", &info.field_names, &record);
-        let plot_area = resolve_area(&field_mapping.area, surface, &info.field_names, &record);
+        let plot_area = resolve_area(&field_mapping.area, field_mapping.area_decimals, surface, &info.field_names, &record);
         let plot_use = resolve_value(&field_mapping.use_field, "use_field", &info.field_names, &record);
         let plot_tfh = resolve_value(&field_mapping.tfh, "tfh", &info.field_names, &record);
         let plot_dlbm = resolve_value(&field_mapping.dlbm, "dlbm", &info.field_names, &record);
@@ -1543,7 +1561,7 @@ fn gdb_to_sources(
                 &feat.surface
             };
             let plot_name = resolve_value_map(&field_mapping.name, "name", &feat.attributes);
-            let plot_area = resolve_area_map(&field_mapping.area, surface, &feat.attributes);
+            let plot_area = resolve_area_map(&field_mapping.area, field_mapping.area_decimals, surface, &feat.attributes);
             let plot_use = resolve_value_map(&field_mapping.use_field, "use_field", &feat.attributes);
             let plot_tfh = resolve_value_map(&field_mapping.tfh, "tfh", &feat.attributes);
             let plot_dlbm = resolve_value_map(&field_mapping.dlbm, "dlbm", &feat.attributes);
@@ -1840,9 +1858,27 @@ fn calculate_area_from_surface(surface: &SurfaceGeometry) -> f64 {
     total.abs()
 }
 
+fn automatic_area_factor(source: &str) -> Option<f64> {
+    match source {
+        "__area_sqm__" => Some(1.0),
+        "__area_mu__" => Some(0.0015),
+        "__area_ha__" => Some(0.0001),
+        "__area_km2__" => Some(0.000001),
+        _ => None,
+    }
+}
+
+fn format_automatic_area(source: &str, decimals: Option<u32>, surface: &SurfaceGeometry) -> String {
+    let decimals = decimals.unwrap_or(if source == "__area_sqm__" { 2 } else { 4 }).min(6);
+    let value = calculate_area_from_surface(surface) * automatic_area_factor(source).unwrap_or(1.0);
+    let scale = 10_f64.powi(decimals as i32);
+    format!("{:.*}", decimals as usize, (value * scale).round() / scale)
+}
+
 /// 解析面积值（SHP 版，含自动计算）
 fn resolve_area(
     mapping: &str,
+    decimals: Option<u32>,
     surface: &SurfaceGeometry,
     field_names: &[String],
     record: &[String],
@@ -1850,8 +1886,7 @@ fn resolve_area(
     match mapping {
         "" => String::new(),
         "__placeholder__" => "MJ".to_string(),
-        "__area_sqm__" => format!("{:.2}", calculate_area_from_surface(surface)),
-        "__area_ha__" => format!("{:.4}", calculate_area_from_surface(surface) / 10000.0),
+        auto if automatic_area_factor(auto).is_some() => format_automatic_area(auto, decimals, surface),
         other => resolve_value(other, "area", field_names, record),
     }
 }
@@ -1859,14 +1894,14 @@ fn resolve_area(
 /// 解析面积值（GDB 版，含自动计算）
 fn resolve_area_map(
     mapping: &str,
+    decimals: Option<u32>,
     surface: &SurfaceGeometry,
     attrs: &HashMap<String, String>,
 ) -> String {
     match mapping {
         "" => String::new(),
         "__placeholder__" => "MJ".to_string(),
-        "__area_sqm__" => format!("{:.2}", calculate_area_from_surface(surface)),
-        "__area_ha__" => format!("{:.4}", calculate_area_from_surface(surface) / 10000.0),
+        auto if automatic_area_factor(auto).is_some() => format_automatic_area(auto, decimals, surface),
         other => resolve_value_map(other, "area", attrs),
     }
 }
@@ -1887,8 +1922,7 @@ fn resolve_columns(
                 "__placeholder__" => adv_placeholder(&col.name).to_string(),
                 "__count__" => COUNT_SENTINEL.to_string(),
                 "__geom__" => "面".to_string(),
-                "__area_sqm__" => format!("{:.2}", calculate_area_from_surface(surface)),
-                "__area_ha__" => format!("{:.4}", calculate_area_from_surface(surface) / 10000.0),
+                auto if automatic_area_factor(auto).is_some() => format_automatic_area(auto, col.area_decimals, surface),
                 other => resolve_value(other, "", field_names, record),
             };
             (col.name.clone(), val)
@@ -1910,8 +1944,7 @@ fn resolve_columns_map(
                 "__placeholder__" => adv_placeholder(&col.name).to_string(),
                 "__count__" => COUNT_SENTINEL.to_string(),
                 "__geom__" => "面".to_string(),
-                "__area_sqm__" => format!("{:.2}", calculate_area_from_surface(surface)),
-                "__area_ha__" => format!("{:.4}", calculate_area_from_surface(surface) / 10000.0),
+                auto if automatic_area_factor(auto).is_some() => format_automatic_area(auto, col.area_decimals, surface),
                 other => resolve_value_map(other, "", attrs),
             };
             (col.name.clone(), val)
@@ -1995,6 +2028,24 @@ fn extract_zone_from_coords(plots: &[txt::PlotData]) -> Option<i32> {
 mod tests {
     use super::*;
     use crate::txt::PlotData;
+
+    #[test]
+    fn area_mapping_preserves_source_values_and_gdb_columns_have_independent_precision() {
+        let surface = SurfaceGeometry { parts: vec![crate::geometry::PolygonPart {
+            exterior: vec![(0.0,0.0),(100.0,0.0),(100.0,100.0),(0.0,100.0)], holes: vec![],
+        }] };
+        let attrs = HashMap::from([("MJ".to_string(), "001.230000".to_string())]);
+        let columns = vec![
+            FieldColumn { name:"平方米".into(), source:"__area_sqm__".into(), area_decimals:Some(0) },
+            FieldColumn { name:"亩".into(), source:"__area_mu__".into(), area_decimals:Some(6) },
+            FieldColumn { name:"源面积".into(), source:"MJ".into(), area_decimals:Some(0) },
+        ];
+        assert_eq!(resolve_columns_map(&columns,&surface,&attrs),vec![
+            ("平方米".into(),"10000".into()),("亩".into(),"15.000000".into()),("源面积".into(),"001.230000".into())
+        ]);
+        assert_eq!(resolve_area_map("MJ",Some(0),&surface,&attrs),"001.230000");
+        assert_eq!(resolve_area("MJ",Some(0),&surface,&["MJ".into()],&["001.230000".into()]),"001.230000");
+    }
 
     fn plot_with_coords(coords: Vec<(f64, f64)>) -> PlotData {
         PlotData {

@@ -134,11 +134,13 @@ fn test_shp_to_txt_one_to_one() {
 
     let header = make_header();
     let field_mapping = convert::FieldMapping {
+        area_decimals: None,
         name: "DKMC".into(), id: "DKBH".into(), area: "MJ".into(),
         use_field: "DKYT".into(), tfh: "TFH".into(), dlbm: "DLBM".into(),
         columns: Vec::new(),
     };
     let options = convert::ShpToTxtOptions {
+        txt_encoding: String::new(),
         proj_mode: "keep".to_string(),
         proj_zone: None,
         ox: false, oj: true, on: false, oo: true, oc: false,
@@ -166,6 +168,7 @@ fn test_shp_to_txt_xy_swap() {
 
     let header = make_header();
     let field_mapping = convert::FieldMapping {
+        area_decimals: None,
         name: "DKMC".into(), id: "DKBH".into(), area: "MJ".into(),
         use_field: "DKYT".into(), tfh: "TFH".into(), dlbm: "DLBM".into(),
         columns: Vec::new(),
@@ -173,6 +176,7 @@ fn test_shp_to_txt_xy_swap() {
 
     // ox=false（默认，输出标准 Y,X 顺序：北坐标在前）
     let opts_off = convert::ShpToTxtOptions {
+        txt_encoding: String::new(),
         proj_mode: "keep".to_string(),
         proj_zone: None,
         ox: false, oj: true, on: false, oo: true, oc: false,
@@ -187,6 +191,7 @@ fn test_shp_to_txt_xy_swap() {
 
     // ox=true（勾选标反，输出 X,Y 顺序：东坐标在前）
     let opts_on = convert::ShpToTxtOptions {
+        txt_encoding: String::new(),
         proj_mode: "keep".to_string(),
         proj_zone: None,
         ox: true, oj: true, on: false, oo: true, oc: false,
@@ -237,11 +242,13 @@ fn test_shp_to_txt_merge_all() {
 
     let header = make_header();
     let field_mapping = convert::FieldMapping {
+        area_decimals: None,
         name: "DKMC".into(), id: "DKBH".into(), area: "MJ".into(),
         use_field: "DKYT".into(), tfh: "TFH".into(), dlbm: "DLBM".into(),
         columns: Vec::new(),
     };
     let options = convert::ShpToTxtOptions {
+        txt_encoding: String::new(),
         proj_mode: "keep".to_string(),
         proj_zone: None,
         ox: false, oj: true, on: false, oo: true, oc: false,
@@ -271,12 +278,14 @@ fn test_shp_to_txt_split_by_plot() {
 
     let header = make_header();
     let field_mapping = convert::FieldMapping {
+        area_decimals: None,
         name: "DKMC".into(), id: "DKBH".into(), area: "MJ".into(),
         use_field: "DKYT".into(), tfh: "TFH".into(), dlbm: "DLBM".into(),
         columns: Vec::new(),
     };
     // 用序号命名（filename_field 为空）
     let options = convert::ShpToTxtOptions {
+        txt_encoding: String::new(),
         proj_mode: "keep".to_string(),
         proj_zone: None,
         ox: false, oj: true, on: false, oo: true, oc: false,
@@ -746,6 +755,7 @@ fn test_shp_to_txt_full() {
     let shp_path = test_shp_stem();
 
     let field_mapping = convert::FieldMapping {
+        area_decimals: None,
         name: "DKMC".into(),
         id: "DKBH".into(),
         area: "MJ".into(),
@@ -757,6 +767,7 @@ fn test_shp_to_txt_full() {
     let header = make_header();
 
     let options = convert::ShpToTxtOptions {
+        txt_encoding: String::new(),
         proj_mode: "keep".to_string(),
         proj_zone: None,
         ox: false,
@@ -838,6 +849,7 @@ fn test_shp_txt_roundtrip() {
     assert!(!generated_shp.is_empty(), "应有 SHP 输出");
 
     let field_mapping = convert::FieldMapping {
+        area_decimals: None,
         name: "DKMC".into(),
         id: "DKBH".into(),
         area: "MJ".into(),
@@ -847,6 +859,7 @@ fn test_shp_txt_roundtrip() {
     };
 
     let options = convert::ShpToTxtOptions {
+        txt_encoding: String::new(),
         proj_mode: "keep".to_string(),
         proj_zone: None,
         ox: false,
@@ -900,6 +913,7 @@ fn test_preview() {
     let shp_path = test_shp_stem();
 
     let field_mapping = convert::FieldMapping {
+        area_decimals: None,
         name: "DKMC".into(),
         id: "DKBH".into(),
         area: "MJ".into(),
@@ -915,6 +929,7 @@ fn test_preview() {
     };
 
     let options = convert::ShpToTxtOptions {
+        txt_encoding: String::new(),
         proj_mode: "keep".to_string(),
         proj_zone: None,
         ox: false,
@@ -1064,6 +1079,7 @@ J1,2,30.000,30.000";
     assert_eq!(shp_paths.len(), 1, "应有一个 shp 输出");
 
     let field_mapping = convert::FieldMapping {
+        area_decimals: None,
         name: "DKMC".into(),
         id: "DKBH".into(),
         area: "MJ".into(),
@@ -1072,6 +1088,7 @@ J1,2,30.000,30.000";
         dlbm: "DLBM".into(), columns: Vec::new(),
     };
     let shp_to_txt = convert::ShpToTxtOptions {
+        txt_encoding: String::new(),
         proj_mode: "keep".to_string(),
         proj_zone: None,
         ox: false,
@@ -1154,6 +1171,7 @@ J1,2,2.000,2.000";
         .collect();
 
     let field_mapping = convert::FieldMapping {
+        area_decimals: None,
         name: "DKMC".into(),
         id: "DKBH".into(),
         area: "MJ".into(),
@@ -1162,6 +1180,7 @@ J1,2,2.000,2.000";
         dlbm: "DLBM".into(), columns: Vec::new(),
     };
     let shp_to_txt = convert::ShpToTxtOptions {
+        txt_encoding: String::new(),
         proj_mode: "keep".to_string(),
         proj_zone: None,
         ox: false,
@@ -1216,6 +1235,7 @@ fn test_field_mapping_sentinels_area() {
     let shp_path = test_shp_stem();
     let header = make_header();
     let options = convert::ShpToTxtOptions {
+        txt_encoding: String::new(),
         proj_mode: "keep".to_string(),
         proj_zone: None,
         ox: false, oj: true, on: false, oo: false, oc: false,
@@ -1224,6 +1244,7 @@ fn test_field_mapping_sentinels_area() {
 
     // 平方米（自动）：面积应为正数，2 位小数
     let mk = |area: &str| convert::FieldMapping {
+        area_decimals: None,
         name: "__placeholder__".into(), id: "__placeholder__".into(), area: area.into(),
         use_field: "__placeholder__".into(), tfh: "__placeholder__".into(), dlbm: "__placeholder__".into(), columns: Vec::new(),
     };
@@ -1409,11 +1430,13 @@ fn test_shp_to_txt_proj_mode_a_forward() {
         None, None,
         &make_header(),
         &convert::FieldMapping {
+            area_decimals: None,
             name: String::new(), id: String::new(),
             area: "__area_ha__".into(), use_field: String::new(),
             tfh: String::new(), dlbm: String::new(), columns: Vec::new(),
         },
         &convert::ShpToTxtOptions {
+            txt_encoding: String::new(),
             ox: false, oj: false, on: false, oo: false, oc: false,
             output_mode: "one_to_one".into(), filename_field: String::new(),
             og: false, zone_type: 3,

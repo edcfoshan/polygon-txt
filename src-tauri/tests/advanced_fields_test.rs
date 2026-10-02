@@ -81,12 +81,13 @@ fn bcg_columns() -> Vec<convert::FieldColumn> {
         ("耕地质量等级", ""),
     ]
     .iter()
-    .map(|(n, s)| convert::FieldColumn { name: n.to_string(), source: s.to_string() })
+    .map(|(n, s)| convert::FieldColumn { area_decimals: None, name: n.to_string(), source: s.to_string() })
     .collect()
 }
 
 fn adv_options() -> convert::ShpToTxtOptions {
     convert::ShpToTxtOptions {
+        txt_encoding: String::new(),
         proj_mode: "keep".to_string(),
         proj_zone: None,
         ox: false, oj: true, on: false, oo: true, oc: false,
@@ -278,6 +279,7 @@ fn test_shp_to_txt_advanced_pipeline() {
     let shp_path = test_shp_stem();
     let header = make_header();
     let field_mapping = convert::FieldMapping {
+        area_decimals: None,
         name: "DKMC".into(), id: "DKBH".into(), area: "MJ".into(),
         use_field: "DKYT".into(), tfh: "TFH".into(), dlbm: "DLBM".into(),
         columns: bcg_columns(),
@@ -335,9 +337,10 @@ fn test_custom_field_names_and_renamed_count() {
         ("地块面积", "__area_ha__"),
     ]
     .iter()
-    .map(|(n, s)| convert::FieldColumn { name: n.to_string(), source: s.to_string() })
+    .map(|(n, s)| convert::FieldColumn { area_decimals: None, name: n.to_string(), source: s.to_string() })
     .collect();
     let field_mapping = convert::FieldMapping {
+        area_decimals: None,
         name: "DKMC".into(), id: "DKBH".into(), area: "MJ".into(),
         use_field: "DKYT".into(), tfh: "TFH".into(), dlbm: "DLBM".into(),
         columns,

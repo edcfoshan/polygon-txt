@@ -39,6 +39,29 @@ pub fn read_text_file<P: AsRef<Path>>(path: P) -> Result<String, String> {
     Ok(cow.into_owned())
 }
 
+/// 编码导出文本；GBK遇到无法表示的字符时明确失败，不产生替换字节。
+pub fn encode_txt(text: &str, encoding: &str) -> Result<Vec<u8>, String> {
+    match encoding {
+        "" | "utf8" | "utf-8" => Ok(text.as_bytes().to_vec()),
+        "gbk" => {
+            let (bytes, _, errors) = encoding_rs::GBK.encode(text);
+            if errors {
+                let mut unsupported = Vec::new();
+                for ch in text.chars() {
+                    if !unsupported.contains(&ch) && encoding_rs::GBK.encode(&ch.to_string()).2 {
+                        unsupported.push(ch);
+                        if unsupported.len() == 8 { break; }
+                    }
+                }
+                let details = unsupported.iter().map(|c| format!("「{}」(U+{:04X})", c, *c as u32)).collect::<Vec<_>>().join("、");
+                return Err(format!("ANSI（GBK）无法编码字符：{}。请改用 UTF-8 后导出。", details));
+            }
+            Ok(bytes.into_owned())
+        }
+        _ => Err(format!("不支持的 TXT 编码：{}", encoding)),
+    }
+}
+
 /// 一个地块
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlotData {
@@ -69,7 +92,7 @@ pub struct PlotData {
 /// 界址点坐标行的一个输出列。核心列由生成器赋予固定语义；自定义列取地块字段或固定文本。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PointColumn {
-    /// point | ring | y | x | distance | stake | field | fixed
+    /// point | ring | y | x | sequence | distance | stake | field | fixed
     pub kind: String,
     /// kind = field 时的源字段名
     #[serde(default)]
@@ -100,7 +123,12 @@ pub struct PointLayout {
     pub distance_unit: String,
     /// 距离小数位（>6 按 6 处理）
     pub distance_decimals: u32,
+    /// 序号跨地块连续；默认 true，每个生成的 TXT 独立从1开始。
+    #[serde(default = "default_sequence_continuous")]
+    pub sequence_continuous: bool,
 }
+
+fn default_sequence_continuous() -> bool { true }
 
 impl PointLayout {
     pub fn has_core(&self, kind: &str) -> bool {
@@ -476,7 +504,11 @@ pub fn generate_txt_ex(
     let effective_layout = layout.filter(|l| !l.columns.is_empty());
     // 高级格式不输出字段名列表行（用户需求：接收系统按约定列序解析）；
     // 解析侧仍识别外部文件自带的【...,@】列表行（parse_txt）
+    let mut sequence = 0usize;
     for plot in features {
+        if effective_layout.map(|l| !l.sequence_continuous).unwrap_or(false) {
+            sequence = 0;
+        }
         // 编号与点序列统一走 number_plot_points（地图界址点标注共用同一套口径）
         let numbered = number_plot_points(plot, oj, oc);
         let point_count = numbered.len();
@@ -511,6 +543,7 @@ pub fn generate_txt_ex(
             .filter(|l| l.has_core("distance"))
             .map(|_| point_distances(plot));
         for (idx, (label, part_index, y, x)) in numbered.iter().enumerate() {
+            sequence += 1;
             let Some(spec) = effective_layout else {
                 let _ = write!(
                     out,
@@ -533,6 +566,7 @@ pub fn generate_txt_ex(
                     out.push(',');
                 }
                 match col.kind.as_str() {
+                    "sequence" => { let _ = write!(out, "{}", sequence); }
                     "point" => out.push_str(label),
                     "ring" => {
                         let _ = write!(out, "{}", part_index);

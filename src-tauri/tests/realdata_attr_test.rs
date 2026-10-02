@@ -27,6 +27,7 @@ fn header_with_custom_attrs() -> convert::HeaderConfig {
 
 fn field_mapping() -> convert::FieldMapping {
     convert::FieldMapping {
+        area_decimals: None,
         name: "DKMC".into(),
         id: "DKBH".into(),
         area: "MJ".into(),
@@ -44,6 +45,7 @@ fn real_shp_to_txt_custom_attr_descriptions() {
 
     let header = header_with_custom_attrs();
     let opts = convert::ShpToTxtOptions {
+        txt_encoding: String::new(),
         ox: false,
         oj: true,
         on: false,

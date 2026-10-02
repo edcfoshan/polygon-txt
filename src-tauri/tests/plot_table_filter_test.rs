@@ -32,6 +32,7 @@ fn square(x0: f64, y0: f64, x1: f64, y1: f64) -> Vec<(f64, f64)> {
 
 fn empty_mapping() -> convert::FieldMapping {
     convert::FieldMapping {
+        area_decimals: None,
         name: String::new(),
         id: String::new(),
         area: String::new(),
@@ -59,6 +60,7 @@ fn make_header() -> convert::HeaderConfig {
 
 fn opts(output_mode: &str, filter: Option<Vec<[usize; 2]>>) -> convert::ShpToTxtOptions {
     convert::ShpToTxtOptions {
+        txt_encoding: String::new(),
         ox: false, oj: true, on: false, oo: false, oc: false,
         output_mode: output_mode.into(),
         filename_field: String::new(),

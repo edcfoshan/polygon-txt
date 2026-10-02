@@ -47,6 +47,7 @@ fn make_header() -> convert::HeaderConfig {
 
 fn empty_mapping() -> convert::FieldMapping {
     convert::FieldMapping {
+        area_decimals: None,
         name: String::new(),
         id: String::new(),
         area: String::new(),
@@ -59,6 +60,7 @@ fn empty_mapping() -> convert::FieldMapping {
 
 fn opts_with(proj_mode: &str, proj_zone: Option<u32>, no_prefix: bool) -> convert::ShpToTxtOptions {
     convert::ShpToTxtOptions {
+        txt_encoding: String::new(),
         ox: false, oj: true, on: false, oo: false, oc: false,
         output_mode: "one_to_one".into(),
         filename_field: String::new(),

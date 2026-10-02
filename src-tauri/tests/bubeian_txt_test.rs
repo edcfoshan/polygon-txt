@@ -41,6 +41,7 @@ fn distance_column(unit: &str, decimals: u32) -> PointColumn {
 
 fn layout(columns: &[PointColumn], unit: &str, decimals: u32) -> PointLayout {
     PointLayout {
+        sequence_continuous: true,
         columns: columns.to_vec(),
         stake_field: String::new(),
         stake_default: String::new(),
@@ -176,6 +177,7 @@ fn test_custom_layout_order_field_and_fixed() {
     let mut plot = square_plot("埋桩");
     plot.custom_values.insert("DKMC".to_string(), "测试地块".to_string());
     let custom = PointLayout {
+        sequence_continuous: true,
         columns: vec![
             column("x", "", ""),
             column("field", "DKMC", ""),
@@ -196,6 +198,7 @@ fn test_custom_layout_order_field_and_fixed() {
 fn test_custom_layout_missing_field_outputs_empty() {
     let plot = square_plot("埋桩");
     let custom = PointLayout {
+        sequence_continuous: true,
         columns: vec![column("point", "", ""), column("field", "NOT_EXIST", "")],
         stake_field: String::new(),
         stake_default: String::new(),
@@ -210,6 +213,7 @@ fn test_custom_layout_missing_field_outputs_empty() {
 fn test_each_distance_column_has_own_unit_and_precision() {
     let plot = square_plot("埋桩");
     let custom = PointLayout {
+        sequence_continuous: true,
         columns: vec![
             column("point", "", ""),
             column("y", "", ""),
@@ -263,6 +267,7 @@ fn test_distance_is_per_ring_for_multipolygon_and_hole() {
         custom_values: HashMap::new(),
     };
     let layout = PointLayout {
+        sequence_continuous: true,
         columns: vec![column("point", "", ""), column("distance", "", "")],
         stake_field: String::new(),
         stake_default: String::new(),
@@ -308,6 +313,7 @@ fn make_header() -> convert::HeaderConfig {
 
 fn field_mapping() -> convert::FieldMapping {
     convert::FieldMapping {
+        area_decimals: None,
         name: "DKMC".into(),
         id: "DKBH".into(),
         area: "__area_ha__".into(),
@@ -320,6 +326,7 @@ fn field_mapping() -> convert::FieldMapping {
 
 fn base_options() -> convert::ShpToTxtOptions {
     convert::ShpToTxtOptions {
+        txt_encoding: String::new(),
         proj_mode: "keep".to_string(),
         proj_zone: None,
         ox: false,
@@ -471,6 +478,7 @@ fn test_point_layout_applies_to_all_output_modes() {
         panic!("缺少入库 fixture：test_arcpy/（已入库，不应缺失）");
     }
     let layout = PointLayout {
+        sequence_continuous: true,
         columns: vec![column("point", "", ""), column("fixed", "", "LAYOUT_OK")],
         stake_field: String::new(),
         stake_default: String::new(),

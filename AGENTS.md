@@ -67,6 +67,7 @@ cd src-tauri
 cargo test --test integration_test          # 30 integration tests (SHP/DBF/PRJ/TXT/GDB round-trips + 三模式输出)
 cargo test --test debug_output_test         # Debug: generate SHP/GDB output from test TXT
 cargo test --test bubeian_txt_test          # 界址点布局 TXT（标准4列/部备案6列/自定义列序）
+cargo test --test export_options_test      # 面积单位/0~6位精度、序号、UTF-8/GBK三模式输出
 cargo test                                   # All tests
 ```
 
@@ -112,6 +113,12 @@ src-tauri/
 - **界址点布局 (`options.point_layout`)**: 中栏「界址点」配置有序坐标行；核心列为点号/环号/Y/X，可新增固定值、源字段、点距离列并拖动排序。每个点距离列支持独立单位 米/千米/厘米 与小数位 0~6；闭合点（与首点重合）距离为 0，开口环末点距离=到首点闭合边长。预览区下方统一导出，复用上述三种输出模式与全部转换选项。测试 `cargo test --test bubeian_txt_test`
 
 ## Key Gotchas
+
+### Area Mapping, Sequence & TXT Encoding
+- 字段映射以简单/高级页签切换；首次进入高级继承简单设置，之后两套配置独立保存，导出使用当前模式。保存简单模式时也须保留已编辑的高级行。
+- 自动面积映射源：`__area_sqm__` / `__area_mu__` / `__area_ha__` / `__area_km2__`；面积基于现有平面图形净面积（外环减孔）。`FieldMapping.area_decimals`、`FieldColumn.area_decimals` 分别控制0~6位；新配置默认公顷4位，旧配置省略精度时保留平方米2位/公顷4位。源字段直接原值输出。
+- 界址点可选 `sequence` 列，按实际坐标输出行编号（闭合行也占号），每个TXT从1开始，跨环连续；`PointLayout.sequence_continuous` 默认true，false时每地块重置。列位置与该开关须随配置保存。
+- `ShpToTxtOptions.txt_encoding`：`utf8`（默认，无BOM）/`gbk`。所有导出模式共用 `txt::encode_txt`，在写文件前整批验证GBK字符；遇到无法编码的字符报错并建议UTF-8，不替换字符、不写出半批结果。
 
 ### Frontend JS (src/main.js)
 - Uses ES module `import` statements (`import { invoke } from '@tauri-apps/api/core'`). Vite inlines these into the single HTML file during build. In production, `window.__TAURI__` is the runtime API — the imports are resolved at build time by Vite, not at runtime.

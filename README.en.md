@@ -1,144 +1,193 @@
 <div align="center">
-  <img src="./docs/brand/app-icon-source.png" width="120" alt="极思G界址点互转工具 logo">
-  <h1>极思G界址点互转工具 <sub>(Boundary Point Converter)</sub></h1>
-  <p>Two-way conversion between polygon features (SHP / GDB) and standard boundary-point TXT files — a lightweight GIS desktop tool built for surveying & land-administration workflows</p>
+  <img src="./docs/brand/app-icon-source.png" width="112" alt="Boundary Point Converter icon">
+  <h1>Boundary Point Converter</h1>
+  <p>Keep file formats out of the way and get boundary-point deliverables done faster.</p>
   <p>
-    <a href="https://github.com/edcfoshan/polygon-txt/releases"><img src="https://img.shields.io/github/v/release/edcfoshan/polygon-txt?label=version&color=teal" alt="latest release"></a>
-    <img src="https://img.shields.io/badge/platform-Windows%20%C2%B7%20macOS%20%C2%B7%20Linux-64748b" alt="platforms">
-    <img src="https://img.shields.io/badge/Rust-Tauri%20v2-orange" alt="tech">
+    <a href="https://github.com/edcfoshan/polygon-txt/releases"><img src="https://img.shields.io/github/v/release/edcfoshan/polygon-txt?label=latest%20version&color=teal" alt="Latest version"></a>
+    <img src="https://img.shields.io/badge/Windows-macOS-Linux-64748b" alt="Windows, macOS, and Linux">
+    <img src="https://img.shields.io/badge/Rust-Tauri%20v2-orange" alt="Rust and Tauri v2">
     <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-green" alt="MIT license"></a>
   </p>
 </div>
 
 English | [中文](./README.md)
 
-![v4.4 main window](./docs/screenshots/v4-cover.png)
+![Application interface](./docs/screenshots/v4-cover.png)
 
 ## Overview
 
-**Boundary Point Converter** converts between polygon features (SHP / GDB) and the standard Chinese boundary-point TXT format. Traditionally this round-trip means ArcMap plus Python scripts or tedious manual editing. This tool turns that most-repeated small job into a **one-click operation** — pick files, click convert, done; no code in between. Pure Rust, **no ArcPy / ArcGIS required**, fully offline — your data never leaves the machine.
+**Boundary Point Converter** does one job: convert GIS polygon data and boundary-point TXT files in both directions. Surveying, natural-resources, and land-registration work often needs polygons turned into TXT and returned TXT files turned back into polygons.
+
+The time-consuming part is often the work around conversion: matching fields, checking coordinates, arranging columns, choosing an encoding, and finding missing plots. This desktop workspace brings those steps together: import data, configure the TXT structure, inspect the preview, and export the deliverables.
+
+Input supports standard SHP and polygon features in OpenFileGDB. TXT can be converted to SHP. Files are read and written locally; ArcGIS and ArcPy are not required, and business data is not uploaded to a server. Basemaps and online fonts require an internet connection. File conversion remains available offline.
 
 ## Key Features
 
-- **Polygons → TXT**: import SHP / GDB polygon layers, export standard boundary-point TXT
-- **TXT → polygons**: parse TXT (standard 4-column or 6-column filing format) into SHP with attribute table
-- Three output modes: one-file-per-source / split per plot / merge all
-- **Custom boundary-point columns**: core columns (point no. / ring no. / Y / X) plus fixed-value, source-field and point-distance columns in any order; distance unit & decimals configurable per column
-- Supports **CGCS2000, Xi'an 1980, Beijing 1954, WGS84**
-- Gauss-Krüger 3°/6° zone projection, PRJ auto-detection with zone extraction; projected metric output with zone prefix
-- Field mapping presets (simple / advanced / cultivated-land 12-field template), automatic area calculation (m² / ha)
-- **Reset-to-defaults** button on every middle-panel tab (projection / header / fields / boundary points)
-- Light / dark × 8 color schemes = 16 accessible themes (WCAG contrast); window size & position remembered
-- **In-app auto-update** with signature verification (green arrow in the title bar)
+- **Polygons to TXT**: read SHP files or polygon feature classes in GDB and generate boundary-point coordinates and parcel attributes.
+- **TXT to polygons**: read standard boundary-point TXT, rebuild polygon rings by boundary-line index, and export SHP with its companion files.
+- **Three TXT output modes**: one file per source, one file per plot, or one merged file for multiple sources.
+- **Project-specific output**: configure attribute fields, area units and precision, boundary-point column order, extra columns, coordinate-system headers, and TXT encoding.
+- **Pre-export checks**: inspect TXT preview, attribute table, and map; filter plots by attributes and use the same selection for preview and export.
+- **Coordinate and projection settings**: recognize common PRJ information and configure CGCS2000, Xi'an 1980, Beijing 1954, WGS84, and related Gauss-Krüger 3° / 6° zone handling.
+- **Desktop builds for Windows, macOS, and Linux**: download an installer or portable build from GitHub Releases.
 
-## Feature Highlights
+## Feature Guide
 
-### 1. Lossless round-trip conversion
+### 1. Convert polygons to TXT and back
 
-**Polygons → TXT** normalizes ring orientation (outer CCW, holes CW), numbers each ring's boundary-line index, and reads CRS & zone from PRJ. **TXT → polygons** re-splits rings by boundary-line index, validates ring closure and rebuilds the DBF attribute table. Round-trip is lossless — coordinates come back byte-identical.
+When exporting polygons, the tool reads geometry, attribute fields, and coordinate reference information, then writes coordinate rows and parcel attributes. A plot may contain an exterior ring, interior rings, or multiple parts. The boundary-line index distinguishes rings, and TXT coordinate rows place Y before X.
 
-![Conversion data flow](./docs/screenshots/v4-flow@2x.png)
+When importing TXT, the tool reads the coordinate-system and parcel information, splits coordinate rings by boundary-line index, and creates SHP files with DBF, PRJ, and other companion files. Standard four-column coordinate rows are supported. The two extra columns in the six-column ministry filing format are ignored.
 
-- **Three output modes**: per source / per plot (file name from DKMC etc.) / merged archive with timestamp
-- SHP read failures are surfaced in the UI with file name and reason
+This workflow connects GIS parcel polygons with TXT files received from field teams or project partners. Check the coordinate reference declaration and project format requirements before processing, then inspect the output.
 
-### 2. Custom boundary-point column layout
+![Bidirectional conversion workflow](./docs/screenshots/v4-flow@2x.png)
 
-The v4 flagship: every column of the coordinate line is configurable — keep the core columns (point no. / ring no. / Y / X) and add **fixed-value columns**, **source-field columns** (DBF attributes appended to the coordinate line) or **point-distance columns** (planar distance, unit m/km/cm and 0–6 decimals per column). Drag to reorder; preview and all three output modes share one layout. Closing points get distance 0; open rings get the closing edge length; multi-parts and holes are computed separately.
+### 2. Choose how to organize the output
 
-![Boundary-point column layout](./docs/screenshots/v4-bb-tab.png)
+Polygon-to-TXT conversion supports three output modes:
 
-### 3. Field mapping, simple to professional
+- **One-to-one**: create one TXT per SHP file or GDB feature class. A numeric suffix is added to avoid overwriting files with duplicate names.
+- **Split by plot**: create one TXT per plot in a subfolder for each input source. File names can use the plot name, plot number, sequence number, or FID. Missing or duplicate values fall back to sequence numbers.
+- **Merge all**: combine plots from multiple input sources into one timestamped TXT. This option is available when more than one source is imported.
 
-- **Simple mode**: six slots (name / code / area / usage / map sheet / land type) picked straight from source fields
-- **Advanced mode**: 14-item field list, freely added, removed and reordered; save as reusable presets
-- **Cultivated-land preset**: one click loads the 12-field reporting template
+Need to deliver only part of a dataset? Filter plots in the attribute table first. The map, preview, and export all use the same selection.
 
-Field names support CN/EN placeholders (DKMC / DKBH industry conventions); areas auto-computed in m² or ha; unmapped fields emit empty columns to keep column order stable.
+### 3. Map fields to the receiving template
 
-### 4. Dynamic projection
+Field mapping has simple and advanced modes. Simple mode quickly maps commonly used attributes. Advanced mode lets you edit field rows and output content. Presets are available for common workflows such as cultivated-land reporting; adjust the mappings to match the current source fields.
 
-Four CRS families with PRJ auto-detection. **Dynamic projection** performs 3°/6° zone conversion, zone shifting (e.g. 38 → 39) and geodetic conversion at export time, recommending target form and central meridian automatically. The **zone-prefix** toggle is orthogonal to projection and smart-defaults on import.
+Area values can be mapped directly from a source field or calculated from polygon geometry. Automatic area calculation supports square meters, mu, hectares, and square kilometers, with 0–6 decimal places per configuration. Simple and advanced modes keep separate settings, so switching modes does not overwrite edits in the other mode.
 
-### 5. Interface & themes
+Field mapping controls the attributes written to TXT; it does not modify the input data. Before a batch export, check field matches, empty values, and area units in the preview.
 
-Three-column workspace: **left** import + output options, **middle** four tabs (projection / header / fields / boundary points), **right** live preview (TXT / attribute table / map). Every tab has a **reset-to-defaults** button. Light / dark × 8 color schemes (16 combinations), all meeting WCAG contrast; settings and window geometry persist across launches.
+![Field mapping and preview](./docs/screenshots/v4-bb-tab.png)
 
-![Dark mode](./docs/screenshots/v4-dark.png)
+### 4. Arrange coordinate columns and add data
 
-## Three Typical Workflows
+In the Boundary Points settings, drag to reorder core columns such as point number, ring number, Y, and X. You can also add:
 
-**Land registration — batch boundary-point tables.** Hundreds of parcels must be delivered on deadline. Import SHP, choose "split per plot", name files by parcel code — one click, one TXT per parcel, areas computed in hectares automatically.
+- **Fixed-value columns** that write the same configured value on each coordinate row.
+- **Source-field columns** that copy a selected parcel attribute.
+- **Point-distance columns** that calculate distance between boundary points. Each column has its own unit—meters, kilometers, or centimeters—and 0–6 decimal places.
+- **Sequence columns** that number the coordinate rows starting at 1. Numbers can continue across plots or restart for each plot.
 
-**Cultivated-land reporting.** Load the 12-field preset in advanced mode, map to source GDB columns, export in the receiver's agreed column order.
+Distances are calculated separately for each ring. A closing point that repeats the first point has distance 0. For an open ring, the last point's distance is the closing edge back to the first point. Different rings and multipart polygons are never joined into one distance calculation.
 
-**Field TXT QC.** Import field-team TXTs back into polygons: ring splitting and closure validation expose missing points, swapped coordinate order and wrong zone numbers immediately; compare the round-trip result with confidence.
+TXT preview and export share the same layout settings. Arrange the columns and check the preview before exporting.
+
+![TXT structure and customizable fields](./diagram/txt-customization/txt-customization@2x.png)
+
+The diagram shows the available choices: the default seven header rows can be added, removed, renamed, and reordered; six common attribute slots support quick mapping, with additional fields available in advanced mode; and the point number, ring number, Y, and X columns can be reordered or supplemented with sequence, fixed-value, source-field, and point-distance columns. Project information is optional, and encoding and output mode are configurable.
+
+### 5. Review coordinate information before export
+
+The tool can read common coordinate-system and zone information from a SHP PRJ file or GDB layer spatial reference. It supports CGCS2000, Xi'an 1980, Beijing 1954, WGS84, and related Gauss-Krüger 3° / 6° zone settings. Review and configure these options in the Projection tab; adjust the TXT header to match project requirements.
+
+Correct projection settings depend on the source data's coordinate reference declaration and project conventions. For cross-zone data, special projections, missing PRJ information, or uncertain sources, test a small sample first and verify its location, zone, and attributes in the target GIS software.
+
+### 6. A three-column workspace
+
+The interface uses three columns:
+
+- **Left: input data and output options.** Input, output, and export settings change with the conversion direction.
+- **Middle: projection, header, fields, and boundary points.** Configure each area in its own tab. The Fields tab is selected by default, and the input and output cards stay expanded.
+- **Right: preview and checks.** For polygon-to-TXT conversion, switch between TXT preview, attribute table, and map.
+
+Column widths scale with the window while retaining minimum widths for controls. The interface supports light and dark modes and multiple color schemes; settings are stored locally.
+
+![Application interface](./docs/screenshots/v4-cover.png)
+
+## Three Common Workflows
+
+**Batch-export parcel boundary points.** Import parcel SHP files or GDB feature classes, check the coordinate reference and field mapping, and split the output by plot. Use parcel names or numbers for file names, filter to the plots in this delivery, review the preview, and export one TXT per plot.
+
+**Build attributes and coordinate columns for a reporting template.** Choose a field-mapping preset and map source attributes to the required columns. In Boundary Points, arrange the coordinate columns and add sequence, fixed-value, source-field, or distance columns. Set area units and precision, review the preview, then export as UTF-8 or GBK as required.
+
+**Rebuild polygons from field TXT files and check them.** Import boundary-point TXT, confirm the coordinate-system, zone, and zone-number information in its header, and export SHP. Open the result in a GIS application to check polygon locations, ring structure, and attributes. For files from mixed projects or with incomplete coordinate information, test a small sample before processing the full set.
 
 ## Architecture
 
-Built on **Tauri v2** (Rust backend + WebView frontend). The UI layer handles interaction and live preview only; all conversion happens in native Rust modules (txt / shp·dbf·prj / OpenFileGDB / orchestration / Gauss-Krüger projection) over the IPC bus, reading and writing local files directly.
+The application is built with **Tauri v2**. The frontend handles interaction, configuration, and previews. The Rust backend reads local files, parses formats, processes coordinates and geometry, and writes conversion results. The frontend and backend communicate through Tauri IPC; files remain on the user's computer.
 
-![Architecture](./docs/screenshots/v4-arch@2x.png)
+![Application architecture](./docs/screenshots/v4-arch@2x.png)
 
-Compiled native Rust — tens of thousands of parcels per minute; no ArcPy / ArcGIS needed, portable build runs unpacked; ~6 MB installer, instant start, fully offline.
+The frontend uses vanilla JavaScript and Vite, which inlines frontend resources into a single page for production builds. Rust handles SHP, DBF, PRJ, TXT, and OpenFileGDB operations. The production app does not call, bundle, or depend on ArcPy.
 
 ## Download
 
-Grab the latest build from [Releases](https://github.com/edcfoshan/polygon-txt/releases).
+Download the latest release from [GitHub Releases](https://github.com/edcfoshan/polygon-txt/releases/latest).
 
-| Platform | Requirement | File |
-|----------|-------------|------|
-| **Windows** | Windows 10/11 64-bit | `polygon-txt_X.X_x64-setup.exe` (recommended) or `-portable.exe` |
-| **macOS** | macOS 10.15+ | `.dmg` (arm64 = Apple Silicon, x64 = Intel) |
-| **Linux** | Ubuntu 20.04+ / mainstream distros | `.AppImage` or `.deb` |
+| Platform | Download | Notes |
+| --- | --- | --- |
+| Windows 10/11, 64-bit | JisigG_*_x64-setup.exe | Installer |
+| Windows 10/11, 64-bit | JisigG_*_x64-portable.exe | Portable build |
+| macOS 10.15+ | JisigG_*_aarch64.dmg | Apple Silicon (M series) |
+| macOS 10.15+ | JisigG_*_x64.dmg | Intel |
+| Linux x64 | JisigG_*_amd64.AppImage or JisigG_*_amd64.deb | AppImage or Debian package; WebKit2GTK is required |
 
-> Release assets display Chinese names, while actual download URLs are ASCII file names (GitHub limitation) — match by the table above.
+Windows 7 is not supported. If SmartScreen appears when you first run the installer, confirm that the file came from this repository's Releases page. Windows builds can check for updates in the app.
 
-> ⚠️ Windows 7 is not supported (WebView2 requires Win10+). If SmartScreen intervenes on first run, choose "More info → Run anyway".
+### Build from Source
 
-**Auto-update**: installed users just click the green arrow in the title bar — signature-verified in-app update, no manual download.
+Install [Node.js](https://nodejs.org/) and [Rust](https://www.rust-lang.org/), then run:
 
-### Build from source
+~~~bash
+npm install
+npm run tauri dev
+~~~
 
-Prerequisites: [Node.js](https://nodejs.org/) and [Rust](https://www.rust-lang.org/)
+Build the desktop installer:
 
-```bash
-npm install         # frontend deps
-npm run tauri dev   # development with hot reload
-npm run tauri build # production build
-```
+~~~bash
+npm run tauri build
+~~~
 
-Pushing a `v*` tag triggers the four-platform CI build, updater signing and automatic release — see [CI-CD docs](./docs/CI-CD.md).
+Build only the frontend:
 
-## TXT Format Example
+~~~bash
+npm run build
+~~~
 
-Output uses the standard three-section format (advanced field mode, minimal example):
+## TXT Format
 
-```text
-[J1,1,39521000.123,3758100.456]
-[J2,1,39521000.234,3758100.567]
-[J3,1,39521000.345,3758100.678]
-[J4,1,39521000.456,3758100.789]
-[J1,1,39521000.123,3758100.456],@
-```
+A boundary-point TXT contains coordinate rows and parcel information. The shortened example below illustrates the structure; the number of fields depends on the header and field-mapping settings.
 
-- Coordinate line: `J{seq},{ring index},Y,X` — **Y (northing) first**; J sequence increments continuously across rings within one parcel
-- The second column is the boundary-line index (outer ring = 1, holes & parts follow) — the sole key for TXT → SHP ring splitting
-- Metadata lines end with `,@`; CRS strings must match exactly (`2000国家大地坐标系` etc.)
-- Column layout is customizable beyond these four columns (see feature 2)
+~~~text
+[Property Description]
+Coordinate System=2000国家大地坐标系
+Zone Width=3
+Projection=Gauss-Krüger
+Unit=meters
+Zone Number=38
+[Parcel Coordinates]
+6,,FID_0,DKMC,Polygon,,,,@
+J1,1,2582988.976,38383243.971
+J2,1,2582983.339,38383261.067
+J3,1,2582359.231,38383048.719
+J1,1,2582988.976,38383243.971
+~~~
+
+- By default, a coordinate row contains point number, boundary-line index, Y, and X, with Y (northing) before X (easting). A custom layout can change the column order.
+- The boundary-line index distinguishes rings and is used to rebuild them when converting TXT to polygons.
+- Parcel attribute rows end with ,@. The number and content of attribute columns depend on the header, field mapping, and source data.
+- Supported coordinate-system names are 2000国家大地坐标系, 1980西安坐标系, 1954北京坐标系, and WGS84坐标系.
 
 ## Tech Stack
 
-- **Tauri v2** (Rust backend + WebView frontend)
-- **Rust**: `shapefile` / `geonative-filegdb` / `chrono` / `dbase` / `encoding_rs` / `geo-types`
-- **Frontend**: vanilla JS + Vite (single-file bundle inlined into `dist/index.html`)
+- **Desktop framework**: Tauri v2
+- **Backend**: Rust; SHP, DBF, PRJ, OpenFileGDB, and TXT parsing and writing, conversion orchestration, and coordinate handling
+- **Frontend**: vanilla JavaScript, Vite, and a single-file production build
+- **File operations**: performed locally through Tauri plugins
 
 ## Known Limitations
 
-- **GDB writing**: minimal OpenFileGDB writer; ArcGIS Pro compatibility is limited (fallback: `ogr2ogr -f "OpenFileGDB"`)
-- **Government SHP variants**: some files in `test_data/` use a non-standard format (magic ≠ 9994)
-- **Bundling**: `bundle.targets` is `nsis` only; if NSIS fails, the bare exe under `src-tauri/target/release/` still runs
-- **Google Fonts**: loaded online; falls back to system fonts offline
+- Polygon input supports standard SHP and OpenFileGDB; TXT-to-polygon conversion currently outputs SHP.
+- Some government SHP files use a non-standard file structure and may not be readable by standard Shapefile parsers.
+- OpenFileGDB support depends on the GDB structure. The minimal GDB writer has limited ArcGIS Pro compatibility. For a Pro-compatible GDB, export SHP with this tool and convert it to GDB using ArcGIS Pro.
+- Coordinate conversion depends on the source coordinate reference and zone information. Verify results in the target GIS software when projections are unusual, PRJ files are missing, or declarations do not match the coordinates.
+- Conversion files are read and written locally. Online basemaps and Google Fonts require an internet connection. Offline, the basemap is unavailable and fonts fall back to system fonts.
 
 ## License
 
@@ -146,8 +195,14 @@ Output uses the standard three-section format (advanced field mode, minimal exam
 
 ## Community
 
-Issues and feature requests via [Issues](https://github.com/edcfoshan/polygon-txt/issues); usage discussion in [Discussions](https://github.com/edcfoshan/polygon-txt/discussions).
+Scan to join the discussion group, ask questions, and share feedback:
 
----
+![Discussion group](./content/讨论群.jpg)
 
-Powered by **极思 G**
+If the tool helps with your work, you can support its development:
+
+![Support the project](./content/关注、赞赏码.png)
+
+Report issues and suggest features via [GitHub Issues](https://github.com/edcfoshan/polygon-txt/issues), or share usage tips in [Discussions](https://github.com/edcfoshan/polygon-txt/discussions).
+
+Supported by **Jisig G**.

@@ -1,0 +1,19 @@
+{
+  // 部署：npx wrangler deploy -c cloudflare/update-download/wrangler.jsonc
+  // 免费额度硬护栏：本 Worker 必须留在 Workers Free（10 万请求/天，超限 1027，不产生费用）。
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "polygon-txt-updates",
+  "main": "worker.mjs",
+  "compatibility_date": "2026-10-13",
+  "workers_dev": true,
+  "preview_urls": false,
+  "observability": { "enabled": false },
+  "r2_buckets": [
+    { "binding": "UPDATES", "bucket_name": "polygon-txt-updates" }
+  ],
+  // 每 IP 限流。限流窗口是 10s/60s，这里取 60s；
+  // 目的只是让盗链脚本变慢，真正的成本护栏是 Workers Free 的每日请求上限。
+  "ratelimits": [
+    { "name": "DOWNLOAD_LIMIT", "namespace_id": "51002", "simple": { "limit": 30, "period": 60 } }
+  ]
+}

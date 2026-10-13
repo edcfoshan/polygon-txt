@@ -44,8 +44,9 @@ pub async fn download_and_run_setup(
     url: String,
     signature: String,
     version: String,
+    client_key: Option<String>,
 ) -> Result<String, String> {
-    imp::download_and_run_setup(app, url, signature, version).await
+    imp::download_and_run_setup(app, url, signature, version, client_key).await
 }
 
 // ── 启动静默自愈（lib.rs setup 线程调用，无 UI，失败仅记录）──
@@ -318,11 +319,13 @@ mod imp {
         url: String,
         signature: String,
         version: String,
+        client_key: Option<String>,
     ) -> Result<String, String> {
-        let r: Result<String, String> =
-            tauri::async_runtime::spawn_blocking(move || download_impl(&app, &url, &signature, &version))
-                .await
-                .map_err(|e| e.to_string())?;
+        let r: Result<String, String> = tauri::async_runtime::spawn_blocking(move || {
+            download_impl(&app, &url, &signature, &version, client_key.as_deref())
+        })
+        .await
+        .map_err(|e| e.to_string())?;
         r
     }
 
@@ -331,18 +334,22 @@ mod imp {
         url: &str,
         signature: &str,
         version: &str,
+        client_key: Option<&str>,
     ) -> Result<String, String> {
         let desktop = known_folder(&FOLDERID_Desktop)?;
         let short = version.split('.').take(2).collect::<Vec<_>>().join(".");
         let dest = desktop.join(format!("polygon-txt_{short}_x64-setup.exe"));
 
-        let mut resp = reqwest::blocking::Client::builder()
+        let mut req = reqwest::blocking::Client::builder()
             .timeout(std::time::Duration::from_secs(900))
             .build()
             .map_err(|e| e.to_string())?
-            .get(url)
-            .send()
-            .map_err(|e| format!("下载失败：{e}"))?;
+            .get(url);
+        // R2 Worker 只在带对密钥时才从 R2 取包，否则 302 回落 GitHub；缺失时不加头。
+        if let Some(k) = client_key.filter(|k| !k.is_empty()) {
+            req = req.header("X-Client-Key", k);
+        }
+        let mut resp = req.send().map_err(|e| format!("下载失败：{e}"))?;
         if !resp.status().is_success() {
             return Err(format!("下载失败：HTTP {}", resp.status()));
         }
@@ -411,6 +418,7 @@ mod imp {
         _url: String,
         _signature: String,
         _version: String,
+        _client_key: Option<String>,
     ) -> Result<String, String> {
         Err("仅支持 Windows".into())
     }

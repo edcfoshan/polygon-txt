@@ -19,6 +19,7 @@
   "devDependencies": {
     "@tauri-apps/cli": "^2",
     "vite": "^6",
-    "vite-plugin-singlefile": "^2.3.3"
+    "vite-plugin-singlefile": "^2.3.3",
+    "wrangler": "4.149.0"
   }
 }

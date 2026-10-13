@@ -2526,6 +2526,10 @@ const openGitHub = async function () {
 // 标题栏常驻三态按钮：idle(刷新图标) / available(绿箭头脉冲) / skipped(灰箭头) / loading(旋转)
 // 流程：启动检查(24h节流) → 检测到新版亮箭头+自动弹窗 → 立即更新/稍后/跳过 → 失败兜底百度云
 const BAIDU_PAN_URL = "https://pan.baidu.com/s/1xyW3-hyZrFDDG9ijYOf46g?pwd=e8vy";
+
+// R2 更新通道：Worker 只在带上 X-Client-Key 时才从 R2 取包，否则 302 回 GitHub。
+// R2 额度约为 GitHub 直链的 10 倍以上，失败时回退 github_url；再失败才引导百度云。
+const R2_CLIENT_KEY = typeof __R2_CLIENT_KEY__ === "string" ? __R2_CLIENT_KEY__ : "";
 const LS_LAST_CHECK = "tg_update_lastCheck";
 const LS_SKIPPED = "tg_update_skipped";
 const LS_KNOWN = "tg_update_known";
@@ -2718,7 +2722,17 @@ const doUpdate = async function () {
       if (!plat?.url || !plat?.signature) throw new Error("latest.json 缺少下载地址或签名");
       const un = await listen("upd-dl-progress", (ev) => onProg(ev.payload));
       try {
-        await tauriInvoke("download_and_run_setup", { url: plat.url, signature: plat.signature, version: pendingUpdate.version });
+        try {
+          await tauriInvoke("download_and_run_setup", { url: plat.url, signature: plat.signature, version: pendingUpdate.version, clientKey: R2_CLIENT_KEY });
+        } catch (err) {
+          // R2 通道失败（网络/额度/限流）→ 回退 GitHub 直链；两条都失败才走外层百度云兜底。
+          if (!plat.github_url || plat.github_url === plat.url) throw err;
+          console.warn("R2 下载失败，回退 GitHub：", err);
+          downloaded = 0; total = 0;
+          if (prog) prog.value = 0;
+          if (pct) pct.textContent = "0%";
+          await tauriInvoke("download_and_run_setup", { url: plat.github_url, signature: plat.signature, version: pendingUpdate.version, clientKey: "" });
+        }
       } finally {
         un();
       }
@@ -2726,7 +2740,35 @@ const doUpdate = async function () {
       // 安装包已带 /R 参数自行拉起新版，这里退出让安装器接管
       await exitApp();
     } else {
-      await pendingUpdate.downloadAndInstall(onProg);
+      // 主通道=latest.json 的 url（R2 Worker）；Worker 校验失败/异常会自己 302 回 GitHub。
+      // 但 Worker 整体不可达时（例如国内 DNS 污染）插件下载会直接失败，此时改用 GitHub 直链。
+      try {
+        await pendingUpdate.downloadAndInstall(onProg, {
+          headers: R2_CLIENT_KEY ? { "X-Client-Key": R2_CLIENT_KEY } : undefined,
+        });
+      } catch (err) {
+        const plat = pendingUpdate.rawJson?.platforms?.["windows-x86_64"];
+        if (!plat?.github_url || plat.github_url === plat.url || !plat.signature) throw err;
+        console.warn("R2 通道失败，改用 GitHub 直链：", err);
+        downloaded = 0; total = 0;
+        if (prog) prog.value = 0;
+        if (pct) pct.textContent = "0%";
+        // GitHub 直链走“下载到桌面 + 验签 + 静默安装”，随后退出让安装器接管。
+        const un = await listen("upd-dl-progress", (ev) => onProg(ev.payload));
+        try {
+          await tauriInvoke("download_and_run_setup", {
+            url: plat.github_url,
+            clientKey: "",
+            signature: plat.signature,
+            version: pendingUpdate.version,
+          });
+        } finally {
+          un();
+        }
+        if (doBtn) doBtn.textContent = "安装已启动，即将退出…";
+        await exitApp();
+        return;
+      }
       // 修复/补建快捷方式（失败不阻塞重启）
       try { await tauriInvoke("ensure_shortcuts"); } catch (e) { console.warn("ensure_shortcuts:", e); }
       if (doBtn) doBtn.textContent = "安装完成，即将重启…";

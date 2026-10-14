@@ -46,6 +46,7 @@ fn real_shp_to_txt_custom_attr_descriptions() {
 
     let header = header_with_custom_attrs();
     let opts = convert::ShpToTxtOptions {
+            omit_coord_section: false,
         omit_fields: false,
         txt_encoding: String::new(),
         ox: false,

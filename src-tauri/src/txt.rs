@@ -469,6 +469,8 @@ pub struct TxtOmit {
     pub header: bool,
     /// 每个地块的字段行（...,@）不输出，只留坐标行
     pub fields: bool,
+    /// 「[地块坐标]」段标题不输出。注意：去掉后本工具自身无法再解析该文件。
+    pub coord_section: bool,
 }
 
 /// 生成 TXT 内容（不省略任何段落）。layout=Some 时按配置列序输出；空列兜底为标准 4 列。
@@ -525,7 +527,9 @@ pub fn generate_txt_with(
         }
     }
 
-    out.push_str("[地块坐标]\n");
+    if !omit.coord_section {
+        out.push_str("[地块坐标]\n");
+    }
     let effective_layout = layout.filter(|l| !l.columns.is_empty());
     // 高级格式不输出字段名列表行（用户需求：接收系统按约定列序解析）；
     // 解析侧仍识别外部文件自带的【...,@】列表行（parse_txt）

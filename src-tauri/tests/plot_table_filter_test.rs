@@ -61,6 +61,7 @@ fn make_header() -> convert::HeaderConfig {
 
 fn opts(output_mode: &str, filter: Option<Vec<[usize; 2]>>) -> convert::ShpToTxtOptions {
     convert::ShpToTxtOptions {
+            omit_coord_section: false,
         omit_fields: false,
         txt_encoding: String::new(),
         ox: false, oj: true, on: false, oo: false, oc: false,

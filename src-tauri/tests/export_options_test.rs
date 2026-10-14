@@ -432,4 +432,15 @@ fn omit_header_and_omit_fields_toggles() {
     let t4 = txt::read_text_file(&r4.output_files[0]).unwrap();
     assert!(!t4.contains("[属性描述]") && !t4.contains("[项目信息]") && !t4.contains(",@"));
     assert!(t4.lines().next().unwrap_or("").trim() == "[地块坐标]", "首个非空行应为坐标段");
+
+    // 只关「[地块坐标]」段标题：该行消失，其余段落不动
+    let out5 = tempfile::tempdir().unwrap();
+    let mut opt5 = options("one_to_one", "utf8");
+    opt5.omit_coord_section = true;
+    let r5 = export(&paths, &map, &opt5, &header(), out5.path()).unwrap();
+    let t5 = txt::read_text_file(&r5.output_files[0]).unwrap();
+    assert!(!t5.contains("[地块坐标]"), "勾选后不应出现坐标段标题");
+    assert!(t5.contains("[属性描述]"), "关段标题不应影响表头");
+    assert!(t5.contains(",@"), "关段标题不应影响字段行");
+    assert!(t5.contains("J1,1,"), "坐标行本身应保留");
 }

@@ -140,6 +140,7 @@ fn test_shp_to_txt_one_to_one() {
         columns: Vec::new(),
     };
     let options = convert::ShpToTxtOptions {
+            omit_coord_section: false,
         omit_fields: false,
         txt_encoding: String::new(),
         proj_mode: "keep".to_string(),
@@ -177,6 +178,7 @@ fn test_shp_to_txt_xy_swap() {
 
     // ox=false（默认，输出标准 Y,X 顺序：北坐标在前）
     let opts_off = convert::ShpToTxtOptions {
+            omit_coord_section: false,
         omit_fields: false,
         txt_encoding: String::new(),
         proj_mode: "keep".to_string(),
@@ -193,6 +195,7 @@ fn test_shp_to_txt_xy_swap() {
 
     // ox=true（勾选标反，输出 X,Y 顺序：东坐标在前）
     let opts_on = convert::ShpToTxtOptions {
+            omit_coord_section: false,
         omit_fields: false,
         txt_encoding: String::new(),
         proj_mode: "keep".to_string(),
@@ -251,6 +254,7 @@ fn test_shp_to_txt_merge_all() {
         columns: Vec::new(),
     };
     let options = convert::ShpToTxtOptions {
+            omit_coord_section: false,
         omit_fields: false,
         txt_encoding: String::new(),
         proj_mode: "keep".to_string(),
@@ -289,6 +293,7 @@ fn test_shp_to_txt_split_by_plot() {
     };
     // 用序号命名（filename_field 为空）
     let options = convert::ShpToTxtOptions {
+            omit_coord_section: false,
         omit_fields: false,
         txt_encoding: String::new(),
         proj_mode: "keep".to_string(),
@@ -773,6 +778,7 @@ fn test_shp_to_txt_full() {
     let header = make_header();
 
     let options = convert::ShpToTxtOptions {
+            omit_coord_section: false,
         omit_fields: false,
         txt_encoding: String::new(),
         proj_mode: "keep".to_string(),
@@ -866,6 +872,7 @@ fn test_shp_txt_roundtrip() {
     };
 
     let options = convert::ShpToTxtOptions {
+            omit_coord_section: false,
         omit_fields: false,
         txt_encoding: String::new(),
         proj_mode: "keep".to_string(),
@@ -938,6 +945,7 @@ fn test_preview() {
     };
 
     let options = convert::ShpToTxtOptions {
+            omit_coord_section: false,
         omit_fields: false,
         txt_encoding: String::new(),
         proj_mode: "keep".to_string(),
@@ -1098,6 +1106,7 @@ J1,2,30.000,30.000";
         dlbm: "DLBM".into(), columns: Vec::new(),
     };
     let shp_to_txt = convert::ShpToTxtOptions {
+            omit_coord_section: false,
         omit_fields: false,
         txt_encoding: String::new(),
         proj_mode: "keep".to_string(),
@@ -1191,6 +1200,7 @@ J1,2,2.000,2.000";
         dlbm: "DLBM".into(), columns: Vec::new(),
     };
     let shp_to_txt = convert::ShpToTxtOptions {
+            omit_coord_section: false,
         omit_fields: false,
         txt_encoding: String::new(),
         proj_mode: "keep".to_string(),
@@ -1247,6 +1257,7 @@ fn test_field_mapping_sentinels_area() {
     let shp_path = test_shp_stem();
     let header = make_header();
     let options = convert::ShpToTxtOptions {
+            omit_coord_section: false,
         omit_fields: false,
         txt_encoding: String::new(),
         proj_mode: "keep".to_string(),
@@ -1449,6 +1460,7 @@ fn test_shp_to_txt_proj_mode_a_forward() {
             tfh: String::new(), dlbm: String::new(), columns: Vec::new(),
         },
         &convert::ShpToTxtOptions {
+            omit_coord_section: false,
             omit_fields: false,
             txt_encoding: String::new(),
             ox: false, oj: false, on: false, oo: false, oc: false,

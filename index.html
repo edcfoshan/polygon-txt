@@ -736,6 +736,8 @@ body{
 .attr-toolbar{display:flex;align-items:center;justify-content:space-between;gap:4px;margin-bottom:5px}
 .omit-row{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--tx2);cursor:pointer;user-select:none;margin:2px 0 6px}
 .omit-row input{width:13px;height:13px;accent-color:var(--ac);cursor:pointer;flex:none;margin:0}
+.omit-hint{font-size:10.5px;line-height:1.5;color:var(--er);margin:-3px 0 6px}
+.omit-hint[hidden]{display:none}
 .attr-add{flex:0 0 auto}
 #attrRows{max-height:320px;overflow-y:auto;padding-right:3px}
 #attrRows::-webkit-scrollbar{width:6px}
@@ -1413,6 +1415,8 @@ body{
         <div class="mid-pane on" data-mp="fld">
         <div class="slabel" style="display:flex;align-items:center">字段映射 <span id="fmTag" hidden>简单模式</span><input type="checkbox" id="advMode" hidden><button class="btn" id="btnResetFld" style="font-size:9.5px;padding:2px 8px;margin-left:auto" title="字段映射恢复默认（简单模式 + 标准字段）">恢复默认</button></div>
         <label class="omit-row" title="勾选后每个地块只输出坐标行，不含字段内容"><input type="checkbox" id="fldOmit"> 不输出字段内容（只保留坐标行）</label>
+        <label class="omit-row" title="勾选后不输出「[地块坐标]」这一行段标题"><input type="checkbox" id="secOmit"> 不输出 [地块坐标] 段标题</label>
+        <div class="omit-hint" id="secOmitHint" hidden>去掉该段标题后，本工具自身无法再解析这个 TXT（坐标行会被当成属性行丢弃），请确认接收系统不需要它。</div>
         <div class="field-mode-tabs" role="tablist" aria-label="字段映射模式">
           <button type="button" class="field-mode-tab" id="fieldSimpleTab" role="tab" aria-selected="true" aria-controls="fieldSimple" data-field-mode="simple">简单模式</button>
           <button type="button" class="field-mode-tab" id="fieldAdvancedTab" role="tab" aria-selected="false" aria-controls="fieldAdv" tabindex="-1" data-field-mode="advanced">高级模式</button>

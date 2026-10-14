@@ -1763,9 +1763,15 @@ const up = async function () {
   const attrLines = collectAttrRows()
     .filter((r) => r.k.trim() !== "" || r.v.trim() !== "")
     .map((r) => `${r.k}=${r.v}`);
+  // 空载骨架必须和真实输出同口径：尊重「不输出表头」与「不输出 [地块坐标] 段标题」
+  const hdrOmit = $("hdrOmit")?.checked || false;
+  const secOmit = $("secOmit")?.checked || false;
   let out = "";
-  if (hpi.trim()) out += `[项目信息]\n${hpi.trim()}\n`;
-  out += `[属性描述]\n${attrLines.join("\n")}\n[地块坐标]`;
+  if (!hdrOmit) {
+    if (hpi.trim()) out += `[项目信息]\n${hpi.trim()}\n`;
+    out += `[属性描述]\n${attrLines.join("\n")}\n`;
+  }
+  if (!secOmit) out += "[地块坐标]";
 
   const cfg = getConfig();
   const opt = getOptions();
@@ -1800,7 +1806,11 @@ const up = async function () {
     finally { if (seq === previewSeq && spin) spin.classList.remove('on'); }
   }
   const pv = $("pv");
-  if (pv) pv.textContent = out || "请先导入 SHP 或 GDB 文件";
+  if (pv) {
+    if (out) pv.textContent = out;
+    else if (hdrOmit || secOmit) pv.textContent = "（按当前开关已省略全部段落；导入 SHP/GDB 后显示实际内容）";
+    else pv.textContent = "请先导入 SHP 或 GDB 文件";
+  }
 }
 
 // ═══ Run ═══
@@ -2151,6 +2161,7 @@ function getConfig() {
       name: $("fn")?.value || "", id: $("fi")?.value || "", area: $("fa")?.value || "", use_field: $("fu")?.value || "", tfh: $("fm")?.value || "", dlbm: $("fd")?.value || "",
       area_decimals: Number($("areaDecimals")?.value ?? 4),
       omit_fields: $("fldOmit")?.checked || false,
+      omit_coord_section: $("secOmit")?.checked || false,
       // 高级模式：on=开关态 / preset=预设态 / rows=行状态（持久化用）
       adv: { on: advOn, preset: advPreset, rows: advInitialized ? collectFieldRows() : null },
       // 发给 Rust FieldMapping.columns（高级模式开启才非空；空字段名行 = 占位「新行N」，输出空值列）
@@ -2187,6 +2198,7 @@ function getOptions() {
     // 界址点列布局：null = 标准4列；界面切换部备案/自定义后所有预览和导出共用
     point_layout: getPointLayout(),
     omit_fields: $("fldOmit")?.checked || false,
+    omit_coord_section: $("secOmit")?.checked || false,
   };
 }
 
@@ -2282,6 +2294,13 @@ function exponentToPrecision(exp) {
   // 不用 parseFloat，避免 1e-8 科学记数；toFixed 直接给 "0.00000001"
   if (exp <= 0) return "1";
   return Math.pow(10, -exp).toFixed(exp);
+}
+
+// 「不输出 [地块坐标] 段标题」的后果提示：会让本工具自身无法再解析该 TXT，勾选时才出现
+function syncSecOmitHint() {
+  const ck = $("secOmit");
+  const hint = $("secOmitHint");
+  if (hint) hint.hidden = !(ck && ck.checked);
 }
 
 function renderAttrRows(attrs) {
@@ -2476,6 +2495,7 @@ const ld = function (id) {
       if (typeof value === "string") $(id).value = value;
     });
     if ($("fldOmit")) $("fldOmit").checked = !!c.f.omit_fields;
+    if ($("secOmit")) { $("secOmit").checked = !!c.f.omit_coord_section; syncSecOmitHint(); }
     $("areaDecimals").value = String(areaDecimals($("fa").value, c.f.area_decimals));
     syncSimpleAreaControls();
     // 高级模式配置恢复（旧配置无 adv → 关闭态）
@@ -3346,9 +3366,13 @@ function initClickBindings() {
     updatePreview();
   });
   // v4.6 输出开关：不输出表头 / 不输出字段内容（改动即刷新预览 + 落盘）
-  ["hdrOmit", "fldOmit"].forEach((id) => {
+  ["hdrOmit", "fldOmit", "secOmit"].forEach((id) => {
     const el = $(id);
-    if (el) el.addEventListener("change", () => { scheduleAutoSave(); updatePreview(); });
+    if (el) el.addEventListener("change", () => {
+      if (id === "secOmit") syncSecOmitHint();
+      scheduleAutoSave();
+      updatePreview();
+    });
   });
   bindAttrRowEvents();
   bindGripReorder($("attrRows"), collectAttrRows, renderAttrRows);

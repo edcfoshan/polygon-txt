@@ -41,6 +41,7 @@ fn make_mapping() -> convert::FieldMapping {
 
 fn base_options() -> convert::ShpToTxtOptions {
     convert::ShpToTxtOptions {
+            omit_coord_section: false,
         omit_fields: false,
         txt_encoding: String::new(),
         proj_mode: "keep".to_string(),

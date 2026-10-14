@@ -115,6 +115,9 @@ pub struct ShpToTxtOptions {
     /// 勾选后每个地块的字段行（...,@）不输出，只留坐标行（v4.6）。
     #[serde(default)]
     pub omit_fields: bool,
+    /// 勾选后「[地块坐标]」段标题不输出（v4.6）。注意：去掉后本工具自身无法再解析该 TXT。
+    #[serde(default)]
+    pub omit_coord_section: bool,
 }
 
 fn default_zone_type() -> u8 {
@@ -366,7 +369,7 @@ pub fn shp_to_txt_preview(
         options.oj,
         options.oc,
         options.point_layout.as_ref(),
-        txt::TxtOmit { header: header_for_txt.omit, fields: options.omit_fields },
+        txt::TxtOmit { header: header_for_txt.omit, fields: options.omit_fields, coord_section: options.omit_coord_section },
     );
 
     Ok(result.lines().take(2000).collect::<Vec<_>>().join("\n"))
@@ -630,7 +633,7 @@ pub fn convert_shp_to_txt(
             let plots: Vec<_> = src.plots.iter().map(|p| p.plot.clone()).collect();
             let content = txt::generate_txt_with(&header_for_convert.project_info, &header_for_convert.attrs,
                 &plots, options.oj, options.oc, options.point_layout.as_ref(),
-                txt::TxtOmit { header: header_for_convert.omit, fields: options.omit_fields });
+                txt::TxtOmit { header: header_for_convert.omit, fields: options.omit_fields, coord_section: options.omit_coord_section });
             txt::encode_txt(&content, &options.txt_encoding)?;
         }
     }
@@ -899,7 +902,7 @@ fn convert_one_to_one(
             options.oj,
             options.oc,
             options.point_layout.as_ref(),
-            txt::TxtOmit { header: header_cfg.omit, fields: options.omit_fields },
+            txt::TxtOmit { header: header_cfg.omit, fields: options.omit_fields, coord_section: options.omit_coord_section },
         );
         let (final_name, bumped) = allocate_unique_name(&src.stem, &mut used_names);
         if bumped {
@@ -986,7 +989,7 @@ fn convert_split_by_plot(
                 options.oj,
                 options.oc,
                 options.point_layout.as_ref(),
-                txt::TxtOmit { header: header_cfg.omit, fields: options.omit_fields },
+                txt::TxtOmit { header: header_cfg.omit, fields: options.omit_fields, coord_section: options.omit_coord_section },
             );
             let txt_path = subdir.join(format!("{}.txt", final_name));
             std::fs::write(&txt_path, txt::encode_txt(&txt_content, &options.txt_encoding)?)
@@ -1034,7 +1037,7 @@ fn convert_merge_all(
         options.oj,
         options.oc,
         options.point_layout.as_ref(),
-        txt::TxtOmit { header: header_cfg.omit, fields: options.omit_fields },
+        txt::TxtOmit { header: header_cfg.omit, fields: options.omit_fields, coord_section: options.omit_coord_section },
     );
     let txt_path = output_dir.join(&filename);
     std::fs::write(&txt_path, txt::encode_txt(&txt_content, &options.txt_encoding)?).map_err(|e| format!("写 TXT 失败: {}", e))?;

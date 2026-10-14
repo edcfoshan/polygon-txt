@@ -61,6 +61,7 @@ fn empty_mapping() -> convert::FieldMapping {
 
 fn opts_with(proj_mode: &str, proj_zone: Option<u32>, no_prefix: bool) -> convert::ShpToTxtOptions {
     convert::ShpToTxtOptions {
+            omit_coord_section: false,
         omit_fields: false,
         txt_encoding: String::new(),
         ox: false, oj: true, on: false, oo: false, oc: false,

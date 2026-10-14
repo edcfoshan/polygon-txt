@@ -53,6 +53,7 @@ fn header_with_test_attrs(pairs: Vec<(&str, &str)>) -> HeaderConfig {
 
 fn shp_opts_test_default() -> ShpToTxtOptions {
     ShpToTxtOptions {
+            omit_coord_section: false,
         omit_fields: false,
         txt_encoding: String::new(),
         ox: false, oj: false, on: false, oo: false, oc: false,

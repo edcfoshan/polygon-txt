@@ -462,8 +462,16 @@ pub fn generate_txt(
     generate_txt_ex(project_info, attrs, features, oj, oc, None)
 }
 
-/// 生成 TXT 内容。layout=Some 时按配置列序输出；空列兜底为标准 4 列。
-/// 其余行（头部/元数据）与标准格式一致。
+/// 输出开关（v4.6）：整段表头 / 每个地块的字段行，可分别整体省略。
+#[derive(Debug, Clone, Copy, Default)]
+pub struct TxtOmit {
+    /// 整个表头段（[属性描述] + [项目信息]）都不输出
+    pub header: bool,
+    /// 每个地块的字段行（...,@）不输出，只留坐标行
+    pub fields: bool,
+}
+
+/// 生成 TXT 内容（不省略任何段落）。layout=Some 时按配置列序输出；空列兜底为标准 4 列。
 pub fn generate_txt_ex(
     project_info: &str,
     attrs: &[AttrRow],
@@ -471,6 +479,20 @@ pub fn generate_txt_ex(
     oj: bool,
     oc: bool,
     layout: Option<&PointLayout>,
+) -> String {
+    generate_txt_with(project_info, attrs, features, oj, oc, layout, TxtOmit::default())
+}
+
+/// 生成 TXT 内容。layout=Some 时按配置列序输出；空列兜底为标准 4 列。
+/// 其余行（头部/元数据）与标准格式一致。omit 控制是否整段省略表头 / 字段行。
+pub fn generate_txt_with(
+    project_info: &str,
+    attrs: &[AttrRow],
+    features: &[PlotData],
+    oj: bool,
+    oc: bool,
+    layout: Option<&PointLayout>,
+    omit: TxtOmit,
 ) -> String {
     let mut out = String::new();
 
@@ -482,22 +504,25 @@ pub fn generate_txt_ex(
         .unwrap_or("0.001");
     let decimals = precision_to_decimals(precision_str);
 
-    if !project_info.is_empty() {
+    if !omit.header && !project_info.is_empty() {
         out.push_str("[项目信息]\n");
         out.push_str(project_info);
         out.push('\n');
     }
 
-    // [属性描述] 段：按 attrs 列表顺序输出，键值都空的行跳过（非强制）
-    out.push_str("[属性描述]\n");
-    for row in attrs {
-        if row.k.trim().is_empty() && row.v.trim().is_empty() {
-            continue;
+    // [属性描述] 段：按 attrs 列表顺序输出，键值都空的行跳过（非强制）。
+    // 勾选「不输出表头」时连段标题一起省略。
+    if !omit.header {
+        out.push_str("[属性描述]\n");
+        for row in attrs {
+            if row.k.trim().is_empty() && row.v.trim().is_empty() {
+                continue;
+            }
+            out.push_str(&row.k);
+            out.push('=');
+            out.push_str(&row.v);
+            out.push('\n');
         }
-        out.push_str(&row.k);
-        out.push('=');
-        out.push_str(&row.v);
-        out.push('\n');
     }
 
     out.push_str("[地块坐标]\n");
@@ -512,32 +537,35 @@ pub fn generate_txt_ex(
         // 编号与点序列统一走 number_plot_points（地图界址点标注共用同一套口径）
         let numbered = number_plot_points(plot, oj, oc);
         let point_count = numbered.len();
-        if !plot.fields.is_empty() {
-            // 高级格式：按列顺序输出；__count__ 列（value==哨兵，与字段名无关）强制用本块实际点数
-            for (i, (_, v)) in plot.fields.iter().enumerate() {
-                if i > 0 {
-                    out.push(',');
+        // v4.6：勾选「不输出字段内容」→ 字段行（含标准 8 列）整体省略，只留坐标行
+        if !omit.fields {
+            if !plot.fields.is_empty() {
+                // 高级格式：按列顺序输出；__count__ 列（value==哨兵，与字段名无关）强制用本块实际点数
+                for (i, (_, v)) in plot.fields.iter().enumerate() {
+                    if i > 0 {
+                        out.push(',');
+                    }
+                    if v == crate::convert::COUNT_SENTINEL {
+                        let _ = write!(out, "{}", point_count);
+                    } else {
+                        out.push_str(v);
+                    }
                 }
-                if v == crate::convert::COUNT_SENTINEL {
-                    let _ = write!(out, "{}", point_count);
-                } else {
-                    out.push_str(v);
-                }
+                out.push_str(",@\n");
+            } else {
+                let _ = write!(
+                    out,
+                    "{},{},{},{},{},{},{},{},@\n",
+                    point_count,
+                    plot.area,
+                    plot.fid,
+                    plot.name,
+                    plot.geom_type,
+                    plot.tfh,
+                    plot.use_field,
+                    plot.dlbm,
+                );
             }
-            out.push_str(",@\n");
-        } else {
-            let _ = write!(
-                out,
-                "{},{},{},{},{},{},{},{},@\n",
-                point_count,
-                plot.area,
-                plot.fid,
-                plot.name,
-                plot.geom_type,
-                plot.tfh,
-                plot.use_field,
-                plot.dlbm,
-            );
         }
         let distances = effective_layout
             .filter(|l| l.has_core("distance"))

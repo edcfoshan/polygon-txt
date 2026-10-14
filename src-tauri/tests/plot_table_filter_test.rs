@@ -45,6 +45,7 @@ fn empty_mapping() -> convert::FieldMapping {
 
 fn make_header() -> convert::HeaderConfig {
     convert::HeaderConfig {
+        omit: false,
         attrs: vec![
             convert::AttrRow { k: "坐标系".into(), v: "2000国家大地坐标系".into() },
             convert::AttrRow { k: "几度分带".into(), v: "3".into() },
@@ -60,6 +61,7 @@ fn make_header() -> convert::HeaderConfig {
 
 fn opts(output_mode: &str, filter: Option<Vec<[usize; 2]>>) -> convert::ShpToTxtOptions {
     convert::ShpToTxtOptions {
+        omit_fields: false,
         txt_encoding: String::new(),
         ox: false, oj: true, on: false, oo: false, oc: false,
         output_mode: output_mode.into(),

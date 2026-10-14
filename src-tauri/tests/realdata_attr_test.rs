@@ -9,6 +9,7 @@ const DATA_DIR: &str = "C:/Users/Administrator/Documents/txt与gdb互转/00测�
 /// 模拟用户给出的样例：在固定 7 项之前插入 3 行自定义属性行
 fn header_with_custom_attrs() -> convert::HeaderConfig {
     convert::HeaderConfig {
+        omit: false,
         attrs: vec![
             convert::AttrRow { k: "格式版本号".into(),   v: "1.01版本".into() },
             convert::AttrRow { k: "数据产生单位".into(), v: "有限公司".into() },
@@ -45,6 +46,7 @@ fn real_shp_to_txt_custom_attr_descriptions() {
 
     let header = header_with_custom_attrs();
     let opts = convert::ShpToTxtOptions {
+        omit_fields: false,
         txt_encoding: String::new(),
         ox: false,
         oj: true,
@@ -86,6 +88,7 @@ fn real_txt_to_shp_unaffected_by_attr_descriptions() {
 
     let out = tempfile::tempdir().expect("temp dir");
     let header = convert::HeaderConfig {
+        omit: false,
         attrs: vec![
             convert::AttrRow { k: "坐标系".into(), v: "2000国家大地坐标系".into() },
             convert::AttrRow { k: "几度分带".into(), v: "3".into() },

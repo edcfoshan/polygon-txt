@@ -55,23 +55,23 @@ node scripts/gen-latest-json.js --notes "<本次更新内容>"
 自动读 `package.json` 版本号 + 扫描 `.sig` + 组装下载 URL，输出仓库根目录 `latest.json`。
 > 不传 `--notes` 则从 `CHANGELOG.md` 提取对应版本段落兜底。
 
-**download_url 组成**（v4.6.0 起）：CI 会自动把 R2 Worker 地址填进 `url`，
-GitHub 直链放进 `github_url`（新客户端 R2 失败时回退用；Worker 自身也会 302 回 GitHub）。
-手动发版时才需要自己加 `--r2-url https://polygon-txt-updates.chendeguan.workers.dev/download/X.Y.Z`。
+**download_url 组成**（v4.6.0 起）：CI 会把 Gitee 附件地址填进 `url`（先探测，返回 200 才用），
+GitHub 直链放进 `github_url`（客户端主通道失败时回退用）。Gitee 不可达时 CI 直接把 GitHub 直链当主 url。
 
-### 4.6 同步安装包到 R2（v4.6.0 起，必做）
+### 4.6 上传附件到 Gitee（v4.6.0 起，必做）
 
 ```powershell
-node scripts/sync-r2-local.mjs --version X.Y.Z `
-  --file "00安装包相关/极思G界址点互转工具_X.Y.Z_x64-setup.exe" --prune
+node scripts/publish-gitee.mjs --version X.Y.Z `
+  --file "00安装包相关/极思G界址点互转工具_X.Y.Z_x64-setup.exe"
 ```
 
-用 `npx wrangler login` 的 OAuth 会话上传（无长期 API Token）；脚本会列举核对字节数、
-写 `latest.txt`（含 SHA-256），`--prune` 只保留最新两版。凭据过期就重跑一次 login。
+前置一次：`gitee auth login`（粘贴 Gitee 私人令牌，需 projects 权限），或设环境变量 `GITEE_TOKEN`。
+脚本会建/复用 Release（tag `vX.Y.Z`）、以 multipart 上传附件 `JisigG_X.Y.Z_x64-setup.exe`、
+回读比对 SHA-256，最后打印稳定下载地址。仓库固定 `cdg_tools/polygon-txt`（Gitee 账户 cdg_tools）。
 
-> **成本护栏**：Worker 必须留在 **Workers Free**（10 万请求/天硬上限，超限返回 1027 不转付费），
-> 每请求最多读 1 次 R2，故 R2 读次数上限约 300 万/月 < 1000 万免费额度。详见 `docs/r2-update-channel.md`。
-> 漏同步不会让用户下载失败：Worker 找不到对象会 302 回落到 `github_url`。
+> 实测：Gitee 附件下载经两次 302 到签名 CDN，无需 Referer/Cookie，大陆约 1.9 MB/s（GitHub 约 0.78 MB/s）；
+> 但**不支持断点续传**（Range 被忽略），中断需重下，6MB 包无妨。
+> 漏传不会让用户下载失败：客户端会自动回退 `github_url`。
 
 ### 5. 集中产物到 `其他相关tbx放进去release/`
 此目录是**发布物的正式暂存地**（用户约定，目录名本身即指令"放进去 release"）。构建后把产物按下列命名规则放入（**注意重命名**，Tauri 默认产物名用完整 `X.Y.Z`，发布文件名用简短 `X.Y`）：

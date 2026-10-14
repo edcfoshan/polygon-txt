@@ -459,8 +459,39 @@ body{
 .update-skip-link{background:none;border:none;color:var(--tx3);font-size:11px;cursor:pointer;text-decoration:underline;padding:4px 8px;margin-right:auto}
 .update-skip-link:hover{color:var(--tx2)}
 .update-skip-link[hidden]{display:none}
-.update-bdpan{display:block;margin-top:10px;font-size:11px;color:var(--tx3);text-decoration:underline;cursor:pointer}
+.update-links{display:flex;gap:12px;margin-top:10px;flex-wrap:wrap}
+.update-bdpan{display:block;font-size:11px;color:var(--tx3);text-decoration:underline;cursor:pointer}
 .update-bdpan:hover{color:var(--ac)}
+/* 版本分组列表：比当前版本新的展开，已装过的用 <details> 折叠 */
+/* 列表自身滚动：卡片是 flex 列，这里占满剩余高度并独立滚动，
+   否则版本多时会把卡片撑出屏幕（.modal-body 只覆盖 notes 那条路径）。 */
+.upd-releases{margin:12px 0 2px;flex:1 1 auto;min-height:0;overflow-y:auto;scrollbar-width:thin}
+.upd-releases::-webkit-scrollbar{width:6px}
+.upd-releases::-webkit-scrollbar-thumb{background:var(--brd);border-radius:3px}
+.upd-releases:empty{display:none}
+.upd-rel{border-top:1px solid var(--brd);padding:10px 0}
+.upd-rel:first-child{border-top:none;padding-top:2px}
+.upd-rel-head{display:flex;align-items:baseline;gap:8px;margin-bottom:7px}
+.upd-rel-ver{font-size:12.5px;font-weight:700;color:var(--tx);font-variant-numeric:tabular-nums}
+.upd-rel-date{font-size:10.5px;color:var(--tx3);font-variant-numeric:tabular-nums}
+.upd-rel-badge{margin-left:auto;font-size:10px;color:var(--tx3);border:1px solid var(--brd);border-radius:9px;padding:1px 7px;white-space:nowrap}
+.upd-row{display:flex;gap:7px;align-items:flex-start;margin:4px 0}
+.upd-chip{flex:0 0 auto;font-size:10px;line-height:1.6;border-radius:4px;padding:0 6px;font-weight:600;white-space:nowrap}
+.upd-chip.k-add{color:var(--ok);background:color-mix(in srgb,var(--ok) 14%,transparent)}
+.upd-chip.k-fix{color:var(--er);background:color-mix(in srgb,var(--er) 14%,transparent)}
+.upd-chip.k-opt{color:var(--ac);background:var(--acg)}
+.upd-chip.k-etc{color:var(--tx3);background:var(--srf2)}
+.upd-row-tx{font-size:12px;line-height:1.55;color:var(--tx2);word-break:break-word}
+/* 折叠态：摘要行可点，展开后列出版本内容 */
+.upd-fold{border-top:1px solid var(--brd)}
+.upd-fold:first-child{border-top:none}
+.upd-fold>summary{display:flex;align-items:baseline;gap:8px;padding:8px 0;cursor:pointer;list-style:none;user-select:none;border-radius:4px}
+.upd-fold>summary::-webkit-details-marker{display:none}
+.upd-fold>summary::before{content:"›";color:var(--tx3);font-size:12px;line-height:1;transition:transform .15s;flex:0 0 auto;width:8px}
+.upd-fold[open]>summary::before{transform:rotate(90deg)}
+.upd-fold>summary:hover .upd-rel-ver{color:var(--ac)}
+.upd-fold>summary:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
+.upd-fold .upd-rel-body{padding:0 0 8px 16px}
 .modal-card[data-modal="update"] .update-confirm{
   background:var(--ok);color:var(--on-ok);border-color:var(--ok);font-weight:600;
 }
@@ -550,6 +581,10 @@ body{
 
 /* ═══ Main / Panels ═══ */
 .main{flex:1;overflow:hidden}
+/* 左栏（面→TXT）密度微调：该栏内宽最窄约 216px，并排布局放不下，只能收紧纵向内边距 */
+.pnl-l .mode-s .slabel{padding:4px 0 3px}
+.pnl-l .mode-s .fld{margin-bottom:5px}
+
 /* Responsive grid — columns scale with window, keep 260:260:360 visual ratio */
 .app[data-mode="s"] .main{
   display:grid;
@@ -699,8 +734,10 @@ body{
 
 /* ─── 属性描述动态行（紧凑行式 + 拖拽） ─── */
 .attr-toolbar{display:flex;align-items:center;justify-content:space-between;gap:4px;margin-bottom:5px}
+.omit-row{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--tx2);cursor:pointer;user-select:none;margin:2px 0 6px}
+.omit-row input{width:13px;height:13px;accent-color:var(--ac);cursor:pointer;flex:none;margin:0}
 .attr-add{flex:0 0 auto}
-#attrRows{max-height:220px;overflow-y:auto;padding-right:3px}
+#attrRows{max-height:320px;overflow-y:auto;padding-right:3px}
 #attrRows::-webkit-scrollbar{width:6px}
 #attrRows::-webkit-scrollbar-thumb{background:var(--brd);border-radius:3px}
 #attrRows::-webkit-scrollbar-thumb:hover{background:var(--tx3)}
@@ -865,7 +902,7 @@ body{
 .drop-tx{font-size:11px;color:var(--tx3);font-weight:500;letter-spacing:.2px}
 .drop-sub{
   display:flex;align-items:center;justify-content:center;gap:5px;width:100%;
-  border:none;background:none;padding:4px 0;margin-top:2px;
+  border:none;background:none;padding:2px 0;margin-top:0;
   font-family:inherit;font-size:11px;color:var(--tx3);cursor:pointer;
   transition:color .18s;
 }
@@ -1216,7 +1253,7 @@ body{
       <div class="mode-s pnl-bd">
         <div class="accs">
         <div class="acc open">
-          <div class="acc-h noclick"><span class="no">1</span><span class="t">导入数据</span><span class="n" id="impTag">未导入</span></div>
+          <div class="acc-h" onclick="togAcc(this)"><span class="no">1</span><span class="t">导入数据</span><span class="n" id="impTag">未导入</span><span class="arw" aria-hidden="true"><svg viewBox="0 0 12 12" width="8" height="8" fill="currentColor"><path d="M3 1.5 9 6l-6 4.5z"/></svg></span></div>
           <div class="acc-b">
         <button type="button" class="drop" id="dropZone">
           <span class="drop-ic" aria-hidden="true"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
@@ -1231,7 +1268,7 @@ body{
           </div>
         </div>
         <div class="acc open">
-          <div class="acc-h noclick"><span class="no">2</span><span class="t">输出与选项</span></div>
+          <div class="acc-h" onclick="togAcc(this)"><span class="no">2</span><span class="t">输出与选项</span><span class="arw" aria-hidden="true"><svg viewBox="0 0 12 12" width="8" height="8" fill="currentColor"><path d="M3 1.5 9 6l-6 4.5z"/></svg></span></div>
           <div class="acc-b">
         <div class="slabel">输出模式</div>
         <div class="mode-seg">
@@ -1354,6 +1391,7 @@ body{
         </div>
         <div class="mid-pane" data-mp="hdr">
         <div class="slabel">自定义表头 <span id="hdrTag">7 行</span></div>
+        <label class="omit-row" title="勾选后输出的 TXT 不含任何表头段落"><input type="checkbox" id="hdrOmit"> 不输出表头（属性描述 + 项目信息）</label>
         <div class="hdr-tabs">
           <div class="hdr-tab on" id="hdrTabAttr" data-tab="attr">属性描述</div>
           <div class="hdr-tab" id="hdrTabProj" data-tab="proj">项目信息</div>
@@ -1374,6 +1412,7 @@ body{
         </div>
         <div class="mid-pane on" data-mp="fld">
         <div class="slabel" style="display:flex;align-items:center">字段映射 <span id="fmTag" hidden>简单模式</span><input type="checkbox" id="advMode" hidden><button class="btn" id="btnResetFld" style="font-size:9.5px;padding:2px 8px;margin-left:auto" title="字段映射恢复默认（简单模式 + 标准字段）">恢复默认</button></div>
+        <label class="omit-row" title="勾选后每个地块只输出坐标行，不含字段内容"><input type="checkbox" id="fldOmit"> 不输出字段内容（只保留坐标行）</label>
         <div class="field-mode-tabs" role="tablist" aria-label="字段映射模式">
           <button type="button" class="field-mode-tab" id="fieldSimpleTab" role="tab" aria-selected="true" aria-controls="fieldSimple" data-field-mode="simple">简单模式</button>
           <button type="button" class="field-mode-tab" id="fieldAdvancedTab" role="tab" aria-selected="false" aria-controls="fieldAdv" tabindex="-1" data-field-mode="advanced">高级模式</button>
@@ -1605,6 +1644,7 @@ J2,1,Y500.000,X301.000
       <label class="upd-opt"><input type="checkbox" id="updKeepSave"> 保留安装包到桌面</label>
     </div>
     <div class="modal-body" id="updateNotes"></div>
+    <div class="upd-releases" id="updateReleases"></div>
     <div class="update-progress-row" style="display:none">
       <progress class="update-progress" id="updateProgress" value="0" max="1"></progress>
       <span class="update-pct" id="updatePct">0%</span>
@@ -1614,7 +1654,10 @@ J2,1,Y500.000,X301.000
       <button class="btn" id="btnCancelUpdate">稍后</button>
       <button class="btn update-confirm" id="btnDoUpdate">立即更新</button>
     </div>
-    <a class="update-bdpan" id="bdpanLink" href="#">自动更新失败？去百度云手动下载</a>
+    <div class="update-links">
+      <a class="update-bdpan" id="bdpanLink" href="#">自动更新失败？去百度云手动下载</a>
+      <a class="update-bdpan" id="relNotesLink" href="#">查看完整更新内容</a>
+    </div>
   </div>
 </div>
 

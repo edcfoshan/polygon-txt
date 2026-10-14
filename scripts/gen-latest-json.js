@@ -10,8 +10,11 @@
 //   2. 扫描 nsis 目录找最新的 *.sig，读取签名内容
 //   3. 推断同名 .exe（Tauri NSIS 产物，文件名含中文）
 //   4. 组装 url：必须用 --download-url 传真实资产链接；不传则按 productName 拼（含中文，上传后 404）
-//      --r2-url 传入 Cloudflare Worker 下载地址时，它成为主 url，
-//      GitHub 直链降级为 github_url 字段（新客户端失败时回退用）。
+//      --gitee-url 传入 Gitee 附件下载地址时，它成为主 url，
+//      GitHub 直链降级为 github_url 字段（客户端主通道失败时回退用）。
+//   6. releases 字段：最近若干版本的结构化说明（含分类），供更新弹窗按版本
+//      分组展示（比当前版本新的展开、已装过的折叠）。老客户端只读 notes，
+//      多出的字段对它无影响。
 //   5. 写入仓库根目录 latest.json（jsDelivr 源会从这里取）
 //
 // 发布时把生成的 latest.json 和 NSIS exe 一起上传到 GitHub Release。
@@ -73,7 +76,7 @@ const mirror = args.mirror === true ? 'https://mirror.ghproxy.com/' : '';
 // url 优先用 --download-url（CI 传入 Release API 的真实 browser_download_url，即 GitHub
 // 清洗过非 ASCII 之后的 slug）。不传则按 productName 拼——含中文时该链接上传后会 404。
 const explicitUrl = args['download-url'];
-const r2Url = args['r2-url'];
+const giteeUrl = args['gitee-url'];
 const downloadUrl = `${mirror}${
   explicitUrl ||
   `https://github.com/${repo}/releases/download/${encodeURIComponent(tag)}/${encodeURIComponent(publishedExeName)}`
@@ -83,17 +86,87 @@ if (!explicitUrl && /[^\x20-\x7E]/.test(publishedExeName)) {
   console.warn(`  这个 url 上传后必然 404。正式发布请在 CI 里传 --download-url <Release API 的 browser_download_url>。`);
 }
 
-// R2 通道（Cloudflare Worker）作为主下载源时，把 GitHub 直链放进 github_url：
-//   - 老客户端只认 url，会跟着 Worker 的 302 落到 GitHub，行为不变；
-//   - 新客户端带 X-Client-Key 命中 R2，失败时回退 github_url。
-// Worker 的 R2 读次数受 Workers Free 每日 10 万请求硬上限约束（超限 1027，不计费）。
+// ── 结构化更新说明（供弹窗按版本分组）────────────────────────────────
+// 从 CHANGELOG.md 抽取：## [x.y.z] 分版本，### 小节 → 分类，- 条目 → 内容。
+// 分类归并成 4 类，与弹窗徽标色一一对应；未识别的归入「其它」。
+const HISTORY_LIMIT = 5;
+const KIND_MAP = [
+  ['新增', ['新增', '新功能', 'feature', 'feat', 'new']],
+  ['修复', ['修复', 'fix', 'bug']],
+  ['优化', ['优化', '改进', 'improve', 'perf', '性能']],
+];
+
+function classifyKind(title) {
+  const s = String(title || '').trim().toLowerCase();
+  for (const [kind, keys] of KIND_MAP) {
+    if (keys.some((k) => s.includes(k.toLowerCase()))) return kind;
+  }
+  return '其它';
+}
+
+// 去掉 markdown 标记，弹窗按纯文本渲染
+function cleanItem(s) {
+  return s
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/`(.+?)`/g, '$1')
+    .replace(/\[(.+?)\]\((.+?)\)/g, '$1')
+    .trim();
+}
+
+function parseChangelogSections(text) {
+  const out = [];
+  let version = null;   // 当前版本（## [x.y.z]）
+  let date = '';        // 当前版本日期（## [x.y.z] - YYYY-MM-DD）
+  let cur = null;       // 当前小节（### 标题）
+  let seen = 0;         // 已进入过的版本数
+  for (const rawLine of text.split('\n')) {
+    const line = rawLine.trim();
+    const vh = /^##\s*\[([0-9]+\.[0-9]+\.[0-9]+)\]\s*(?:-\s*(\d{4}-\d{2}-\d{2}))?/.exec(line);
+    if (vh) {
+      if (version !== null) seen++;
+      if (seen >= HISTORY_LIMIT) break;
+      version = vh[1];
+      date = vh[2] || '';
+      cur = null;
+      continue;
+    }
+    if (version === null) continue;
+    const sh = /^###\s+(.+)$/.exec(line);
+    if (sh) {
+      cur = { version, date, kind: classifyKind(sh[1]), title: sh[1].trim(), items: [] };
+      out.push(cur);
+      continue;
+    }
+    if (line.startsWith('- ')) {
+      const item = cleanItem(line.slice(2));
+      if (!item) continue;
+      if (!cur) { cur = { version, date, kind: '其它', title: '其它', items: [] }; out.push(cur); }
+      cur.items.push(item);
+    }
+  }
+  return out.filter((s) => s.items.length);
+}
+
+let releases = [];
+try {
+  releases = parseChangelogSections(readFileSync(join(root, 'CHANGELOG.md'), 'utf8'));
+} catch {
+  console.warn('⚠ 读不到 CHANGELOG.md，latest.json 不带 releases 字段');
+}
+
+// 主下载源（Gitee 附件）与 GitHub 直链并存：
+//   - url = Gitee（大陆直连快，实测约 1.9 MB/s）；
+//   - github_url = GitHub 直链，客户端主通道失败时自动回退。
+// Gitee 不支持断点续传（实测 Range 被忽略），文件小无妨；无 Gitee 时 url 直接就是 GitHub。
 const latest = {
   version,
   notes,
+  releases,
+  releases_limit: HISTORY_LIMIT,
   pub_date: new Date().toISOString(),
   platforms: {
-    'windows-x86_64': r2Url
-      ? { signature, url: r2Url, github_url: downloadUrl }
+    'windows-x86_64': giteeUrl
+      ? { signature, url: giteeUrl, github_url: downloadUrl }
       : { signature, url: downloadUrl },
   },
 };
@@ -102,9 +175,10 @@ const outPath = join(root, 'latest.json');
 writeFileSync(outPath, JSON.stringify(latest, null, 2));
 console.log(`✓ 已生成 ${outPath}`);
 console.log(`  version: ${version}`);
-console.log(`  url:     ${r2Url || downloadUrl}${r2Url ? '  (R2 Worker)' : ''}`);
-if (r2Url) console.log(`  github:  ${downloadUrl}  (github_url 回退)`);
+console.log(`  url:     ${giteeUrl || downloadUrl}${giteeUrl ? '  (Gitee)' : ''}`);
+if (giteeUrl) console.log(`  github:  ${downloadUrl}  (github_url 回退)`);
 console.log(`  tag:     ${tag}`);
+console.log(`  releases: ${releases.length} 段（最多 ${HISTORY_LIMIT} 个版本）`);
 console.log('');
 console.log('下一步：');
 console.log(`  1. 把 nsis/${sourceExeName} 与 ${sigName} 上传到 GitHub Release ${tag}（GitHub 会把 slug 里的中文剥成 ASCII）`);
@@ -121,7 +195,7 @@ function parseArgs(argv) {
     else if (a === '--notes') out.notes = argv[++i];
     else if (a === '--nsis-dir') out['nsis-dir'] = argv[++i];
     else if (a === '--download-url') out['download-url'] = argv[++i];
-    else if (a === '--r2-url') out['r2-url'] = argv[++i];
+    else if (a === '--gitee-url') out['gitee-url'] = argv[++i];
     else if (a === '--mirror') out.mirror = true;
   }
   return out;

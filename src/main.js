@@ -110,11 +110,12 @@ const DEFAULT_ATTRS = [
 
 // 把任意 h 对象规范化为 { attrs, project_info }。兼容旧结构（crs/band/... 字段）。
 function normalizeH(h) {
-  if (!h) return { attrs: DEFAULT_ATTRS.map((r) => ({ ...r })), project_info: "" };
+  if (!h) return { attrs: DEFAULT_ATTRS.map((r) => ({ ...r })), project_info: "", omit: false };
   if (Array.isArray(h.attrs)) {
     return {
       attrs: h.attrs.map((r) => ({ k: (r && r.k) || "", v: (r && r.v) || "" })),
       project_info: h.project_info || "",
+      omit: !!h.omit,
     };
   }
   // 旧结构 → 7 行种子
@@ -129,6 +130,7 @@ function normalizeH(h) {
       { k: "转换参数", v: h.transform || "" },
     ],
     project_info: h.project_info || "",
+    omit: !!h.omit,
   };
 }
 
@@ -1339,7 +1341,8 @@ function renderFieldRows(rows) {
     div.className = "attr-row field-row";
     div.dataset.i = String(i);
     // 左列字段名可编辑（自绘候选弹层 advSuggest）：空值 = 无名值列（placeholder「新行」），候选 = 14 项清单
-    const btnHtml = locked ? "" : `<button class="abtn del" data-act="del" data-i="${i}" title="删除此行" aria-label="删除此行">${ICON_X}</button>`;
+    // v4.6：锁定行（自动统计点数/固定「面」）也可删；只是源不可改
+    const btnHtml = `<button class="abtn del" data-act="del" data-i="${i}" title="删除此行" aria-label="删除此行">${ICON_X}</button>`;
     div.innerHTML =
       `${GRIP_HTML}` +
       `<input class="fk" data-i="${i}" data-f="name" maxlength="30" autocomplete="off" spellcheck="false" placeholder="新行" value="${escAttr(row.name)}">` +
@@ -2143,10 +2146,11 @@ const runTxtToShp = async function () {
 function getConfig() {
   const advOn = $("advMode")?.checked || false;
   return {
-    h: { attrs: collectAttrRows(), project_info: $("hpi")?.value || "" },
+    h: { attrs: collectAttrRows(), project_info: $("hpi")?.value || "", omit: $("hdrOmit")?.checked || false },
     f: {
       name: $("fn")?.value || "", id: $("fi")?.value || "", area: $("fa")?.value || "", use_field: $("fu")?.value || "", tfh: $("fm")?.value || "", dlbm: $("fd")?.value || "",
       area_decimals: Number($("areaDecimals")?.value ?? 4),
+      omit_fields: $("fldOmit")?.checked || false,
       // 高级模式：on=开关态 / preset=预设态 / rows=行状态（持久化用）
       adv: { on: advOn, preset: advPreset, rows: advInitialized ? collectFieldRows() : null },
       // 发给 Rust FieldMapping.columns（高级模式开启才非空；空字段名行 = 占位「新行N」，输出空值列）
@@ -2182,6 +2186,7 @@ function getOptions() {
     plot_filter: (window.TV && TV.getFilterUids ? TV.getFilterUids().uids : null),
     // 界址点列布局：null = 标准4列；界面切换部备案/自定义后所有预览和导出共用
     point_layout: getPointLayout(),
+    omit_fields: $("fldOmit")?.checked || false,
   };
 }
 
@@ -2282,7 +2287,8 @@ function exponentToPrecision(exp) {
 function renderAttrRows(attrs) {
   const box = $("attrRows");
   if (!box) return;
-  const defaultCount = DEFAULT_ATTRS.length; // 前 defaultCount 行为标准行，不可删除
+  const tag = $("hdrTag");
+  if (tag) tag.textContent = attrs.length + " 行";
   box.innerHTML = "";
   attrs.forEach((row, i) => {
     const div = document.createElement("div");
@@ -2305,10 +2311,8 @@ function renderAttrRows(attrs) {
     } else {
       valueCtrl = `<input class="av" data-i="${i}" data-f="v" value="${escAttr(row.v)}" placeholder="值">`;
     }
-    // 标准行（i < defaultCount）无 ✕ 按钮；用户新增行才可删
-    const btnHtml = i < defaultCount
-      ? ""
-      : `<button class="abtn del" data-act="del" data-i="${i}" title="删除此行" aria-label="删除此行">${ICON_X}</button>`;
+    // v4.6：默认种子行同样可删（删除后可用「恢复默认」找回）
+    const btnHtml = `<button class="abtn del" data-act="del" data-i="${i}" title="删除此行" aria-label="删除此行">${ICON_X}</button>`;
     div.innerHTML =
       `${GRIP_HTML}` +
       `<input class="ak" data-i="${i}" data-f="k" value="${escAttr(row.k)}" placeholder="键名">` +
@@ -2445,6 +2449,7 @@ const ld = function (id) {
     const hn = normalizeH(c.h);
     renderAttrRows(hn.attrs);
     if ($("hpi")) $("hpi").value = hn.project_info;
+    if ($("hdrOmit")) $("hdrOmit").checked = !!hn.omit;
   }
   if (c.p) {
     $("txtEncoding").value = c.p.txt_encoding || "utf8";
@@ -2470,6 +2475,7 @@ const ld = function (id) {
       const value = c.f[id] ?? c.f[key];
       if (typeof value === "string") $(id).value = value;
     });
+    if ($("fldOmit")) $("fldOmit").checked = !!c.f.omit_fields;
     $("areaDecimals").value = String(areaDecimals($("fa").value, c.f.area_decimals));
     syncSimpleAreaControls();
     // 高级模式配置恢复（旧配置无 adv → 关闭态）
@@ -2527,9 +2533,6 @@ const openGitHub = async function () {
 // 流程：启动检查(24h节流) → 检测到新版亮箭头+自动弹窗 → 立即更新/稍后/跳过 → 失败兜底百度云
 const BAIDU_PAN_URL = "https://pan.baidu.com/s/1xyW3-hyZrFDDG9ijYOf46g?pwd=e8vy";
 
-// R2 更新通道：Worker 只在带上 X-Client-Key 时才从 R2 取包，否则 302 回 GitHub。
-// R2 额度约为 GitHub 直链的 10 倍以上，失败时回退 github_url；再失败才引导百度云。
-const R2_CLIENT_KEY = typeof __R2_CLIENT_KEY__ === "string" ? __R2_CLIENT_KEY__ : "";
 const LS_LAST_CHECK = "tg_update_lastCheck";
 const LS_SKIPPED = "tg_update_skipped";
 const LS_KNOWN = "tg_update_known";
@@ -2636,6 +2639,86 @@ async function checkAppUpdate(manual = false) {
   }
 }
 
+// ═══ 更新说明渲染（按版本分组，cc-switch 式结构）═══
+// 比当前版本新的版本：展开并逐条列出；已装过的版本：<details> 折叠，点开可看。
+// 数据来自 latest.json 的 releases（gen-latest-json.js 从 CHANGELOG 抽取）。
+const KIND_CLASS = { 新增: 'k-add', 修复: 'k-fix', 优化: 'k-opt' };
+
+const renderReleases = function (releases, currentVer, latestVer) {
+  const box = $("updateReleases");
+  if (!box) return;
+  box.textContent = "";
+  if (!Array.isArray(releases) || !releases.length) return;   // :empty 会隐藏整块
+
+  // 按版本归组，保持 CHANGELOG 顺序（新 → 旧）
+  const order = [];
+  const byVer = new Map();
+  for (const seg of releases) {
+    if (!seg || !seg.version || !Array.isArray(seg.items) || !seg.items.length) continue;
+    if (!byVer.has(seg.version)) { byVer.set(seg.version, { version: seg.version, date: seg.date || "", segs: [] }); order.push(seg.version); }
+    byVer.get(seg.version).segs.push(seg);
+  }
+
+  const cur = currentVer || "0.0.0";
+  const latest = latestVer || cur;
+  for (const ver of order) {
+    const g = byVer.get(ver);
+    let count = 0;
+    for (const s of g.segs) count += s.items.length;
+    const isNew = compareVersion(ver, cur) === 1;              // 比当前运行版本新 → 展开
+    const el = document.createElement(isNew ? "div" : "details");
+    el.className = isNew ? "upd-rel" : "upd-fold";
+
+    const head = document.createElement(isNew ? "div" : "summary");
+    head.className = "upd-rel-head";
+    const vEl = document.createElement("span");
+    vEl.className = "upd-rel-ver";
+    vEl.textContent = "v" + ver;
+    head.appendChild(vEl);
+    if (g.date) {
+      const dEl = document.createElement("span");
+      dEl.className = "upd-rel-date";
+      dEl.textContent = g.date;
+      head.appendChild(dEl);
+    }
+    if (!isNew) {
+      const bEl = document.createElement("span");
+      bEl.className = "upd-rel-badge";
+      bEl.textContent = count + " 条 · 点开查看";
+      head.appendChild(bEl);
+    }
+    el.appendChild(head);
+
+    const body = document.createElement("div");
+    body.className = "upd-rel-body";
+    for (const seg of g.segs) {
+      for (const item of seg.items) {
+        const row = document.createElement("div");
+        row.className = "upd-row";
+        const chip = document.createElement("span");
+        chip.className = "upd-chip " + (KIND_CLASS[seg.kind] || "k-etc");
+        chip.textContent = seg.kind;
+        const tx = document.createElement("span");
+        tx.className = "upd-row-tx";
+        tx.textContent = item;
+        row.appendChild(chip);
+        row.appendChild(tx);
+        body.appendChild(row);
+      }
+    }
+    el.appendChild(body);
+
+    // 新版展开时顺便标注，让用户一眼看到这次会升到哪
+    if (isNew && ver === latest) {
+      const b = document.createElement("span");
+      b.className = "upd-rel-badge";
+      b.textContent = "本次更新";
+      head.appendChild(b);
+    }
+    box.appendChild(el);
+  }
+};
+
 // 打开更新模态框：填充版本号 / 更新说明 / 重置进度条 / 跳过按钮显隐
 const openUpdateModal = function () {
   // 没有 pendingUpdate 时，从 localStorage 恢复一份给弹窗展示（用于"已跳过态"重新打开）
@@ -2649,7 +2732,19 @@ const openUpdateModal = function () {
   const vEl = $("updateVersion");
   if (vEl) vEl.textContent = pendingUpdate.version || "";
   const nEl = $("updateNotes");
-  if (nEl) nEl.innerHTML = renderMarkdown(pendingUpdate.body || "*（暂无更新说明）*");
+  // 优先用结构化 releases 渲染；老 latest.json 没有该字段时退回 notes markdown。
+  const rel = pendingUpdate.rawJson?.releases;
+  renderReleases(rel, currentAppVersion(), pendingUpdate.version);
+  const hasReleases = Array.isArray(rel) && rel.length > 0;
+  if (nEl) {
+    if (hasReleases) {
+      nEl.innerHTML = "";
+      nEl.style.display = "none";
+    } else {
+      nEl.style.display = "";
+      nEl.innerHTML = renderMarkdown(pendingUpdate.body || "*（暂无更新说明）*");
+    }
+  }
   const prog = $("updateProgress");
   if (prog) { prog.value = 0; prog.parentElement.style.display = "none"; }
   // 勾选项：记忆态（快捷方式修复默认勾、留包默认不勾）
@@ -2723,15 +2818,15 @@ const doUpdate = async function () {
       const un = await listen("upd-dl-progress", (ev) => onProg(ev.payload));
       try {
         try {
-          await tauriInvoke("download_and_run_setup", { url: plat.url, signature: plat.signature, version: pendingUpdate.version, clientKey: R2_CLIENT_KEY });
+          await tauriInvoke("download_and_run_setup", { url: plat.url, signature: plat.signature, version: pendingUpdate.version });
         } catch (err) {
-          // R2 通道失败（网络/额度/限流）→ 回退 GitHub 直链；两条都失败才走外层百度云兜底。
+          // Gitee 通道失败（网络/限流/附件缺失）→ 回退 GitHub 直链；两条都失败才走外层百度云兜底。
           if (!plat.github_url || plat.github_url === plat.url) throw err;
-          console.warn("R2 下载失败，回退 GitHub：", err);
+          console.warn("Gitee 下载失败，回退 GitHub：", err);
           downloaded = 0; total = 0;
           if (prog) prog.value = 0;
           if (pct) pct.textContent = "0%";
-          await tauriInvoke("download_and_run_setup", { url: plat.github_url, signature: plat.signature, version: pendingUpdate.version, clientKey: "" });
+          await tauriInvoke("download_and_run_setup", { url: plat.github_url, signature: plat.signature, version: pendingUpdate.version });
         }
       } finally {
         un();
@@ -2740,16 +2835,13 @@ const doUpdate = async function () {
       // 安装包已带 /R 参数自行拉起新版，这里退出让安装器接管
       await exitApp();
     } else {
-      // 主通道=latest.json 的 url（R2 Worker）；Worker 校验失败/异常会自己 302 回 GitHub。
-      // 但 Worker 整体不可达时（例如国内 DNS 污染）插件下载会直接失败，此时改用 GitHub 直链。
+      // 主通道=latest.json 的 url（Gitee 附件）；Gitee 不可达/限流时改用 github_url 直链。
       try {
-        await pendingUpdate.downloadAndInstall(onProg, {
-          headers: R2_CLIENT_KEY ? { "X-Client-Key": R2_CLIENT_KEY } : undefined,
-        });
+        await pendingUpdate.downloadAndInstall(onProg);
       } catch (err) {
         const plat = pendingUpdate.rawJson?.platforms?.["windows-x86_64"];
         if (!plat?.github_url || plat.github_url === plat.url || !plat.signature) throw err;
-        console.warn("R2 通道失败，改用 GitHub 直链：", err);
+        console.warn("Gitee 通道失败，改用 GitHub 直链：", err);
         downloaded = 0; total = 0;
         if (prog) prog.value = 0;
         if (pct) pct.textContent = "0%";
@@ -2758,7 +2850,6 @@ const doUpdate = async function () {
         try {
           await tauriInvoke("download_and_run_setup", {
             url: plat.github_url,
-            clientKey: "",
             signature: plat.signature,
             version: pendingUpdate.version,
           });
@@ -2805,7 +2896,7 @@ document.addEventListener("keydown", function (e) {
 // 各弹窗分散在多处用 classList.add("on") 打开（更新弹窗还会被后台自动打开），
 // 因此用属性观察器统一接管：打开时移入首个可聚焦项并锁定 Tab，关闭时把焦点还给触发元素。
 (function initModalFocusTrap() {
-  const FOCUSABLE = 'button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),a[href],[tabindex]:not([tabindex="-1"])';
+  const FOCUSABLE = 'button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),a[href],summary,[tabindex]:not([tabindex="-1"])';
   const visible = (el) => el.offsetParent !== null || el === document.activeElement;
   const items = (ov) => Array.from(ov.querySelectorAll(FOCUSABLE)).filter(visible);
   let lastFocus = null;
@@ -2990,8 +3081,8 @@ async function initThemeAndDisplay() {
     if (p.id === "usr") {
       // 恢复：localStorage 里的 usr 必须包含全部 DEFAULT_ATTRS 键，否则重建
       const u = cfgs[p.id];
-      const ok = u && typeof u === "object" && u.h && Array.isArray(u.h.attrs)
-        && DEFAULT_ATTRS.every((d) => u.h.attrs.some((r) => r.k === d.k));
+      // v4.6：默认属性行可删，不能再要求 7 个键齐全；只校验结构完好
+      const ok = u && typeof u === "object" && u.h && Array.isArray(u.h.attrs);
       if (!ok) cfgs[p.id] = p;
     } else if (!cfgs[p.id]) {
       cfgs[p.id] = p;
@@ -3254,6 +3345,11 @@ function initClickBindings() {
     if (box) box.scrollTop = box.scrollHeight;
     updatePreview();
   });
+  // v4.6 输出开关：不输出表头 / 不输出字段内容（改动即刷新预览 + 落盘）
+  ["hdrOmit", "fldOmit"].forEach((id) => {
+    const el = $(id);
+    if (el) el.addEventListener("change", () => { scheduleAutoSave(); updatePreview(); });
+  });
   bindAttrRowEvents();
   bindGripReorder($("attrRows"), collectAttrRows, renderAttrRows);
   // 中栏页签：投影 / 表头 / 字段 / 界址点（默认激活「字段」，HTML 里 .on 控制）
@@ -3362,6 +3458,13 @@ function initClickBindings() {
   if (updKeepCk) updKeepCk.addEventListener("change", () => localStorage.setItem("tg_upd_keepsave", updKeepCk.checked ? "1" : "0"));
   const bdpan = $("bdpanLink");
   if (bdpan) bdpan.addEventListener("click", (e) => { e.preventDefault(); shellOpen(BAIDU_PAN_URL); });
+  // 「查看完整更新内容」= 该版本的 GitHub Release 页（含下载表与全部条目）
+  const relLink = $("relNotesLink");
+  if (relLink) relLink.addEventListener("click", (e) => {
+    e.preventDefault();
+    const v = pendingUpdate?.version || currentAppVersion();
+    shellOpen(`https://github.com/edcfoshan/polygon-txt/releases/tag/v${v}`);
+  });
   bind("btnCancelGdbSelect", () => closeGdbSelectModal());
   bind("btnConfirmGdbSelect", () => confirmGdbSelect());
 

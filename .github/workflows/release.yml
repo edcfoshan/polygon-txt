@@ -71,9 +71,6 @@ jobs:
         run: npm ci
 
       - name: Build frontend
-        env:
-          # R2 下载通道的客户端密钥在打包时注入（Vite define 内联进单文件 HTML）；未配置则为空。
-          R2_CLIENT_KEY: ${{ secrets.R2_CLIENT_KEY }}
         run: npm run build
 
       # CI 配置处理：严禁改写 productName（NSIS 卸载键/安装目录/快捷方式名均派生自它，改写曾致 v3.2 更新安装目录漂移）；
@@ -149,26 +146,25 @@ jobs:
         run: |
           node scripts/normalize-release-assets.mjs --repo "${{ github.repository }}" --tag "${{ github.ref_name }}"
 
-      # R2 同步不在 CI 里做：本机发版时执行 scripts/sync-r2-local.mjs（wrangler OAuth，无长期凭据）。
-      # 这里只拼出 Worker 下载地址交给 latest.json；对象缺失时 Worker 会 302 回落 GitHub，
-      # 所以漏同步也不会让用户下载失败。
-      - name: Resolve R2 download URL (Windows only)
-        id: r2
+      # Gitee 附件不在 CI 里上传：本机发版时执行 scripts/publish-gitee.mjs（gitee CLI 登录 + 附件上传）。
+      # 这里只按约定拼出 Gitee 下载地址并探测；不可达就退回 GitHub 作为主 url，保证用户不会下不了。
+      - name: Resolve Gitee download URL (Windows only)
+        id: primary
         if: matrix.platform == 'windows-latest'
         continue-on-error: true
         shell: bash
         env:
-          R2_WORKER_URL: ${{ secrets.R2_WORKER_URL }}
+          GITEE_REPO: ${{ vars.GITEE_REPO || 'cdg_tools/polygon-txt' }}
         run: |
           VER=$(node -p "require('./src-tauri/tauri.conf.json').version")
-          if [ -z "$R2_WORKER_URL" ]; then
-            echo "::warning::R2_WORKER_URL 未配置，latest.json 将只用 GitHub 直链"
-            exit 0
+          URL="https://gitee.com/${GITEE_REPO}/releases/download/v${VER}/JisigG_${VER}_x64-setup.exe"
+          code=$(curl -sIL -o /dev/null -w "%{http_code}" --max-time 45 "$URL" || true)
+          echo "Gitee 通道探测 HTTP $code"
+          if [ "$code" = "200" ]; then
+            echo "primary_url=$URL" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Gitee 附件不可达（HTTP $code），latest.json 主 url 用 GitHub 直链"
           fi
-          URL="${R2_WORKER_URL%/}/download/$VER"
-          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "$URL" || true)
-          echo "R2 通道探测 HTTP $code（302=回落 GitHub，说明本版对象未同步）"
-          echo "r2_url=$URL" >> "$GITHUB_OUTPUT"
 
       # Windows：生成 latest.json。url 必须取 API 的 browser_download_url（Normalize 之后的真实
       # slug），绝不能再拼中文名——v4.4.0 就是拼了中文名导致 updater url 404。
@@ -188,9 +184,9 @@ jobs:
           DUPES=$(gh api "$REL_API" -q '[.assets[] | select(.name | endswith("_x64-setup.exe"))] | length')
           [ "$DUPES" -gt 1 ] && echo "::warning::Release 上有 $DUPES 份 setup（重复资产要清理），本次 updater 用 $SETUP_URL"
           curl -sfIL --max-time 60 "$SETUP_URL" >/dev/null || { echo "::error::setup 下载链接不可达：$SETUP_URL"; exit 1; }
-          R2_ARGS=""
-          if [ -n "${{ steps.r2.outputs.r2_url }}" ]; then R2_ARGS="--r2-url ${{ steps.r2.outputs.r2_url }}"; fi
-          node scripts/gen-latest-json.js --version "$VER" --tag "${{ github.ref_name }}" --nsis-dir "$D" --download-url "$SETUP_URL" $R2_ARGS
+          PRIMARY_ARGS=""
+          if [ -n "${{ steps.primary.outputs.primary_url }}" ]; then PRIMARY_ARGS="--gitee-url ${{ steps.primary.outputs.primary_url }}"; fi
+          node scripts/gen-latest-json.js --version "$VER" --tag "${{ github.ref_name }}" --nsis-dir "$D" --download-url "$SETUP_URL" $PRIMARY_ARGS
           gh release upload "${{ github.ref_name }}" latest.json --clobber
           echo "已上传: latest.json（url=$SETUP_URL，已实测可达）"
 

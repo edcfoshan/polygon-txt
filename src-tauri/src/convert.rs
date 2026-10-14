@@ -51,6 +51,9 @@ pub struct AttrRow {
 pub struct HeaderConfig {
     pub attrs: Vec<AttrRow>,
     pub project_info: String,
+    /// 勾选后整个表头段（[属性描述] + [项目信息]）都不输出（v4.6）。
+    #[serde(default)]
+    pub omit: bool,
 }
 
 impl HeaderConfig {
@@ -109,6 +112,9 @@ pub struct ShpToTxtOptions {
     /// UTF-8（默认，无 BOM）或 GBK。
     #[serde(default)]
     pub txt_encoding: String,
+    /// 勾选后每个地块的字段行（...,@）不输出，只留坐标行（v4.6）。
+    #[serde(default)]
+    pub omit_fields: bool,
 }
 
 fn default_zone_type() -> u8 {
@@ -353,13 +359,14 @@ pub fn shp_to_txt_preview(
         .iter()
         .flat_map(|s| s.plots.iter().map(|p| p.plot.clone()))
         .collect();
-    let result = txt::generate_txt_ex(
+    let result = txt::generate_txt_with(
         &header_for_txt.project_info,
         &header_for_txt.attrs,
         &plots,
         options.oj,
         options.oc,
         options.point_layout.as_ref(),
+        txt::TxtOmit { header: header_for_txt.omit, fields: options.omit_fields },
     );
 
     Ok(result.lines().take(2000).collect::<Vec<_>>().join("\n"))
@@ -621,8 +628,9 @@ pub fn convert_shp_to_txt(
     if options.txt_encoding != "" && options.txt_encoding != "utf8" && options.txt_encoding != "utf-8" {
         for src in &sources {
             let plots: Vec<_> = src.plots.iter().map(|p| p.plot.clone()).collect();
-            let content = txt::generate_txt_ex(&header_for_convert.project_info, &header_for_convert.attrs,
-                &plots, options.oj, options.oc, options.point_layout.as_ref());
+            let content = txt::generate_txt_with(&header_for_convert.project_info, &header_for_convert.attrs,
+                &plots, options.oj, options.oc, options.point_layout.as_ref(),
+                txt::TxtOmit { header: header_for_convert.omit, fields: options.omit_fields });
             txt::encode_txt(&content, &options.txt_encoding)?;
         }
     }
@@ -884,13 +892,14 @@ fn convert_one_to_one(
 
     for src in &sources {
         let plots: Vec<txt::PlotData> = src.plots.iter().map(|p| p.plot.clone()).collect();
-        let txt_content = txt::generate_txt_ex(
+        let txt_content = txt::generate_txt_with(
             &header_cfg.project_info,
             &header_cfg.attrs,
             &plots,
             options.oj,
             options.oc,
             options.point_layout.as_ref(),
+            txt::TxtOmit { header: header_cfg.omit, fields: options.omit_fields },
         );
         let (final_name, bumped) = allocate_unique_name(&src.stem, &mut used_names);
         if bumped {
@@ -970,13 +979,14 @@ fn convert_split_by_plot(
                 conflict_count += 1;
             }
 
-            let txt_content = txt::generate_txt_ex(
+            let txt_content = txt::generate_txt_with(
                 &header_cfg.project_info,
                 &header_cfg.attrs,
                 &[p.plot.clone()],
                 options.oj,
                 options.oc,
                 options.point_layout.as_ref(),
+                txt::TxtOmit { header: header_cfg.omit, fields: options.omit_fields },
             );
             let txt_path = subdir.join(format!("{}.txt", final_name));
             std::fs::write(&txt_path, txt::encode_txt(&txt_content, &options.txt_encoding)?)
@@ -1017,13 +1027,14 @@ fn convert_merge_all(
 
     let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S").to_string();
     let filename = format!("merged_output_{}.txt", timestamp);
-    let txt_content = txt::generate_txt_ex(
+    let txt_content = txt::generate_txt_with(
         &header_cfg.project_info,
         &header_cfg.attrs,
         &all_plots,
         options.oj,
         options.oc,
         options.point_layout.as_ref(),
+        txt::TxtOmit { header: header_cfg.omit, fields: options.omit_fields },
     );
     let txt_path = output_dir.join(&filename);
     std::fs::write(&txt_path, txt::encode_txt(&txt_content, &options.txt_encoding)?).map_err(|e| format!("写 TXT 失败: {}", e))?;

@@ -574,8 +574,10 @@ fn run_shp_to_txt(
     output_dir: String,
     selected_layers: Option<Vec<String>>,
 ) -> Result<ConvertResultPayload, String> {
-    if header_cfg.attr("带号").trim().is_empty() {
-        return Err("带号不能为空，请填写带号后再输出".to_string());
+    // 勾选「不输出表头」时文件不再声明带号，此项校验不适用；
+    // 表头行被删空同理（否则用户删掉「带号」行后无法导出）。
+    if !header_cfg.omit && !header_cfg.attrs.is_empty() && header_cfg.attr("带号").trim().is_empty() {
+        return Err("表头缺少「带号」行：请补回该行，或勾选「不输出表头」后再输出".to_string());
     }
     let out_dir = PathBuf::from(&output_dir);
     let shp_bufs: Vec<PathBuf> = shp_paths.iter().map(PathBuf::from).collect();

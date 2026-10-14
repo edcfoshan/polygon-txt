@@ -45,6 +45,7 @@ fn make_test_source(coords: Vec<(f64, f64)>) -> ImportSource {
 
 fn header_with_test_attrs(pairs: Vec<(&str, &str)>) -> HeaderConfig {
     HeaderConfig {
+        omit: false,
         project_info: String::new(),
         attrs: pairs.into_iter().map(|(k, v)| AttrRow { k: k.to_string(), v: v.to_string() }).collect(),
     }
@@ -52,6 +53,7 @@ fn header_with_test_attrs(pairs: Vec<(&str, &str)>) -> HeaderConfig {
 
 fn shp_opts_test_default() -> ShpToTxtOptions {
     ShpToTxtOptions {
+        omit_fields: false,
         txt_encoding: String::new(),
         ox: false, oj: false, on: false, oo: false, oc: false,
         output_mode: "one_to_one".to_string(),

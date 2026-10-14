@@ -50,6 +50,7 @@ const TEMPLATE_FIELDS: [&str; 12] = [
 
 fn make_header() -> convert::HeaderConfig {
     convert::HeaderConfig {
+        omit: false,
         attrs: vec![
             convert::AttrRow { k: "坐标系".into(),   v: "2000国家大地坐标系".into() },
             convert::AttrRow { k: "几度分带".into(), v: "3".into() },
@@ -87,6 +88,7 @@ fn bcg_columns() -> Vec<convert::FieldColumn> {
 
 fn adv_options() -> convert::ShpToTxtOptions {
     convert::ShpToTxtOptions {
+        omit_fields: false,
         txt_encoding: String::new(),
         proj_mode: "keep".to_string(),
         proj_zone: None,
@@ -431,6 +433,7 @@ fn test_txt_to_shp_fieldn_and_standard() {
         keep_mingc: false,
     };
     let header38 = convert::HeaderConfig {
+        omit: false,
         attrs: vec![
             convert::AttrRow { k: "坐标系".into(),   v: "2000国家大地坐标系".into() },
             convert::AttrRow { k: "几度分带".into(), v: "3".into() },

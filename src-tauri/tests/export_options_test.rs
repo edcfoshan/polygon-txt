@@ -27,6 +27,7 @@ fn options(mode: &str, encoding: &str) -> convert::ShpToTxtOptions {
 
 fn header() -> convert::HeaderConfig {
     convert::HeaderConfig {
+        omit: false,
         project_info: "地块面积测试".into(),
         attrs: vec![
             convert::AttrRow {
@@ -382,4 +383,53 @@ fn legacy_defaults_remain_compatible() {
     }))
     .unwrap();
     assert!(legacy.sequence_continuous);
+}
+
+/// v4.6：两个整段开关——「不输出表头」整段去掉属性描述+项目信息；
+/// 「不输出字段内容」只留坐标行。两者互不影响。
+#[test]
+fn omit_header_and_omit_fields_toggles() {
+    let input = tempfile::tempdir().unwrap();
+    let paths = vec![write_shp(input.path(), "a", 1)];
+    let map = mapping("__area_ha__", Some(4));
+
+    // 基线：两段都在
+    let out = tempfile::tempdir().unwrap();
+    let base = export(&paths, &map, &options("one_to_one", "utf8"), &header(), out.path()).unwrap();
+    let base_txt = txt::read_text_file(&base.output_files[0]).unwrap();
+    assert!(base_txt.contains("[属性描述]"), "基线应有属性描述");
+    assert!(base_txt.contains("[项目信息]"), "基线应有项目信息");
+    assert!(base_txt.contains(",@"), "基线应有字段行");
+
+    // 只关表头：属性描述与项目信息整段消失，字段行不受影响
+    let out2 = tempfile::tempdir().unwrap();
+    let mut hdr = header();
+    hdr.omit = true;
+    let r2 = export(&paths, &map, &options("one_to_one", "utf8"), &hdr, out2.path()).unwrap();
+    let t2 = txt::read_text_file(&r2.output_files[0]).unwrap();
+    assert!(!t2.contains("[属性描述]"), "勾选后不应出现属性描述段");
+    assert!(!t2.contains("[项目信息]"), "勾选后不应出现项目信息段");
+    assert!(t2.contains("[地块坐标]"), "坐标段应保留");
+    assert!(t2.contains(",@"), "关表头不应影响字段行");
+
+    // 只关字段：只留坐标行，表头仍在
+    let out3 = tempfile::tempdir().unwrap();
+    let mut opt = options("one_to_one", "utf8");
+    opt.omit_fields = true;
+    let r3 = export(&paths, &map, &opt, &header(), out3.path()).unwrap();
+    let t3 = txt::read_text_file(&r3.output_files[0]).unwrap();
+    assert!(!t3.contains(",@"), "勾选后不应出现字段行");
+    assert!(t3.contains("[属性描述]"), "关字段不应影响表头");
+    assert!(t3.contains("[地块坐标]"), "坐标段应保留");
+
+    // 两个都关：只剩坐标段
+    let out4 = tempfile::tempdir().unwrap();
+    let mut hdr4 = header();
+    hdr4.omit = true;
+    let mut opt4 = options("one_to_one", "utf8");
+    opt4.omit_fields = true;
+    let r4 = export(&paths, &map, &opt4, &hdr4, out4.path()).unwrap();
+    let t4 = txt::read_text_file(&r4.output_files[0]).unwrap();
+    assert!(!t4.contains("[属性描述]") && !t4.contains("[项目信息]") && !t4.contains(",@"));
+    assert!(t4.lines().next().unwrap_or("").trim() == "[地块坐标]", "首个非空行应为坐标段");
 }

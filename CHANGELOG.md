@@ -2,6 +2,8 @@
 
 ## [4.7.0] - 2026-10-19
 
+QQ群：826861025
+
 ### 新增
 
 - **原生 CLI**：与桌面版共用 Rust 转换核心，支持 SHP/GDB→TXT、TXT→SHP 及现有全部转换选项；提供 Windows x64、Linux x64、macOS Intel/Apple Silicon 四平台包。

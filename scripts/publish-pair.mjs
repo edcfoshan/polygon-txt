@@ -42,8 +42,11 @@ for (const [releaseTag, title, body] of [[tag, `V${version}`, 'desktop-notes.md'
     }
   }
 }
-const assets = api(`releases/tags/${tag}`).assets;
+// Draft assets use temporary untagged URLs. Publish both releases first, then read stable tag URLs.
 const windows = manifests.find(m => m.label === 'windows-x64');
+gh('release', 'edit', tag, '--draft=false', '--latest');
+gh('release', 'edit', cliTag, '--draft=false', '--latest=false');
+const assets = api(`releases/tags/${tag}`).assets;
 const setup = assets.find(a => a.name === windows.updater.asset);
 if (!setup) throw new Error('Windows updater missing');
 execFileSync('node', ['scripts/gen-latest-json.js', '--version', version, '--tag', tag,
@@ -56,7 +59,4 @@ for (const manifest of manifests) {
 }
 writeFileSync('latest.json', JSON.stringify(latest, null, 2) + '\n');
 gh('release', 'upload', tag, 'latest.json', '--clobber');
-// The product version is shared; the tags distinguish the two download pages.
-gh('release', 'edit', tag, '--draft=false', '--latest');
-gh('release', 'edit', cliTag, '--draft=false', '--latest=false');
-console.log(`Published ${tag} then ${cliTag} from ${sha}`);
+console.log(`Published ${tag} then ${cliTag} from ${targetSha}`);

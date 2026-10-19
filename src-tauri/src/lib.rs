@@ -1,17 +1,22 @@
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::path::{Path, PathBuf};
-use crate::projection::{gauss_kruger_forward, gauss_kruger_inverse, reband_projected, infer_zone_from_x, Ellipsoid};
-use crate::geometry::is_polygon_geometry_type;
-
-
 pub mod shp;
 pub mod txt;
 pub mod convert;
 pub mod gdb;
 pub mod geometry;
 pub mod projection;
+pub mod config;
+pub mod output;
+#[cfg(feature = "desktop")]
 pub mod selfheal;
+
+#[cfg(feature = "desktop")]
+mod desktop {
+use super::*;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use crate::projection::{gauss_kruger_forward, gauss_kruger_inverse, reband_projected, infer_zone_from_x, Ellipsoid};
+use crate::geometry::is_polygon_geometry_type;
 
 use convert::{FieldMapping, HeaderConfig, ShpToTxtOptions, TxtToShpOptions};
 
@@ -743,6 +748,33 @@ fn generate_parse_log(
     log
 }
 
+#[tauri::command]
+fn validate_config(text: String, sources: Option<Vec<(String, Vec<String>)>>) -> Result<crate::config::Config, String> {
+    let config = crate::config::Config::parse(&text)?;
+    let errors: Vec<_> = sources.unwrap_or_default().into_iter()
+        .filter_map(|(name, fields)| config.check_fields(&fields, &name).err()).collect();
+    if errors.is_empty() { Ok(config) } else { Err(errors.join("\n")) }
+}
+
+#[tauri::command]
+async fn import_config_file(app: tauri::AppHandle) -> Result<Option<crate::config::Config>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let Some(file) = app.dialog().file().add_filter("转换配置 JSON", &["json"]).blocking_pick_file() else { return Ok(None); };
+    let path = file.as_path().ok_or("配置需要本地文件路径")?;
+    let text = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
+    crate::config::Config::parse(&text).map(Some)
+}
+
+#[tauri::command]
+async fn export_config_file(app: tauri::AppHandle, text: String) -> Result<bool, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let config = crate::config::Config::parse(&text)?;
+    let Some(file) = app.dialog().file().add_filter("转换配置 JSON", &["json"]).set_file_name("jisigg-config.json").blocking_save_file() else { return Ok(false); };
+    let path = file.as_path().ok_or("配置需要本地文件路径")?;
+    std::fs::write(path, serde_json::to_string_pretty(&config).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+    Ok(true)
+}
+
 // ─── App Entry ───
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -763,6 +795,9 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            validate_config,
+            import_config_file,
+            export_config_file,
             pick_shp_files,
             import_gdb,
             pick_txt_files,
@@ -808,3 +843,7 @@ mod tests {
         assert_eq!(derive_zone_from_eastings(&[]), None);
     }
 }
+
+}
+#[cfg(feature = "desktop")]
+pub use desktop::run;

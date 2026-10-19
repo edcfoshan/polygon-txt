@@ -1,0 +1,83 @@
+{
+  "active_direction": "shp-to-txt",
+  "format": "jisigg-conversion-config",
+  "name": "示例配置",
+  "schema_version": 1,
+  "shp_to_txt": {
+    "editor": {
+      "advanced": false,
+      "preset": "std",
+      "projection_form": "",
+      "rows": null
+    },
+    "fields": {
+      "area": "__area_ha__",
+      "area_decimals": 4,
+      "columns": [],
+      "dlbm": "",
+      "id": "",
+      "name": "",
+      "tfh": "",
+      "use_field": ""
+    },
+    "header": {
+      "attrs": [
+        {
+          "k": "坐标系",
+          "v": "2000国家大地坐标系"
+        },
+        {
+          "k": "几度分带",
+          "v": "3"
+        },
+        {
+          "k": "投影类型",
+          "v": "高斯克吕格"
+        },
+        {
+          "k": "计量单位",
+          "v": "米"
+        },
+        {
+          "k": "带号",
+          "v": "38"
+        },
+        {
+          "k": "精度",
+          "v": "0.001"
+        },
+        {
+          "k": "转换参数",
+          "v": ",,,,,,"
+        }
+      ],
+      "omit": false,
+      "project_info": ""
+    },
+    "options": {
+      "filename_field": "",
+      "oc": false,
+      "og": false,
+      "oj": false,
+      "omit_coord_section": false,
+      "omit_fields": false,
+      "on": false,
+      "oo": true,
+      "output_mode": "one_to_one",
+      "ox": false,
+      "plot_filter": null,
+      "point_layout": null,
+      "proj_mode": "keep",
+      "proj_no_prefix": false,
+      "proj_zone": null,
+      "txt_encoding": "utf8",
+      "zone_type": 3
+    }
+  },
+  "txt_to_shp": {
+    "filename_field": "",
+    "keep_lujin": false,
+    "keep_mingc": false,
+    "output_mode": "one_to_one"
+  }
+}

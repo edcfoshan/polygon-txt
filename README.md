@@ -120,6 +120,12 @@ TXT 预览与实际导出共用同一套布局配置。拖好列、调好单位�
 
 前端使用原生 JavaScript 与 Vite，生产构建会将前端资源内联为单文件页面。Rust 后端处理 SHP、DBF、PRJ、TXT 和 OpenFileGDB 相关逻辑。生产程序不调用、不打包也不依赖 ArcPy。
 
+## CLI 与配置交换
+
+原生 CLI 支持人工批处理与 AI 调用，覆盖 SHP/GDB→TXT、TXT→SHP，提供 JSON 结果、配置校验、转换预检及默认防覆盖。下载 [CLI 4.7.0](https://github.com/edcfoshan/polygon-txt/releases/tag/cli-v4.7.0)，详见 [CLI 使用说明](docs/CLI.md)。
+
+桌面版点击「配置交换」即可导入/导出 JSON 文件或复制/粘贴配置。导入会新增配置并切换，不覆盖原配置；配置包含双向转换设置，不包含文件路径、地块勾选和主题。桌面与 CLI 使用同一格式。
+
 ## 下载安装
 
 前往 [GitHub Releases](https://github.com/edcfoshan/polygon-txt/releases/latest) 下载最新版本。

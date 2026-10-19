@@ -597,7 +597,7 @@ pub fn convert_shp_to_txt(
     output_dir: &Path,
     selected_layers: Option<&[String]>,
 ) -> Result<ConvertResult, String> {
-    std::fs::create_dir_all(output_dir)
+    crate::output::create_dir_all(output_dir)
         .map_err(|e| format!("创建输出目录失败: {}", e))?;
 
     // og 输出恒为米：改写表头「计量单位」（仅 og 勾选时）
@@ -909,7 +909,7 @@ fn convert_one_to_one(
             conflict_count += 1;
         }
         let txt_path = output_dir.join(format!("{}.txt", final_name));
-        std::fs::write(&txt_path, txt::encode_txt(&txt_content, &options.txt_encoding)?)
+        crate::output::write(&txt_path, txt::encode_txt(&txt_content, &options.txt_encoding)?)
             .map_err(|e| format!("写 TXT 失败: {}", e))?;
         output_files.push(txt_path.to_string_lossy().to_string());
     }
@@ -941,7 +941,7 @@ fn convert_split_by_plot(
 
     for src in &sources {
         let subdir = output_dir.join(&src.stem);
-        std::fs::create_dir_all(&subdir)
+        crate::output::create_dir_all(&subdir)
             .map_err(|e| format!("创建子目录失败: {}", e))?;
         subdir_count += 1;
 
@@ -992,7 +992,7 @@ fn convert_split_by_plot(
                 txt::TxtOmit { header: header_cfg.omit, fields: options.omit_fields, coord_section: options.omit_coord_section },
             );
             let txt_path = subdir.join(format!("{}.txt", final_name));
-            std::fs::write(&txt_path, txt::encode_txt(&txt_content, &options.txt_encoding)?)
+            crate::output::write(&txt_path, txt::encode_txt(&txt_content, &options.txt_encoding)?)
                 .map_err(|e| format!("写 TXT 失败: {}", e))?;
             output_files.push(txt_path.to_string_lossy().to_string());
         }
@@ -1040,7 +1040,7 @@ fn convert_merge_all(
         txt::TxtOmit { header: header_cfg.omit, fields: options.omit_fields, coord_section: options.omit_coord_section },
     );
     let txt_path = output_dir.join(&filename);
-    std::fs::write(&txt_path, txt::encode_txt(&txt_content, &options.txt_encoding)?).map_err(|e| format!("写 TXT 失败: {}", e))?;
+    crate::output::write(&txt_path, txt::encode_txt(&txt_content, &options.txt_encoding)?).map_err(|e| format!("写 TXT 失败: {}", e))?;
 
     let output_files = vec![txt_path.to_string_lossy().to_string()];
     Ok(ConvertResult {
@@ -1084,7 +1084,7 @@ pub fn convert_txt_to_shp(
     header_cfg: &HeaderConfig,
 ) -> Result<ConvertResult, String> {
     let output_dir = Path::new(&options.output_dir);
-    std::fs::create_dir_all(output_dir)
+    crate::output::create_dir_all(output_dir)
         .map_err(|e| format!("创建输出目录失败: {}", e))?;
 
     match options.output_mode.as_str() {
@@ -1212,7 +1212,7 @@ fn txt_to_shp_split_by_plot(
         };
 
         let subdir = output_dir.join(&txt_stem);
-        std::fs::create_dir_all(&subdir)
+        crate::output::create_dir_all(&subdir)
             .map_err(|e| format!("创建子目录失败: {}", e))?;
         subdir_count += 1;
 
@@ -1984,7 +1984,7 @@ fn normalized_band_str(txt_band: Option<&str>, header_band: &str) -> String {
 
 /// TXT→SHP 带号判定：TXT 声明 > 坐标前缀推断 > 表单值 > None（跳过）。
 /// 37 带东侧点 x 溢出到下一百万块（前缀≠带号），声明值由导出方按数据真实带号写定视为权威。
-fn resolve_txt_zone(
+pub fn resolve_txt_zone(
     extracted: Option<i32>,
     declared: Option<&str>,
     header_band: &str,
@@ -2020,7 +2020,7 @@ fn resolve_txt_zone(
 /// 扫描所有地块的所有点，找第一个整数部分为 8 位的 X 值（东坐标），
 /// 取其前两位作为带号，若前两位落在 13-45 区间则返回，否则继续扫描。
 /// 全部不合法返回 None，交由调用方回退。
-fn extract_zone_from_coords(plots: &[txt::PlotData]) -> Option<i32> {
+pub fn extract_zone_from_coords(plots: &[txt::PlotData]) -> Option<i32> {
     for plot in plots {
         // coords 存储为 (y, x) = (northing, easting)，x 在第二位
         for &(_, x) in &plot.coords {

@@ -8,9 +8,10 @@ import { listen } from '@tauri-apps/api/event';
 import { ask as dialogAsk } from '@tauri-apps/plugin-dialog';
 import { getVersion } from '@tauri-apps/api/app';
 import aboutContent from '../content/about.md?raw';
-import aboutQrImage from '../content/讨论群.jpg?inline';
-import sponsorQrImage from '../content/关注、赞赏码.png?inline';
+import aboutQrImage from '../content/求关注-极思G-20261014.png?inline';
+import sponsorQrImage from '../content/求赞赏-极思G-20261014.png?inline';
 import brandMark from './assets/brand-mark.png?inline';
+import { makePortableConfig, portableToPreset } from './config-exchange.js';
 import { TV } from './tableview.js';
 import { MV } from './mapview.js';
 import { QB } from './querybuilder.js';
@@ -62,10 +63,10 @@ async function runWindowCommand(command) {
 }
 
 const MARKDOWN_IMAGE_MAP = {
-  "content/讨论群.jpg": aboutQrImage,
-  "讨论群.jpg": aboutQrImage,
-  "content/关注、赞赏码.png": sponsorQrImage,
-  "关注、赞赏码.png": sponsorQrImage,
+  "content/求关注-极思G-20261014.png": aboutQrImage,
+  "求关注-极思G-20261014.png": aboutQrImage,
+  "content/求赞赏-极思G-20261014.png": sponsorQrImage,
+  "求赞赏-极思G-20261014.png": sponsorQrImage,
 };
 
 // ═══ State ═══
@@ -598,13 +599,8 @@ function syncMergeOutputOption() {
   if (!merge) return;
   const count = sourceType === "gdb" ? selectedLayers.length : loadedFiles.length;
   const available = count > 1;
-  merge.disabled = !available;
-  merge.closest(".seg").hidden = !available;
-  if (!available && merge.checked) {
-    const fallback = document.querySelector('input[name="output_mode"][value="one_to_one"]');
-    fallback.checked = true;
-    fallback.dispatchEvent(new Event("change", { bubbles: true }));
-  }
+  merge.disabled = !available && !merge.checked;
+  merge.closest(".seg").hidden = !available && !merge.checked;
 }
 
 function renderFileList() {
@@ -1157,7 +1153,7 @@ function syncOgGate(crsInfo) {
   const projActive = projMode !== "keep";
   // og 与动态投影互斥：projMode 非 keep 时强制 og=false 并置灰
   og.disabled = !isDegree || projActive;
-  if (!isDegree || projActive) og.checked = false;
+  if (projActive) og.checked = false;
   if (oz) oz.disabled = !(isDegree && og.checked && !projActive);
   refreshOgWarn();
 }
@@ -1179,7 +1175,7 @@ function fillFilenameFieldOptions(names) {
   const cur = sel.value;
   sel.innerHTML = '<option value="">序号</option><option value="FID">FID</option>'
     + [...new Set(names)].map((n) => `<option value="${escAttr(n)}">${escAttr(n)}</option>`).join("");
-  if ([...sel.options].some((o) => o.value === cur)) sel.value = cur;
+  setSelectValue(sel, cur);
 }
 
 function processImport() {
@@ -1242,6 +1238,11 @@ function syncSimpleAreaControls() {
   $("simpleAreaPrecision").hidden = !isAutoArea($("fa")?.value);
 }
 
+function setSelectValue(select, value) {
+  if (![...select.options].some((option) => option.value === value)) select.add(new Option(value, value));
+  select.value = value;
+}
+
 function autoMatchFields(fieldNames) {
   // 统一三段式下拉：① 不填 ② 占位文字 ③ 数据字段名
   // SHP/GDB 来源不同但结构一致；面积(fa)额外支持自动计算。
@@ -1250,6 +1251,7 @@ function autoMatchFields(fieldNames) {
   for (const key of Object.keys(FIELD_PLACEHOLDER)) {
     const sel = $(key);
     if (!sel) continue;
+    const previous = sel.value;
     const isArea = key === "fa";
     let html = '<option value="">不填</option>';
     html += `<option value="__placeholder__">${FIELD_PLACEHOLDER[key]} (占位)</option>`;
@@ -1257,10 +1259,10 @@ function autoMatchFields(fieldNames) {
       html += areaSourceOptions("__area_ha__");
     }
     fieldNames.forEach((fn) => {
-      html += `<option value="${fn}">${fn}</option>`;
+      html += `<option value="${escAttr(fn)}">${escAttr(fn)}</option>`;
     });
     sel.innerHTML = html;
-    if (!isArea) sel.value = ""; // 非面积字段默认不填
+    setSelectValue(sel, previous);
   }
   syncSimpleAreaControls();
   // 高级模式开启时同步重建行内映射源下拉（保留仍存在的选中值）
@@ -1358,7 +1360,7 @@ function renderFieldRows(rows) {
 
 function collectFieldRows() {
   const box = $("fieldRows");
-  if (!box || !box.children.length) return STD_ADV_ROWS.map((r) => ({ ...r }));
+  if (!box || !box.children.length) return advInitialized ? [] : STD_ADV_ROWS.map((r) => ({ ...r }));
   const rows = [];
   box.querySelectorAll(".field-row").forEach((div) => {
     rows.push({
@@ -1615,11 +1617,9 @@ function syncFieldModeTabs(on) {
 // 恢复配置（ld 用）：adv = { on, preset, rows } 或 null（旧配置 → 关闭态）
 function applyAdvConfig(adv) {
   const on = !!(adv && adv.on);
-  if (adv && Array.isArray(adv.rows) && adv.rows.length) {
+  if (adv && Array.isArray(adv.rows)) {
     advInitialized = true;
-    const rows = Array.isArray(adv.rows) && adv.rows.length
-      ? adv.rows.map((r) => ({ name: r?.name || "", source: r?.source || "", area_decimals: areaDecimals(r?.source, r?.area_decimals) }))
-      : inheritAdvFromSimple();
+    const rows = adv.rows.map((r) => ({ name: r?.name || "", source: r?.source || "", area_decimals: areaDecimals(r?.source, r?.area_decimals) }));
     renderFieldRows(rows);
     advPreset = adv.preset || "std";
     syncAdvPresetState();
@@ -1720,7 +1720,7 @@ function updatePreview() {
 function flushAutoSave() {
   if (cur !== "usr") return;
   const c = getConfig();
-  cfgs["usr"] = { ...cfgs["usr"], h: c.h, p: getOptions(), f: c.f };
+  cfgs["usr"] = { ...cfgs["usr"], h: c.h, p: getSavedOptions(), f: c.f, t: getTxtOptions(), direction: document.querySelector(".app").dataset.mode, projection_form: window._projFormValue || "" };
   try { localStorage.setItem("tg_dark", JSON.stringify(cfgs)); } catch (e) { console.warn("autoSave failed:", e); }
 }
 
@@ -1879,6 +1879,10 @@ const runShpToTxt = async function () {
   const pf = $("pf");
   await withBusy($("btnRunStt"), pf, $("ps"), "转换中…", async () => {
     try {
+      const sources = sourceType === "gdb"
+        ? gdbLayers.filter((l) => selectedLayers.includes(l.name)).map((l) => [l.name, l.field_names])
+        : loadedFiles.map((f) => [f.name, f.field_names]);
+      await tauriInvoke("validate_config", { text: JSON.stringify(portableSnapshot()), sources });
       const result = await tauriInvoke("run_shp_to_txt", { shpPaths, sourceType, sourcePath, headerCfg: cfg.h, fieldMapping: cfg.f, options: opt, outputDir: outDir, selectedLayers: sourceType === "gdb" ? selectedLayers : [] });
       if (pf) pf.style.width = "100%";
       const ps = $("ps");
@@ -2452,11 +2456,65 @@ const selectOutputDirS = async function () {
   if (dir) { const inp = $("out_dir_s"); if (inp) inp.value = dir; }
 };
 
+function getTxtOptions() {
+  return { output_mode: document.querySelector('input[name="t_output_mode"]:checked')?.value || "one_to_one",
+    filename_field: $("t_filename_field")?.value || "", keep_lujin: !!$("t_keep_lujin")?.checked,
+    keep_mingc: !!$("t_keep_mingc")?.checked };
+}
+
+function getSavedOptions() {
+  return { ...getOptions(), og: !!$("og")?.checked, proj_zone: projMode === "keep" ? null : projZone };
+}
+
+function restoreOutputMode(group, mode, rowId) {
+  document.querySelectorAll(`input[name="${group}"]`).forEach((radio) => {
+    radio.checked = radio.value === mode;
+    radio.closest(".seg")?.classList.toggle("on", radio.checked);
+    if (radio.checked && radio.disabled) { radio.disabled = false; radio.closest(".seg").hidden = false; }
+  });
+  $(rowId).style.display = mode === "split_by_plot" ? "block" : "none";
+}
+
+function portableSnapshot() {
+  const c = getConfig();
+  return makePortableConfig({ name: $("cn").textContent || "自定义", direction: document.querySelector(".app").dataset.mode,
+    header: c.h, fields: c.f, options: getSavedOptions(), txtOptions: getTxtOptions(), projectionForm: window._projFormValue || "" });
+}
+
+async function currentPortableText() {
+  const config = await tauriInvoke("validate_config", { text: JSON.stringify(portableSnapshot()) });
+  return JSON.stringify(config, null, 2);
+}
+
+function openConfigExchange() {
+  $("configExchangeError").textContent = "";
+  $("configExchangeText").value = JSON.stringify(portableSnapshot(), null, 2);
+  $("configExchange").showModal();
+}
+
+async function exchangeAction(action) {
+  $("configExchangeError").textContent = "";
+  try { await action(); }
+  catch (e) { $("configExchangeError").textContent = String(e?.message || e); }
+}
+
+function installPortableConfig(config) {
+  const preset = portableToPreset(config, Object.values(cfgs).map((c) => c.n), "u" + crypto.randomUUID());
+  // 完整校验成功后才写入；存储失败也不改变正在编辑的界面。
+  const next = { ...cfgs, [preset.id]: preset };
+  localStorage.setItem("tg_dark", JSON.stringify(next));
+  cfgs[preset.id] = preset;
+  clearTimeout(autoSaveTimer);
+  renderChips(); ld(preset.id);
+  $("configExchange").close();
+  toast("已导入「" + preset.n + "」", "ok");
+}
+
 // ═══ Presets ═══
 function renderChips() {
   const ch = $("ch");
   if (!ch) return;
-  ch.innerHTML = Object.values(cfgs).map((c) => `<button type="button" class="chip${c.id === cur ? " on" : ""}" data-chip="${c.id}">${c.n}</button>`).join("");
+  ch.innerHTML = Object.values(cfgs).map((c) => `<button type="button" class="chip${c.id === cur ? " on" : ""}" data-chip="${c.id}">${escAttr(c.n)}</button>`).join("");
 }
 
 const ld = function (id) {
@@ -2481,18 +2539,25 @@ const ld = function (id) {
       $("oc").disabled = !$("oo").checked;
     }
     if ($("og")) $("og").checked = !!c.p.og;
-    if ($("oz")) $("oz").value = c.p.oz === "6" ? "6" : "3";
+    if ($("oz")) $("oz").value = String(c.p.zone_type ?? c.p.oz ?? 3);
     if ($("oz") && $("og")) $("oz").disabled = !$("og").checked || $("og").disabled;
     refreshOgWarn();
     if ($("om")) $("om").checked = !!c.p.om;
     applyPointLayoutConfig(c.p.point_layout || null);
+    projMode = c.p.proj_mode || "keep";
+    projZone = c.p.proj_zone ?? null;
+    window._projNoPrefix = !!c.p.proj_no_prefix;
+    window._projFormValue = c.projection_form || "";
+    restoreOutputMode("output_mode", c.p.output_mode || "one_to_one", "filenameFieldRow");
+    if ($("filename_field")) setSelectValue($("filename_field"), c.p.filename_field || "");
+    updateProjButton();
   }
   if (c.f) {
     // 6 槽位按元素 ID 恢复（f 键名为 DOM id：fn/fi/fa/fu/fm/fd）
     const fieldKeys = { fn: "name", fi: "id", fa: "area", fu: "use_field", fm: "tfh", fd: "dlbm" };
     Object.entries(fieldKeys).forEach(([id, key]) => {
       const value = c.f[id] ?? c.f[key];
-      if (typeof value === "string") $(id).value = value;
+      if (typeof value === "string") setSelectValue($(id), value);
     });
     if ($("fldOmit")) $("fldOmit").checked = !!c.f.omit_fields;
     if ($("secOmit")) { $("secOmit").checked = !!c.f.omit_coord_section; syncSecOmitHint(); }
@@ -2501,6 +2566,12 @@ const ld = function (id) {
     // 高级模式配置恢复（旧配置无 adv → 关闭态）
     applyAdvConfig(c.f.adv || null);
   }
+  const t = c.t || { output_mode: "one_to_one", filename_field: "", keep_lujin: false, keep_mingc: false };
+  restoreOutputMode("t_output_mode", t.output_mode, "t_filenameFieldRow");
+  $("t_filename_field").value = t.filename_field || "";
+  $("t_keep_lujin").checked = !!t.keep_lujin;
+  $("t_keep_mingc").checked = !!t.keep_mingc;
+  if (c.direction) sw(c.direction);
   const cn = $("cn");
   if (cn) cn.textContent = c.n || "自定义";
   document.querySelectorAll("#ch .chip").forEach((e) => e.classList.remove("on"));
@@ -2523,7 +2594,7 @@ const saveOnly = function () {
     }
   }
   const c = getConfig();
-  const cfgObj = { id: dupId || "u" + Date.now(), n: newName, h: c.h, p: getOptions(), f: c.f };
+  const cfgObj = { id: dupId || "u" + Date.now(), n: newName, h: c.h, p: getSavedOptions(), f: c.f, t: getTxtOptions(), direction: document.querySelector(".app").dataset.mode, projection_form: window._projFormValue || "" };
   cfgs[cfgObj.id] = cfgObj;
   localStorage.setItem("tg_dark", JSON.stringify(cfgs));
   cur = cfgObj.id;
@@ -3133,6 +3204,30 @@ function initClickBindings() {
   }
   bind("btnAbout", () => openAbout());
   bind("btnSettings", () => openSettings());
+  bind("btnConfigExchange", () => openConfigExchange());
+  bind("btnConfigClose", () => $("configExchange").close());
+  bind("btnConfigExport", () => exchangeAction(async () => {
+    const text = await currentPortableText();
+    if (await tauriInvoke("export_config_file", { text })) toast("配置文件已导出", "ok");
+  }));
+  bind("btnConfigImport", () => exchangeAction(async () => {
+    const config = await tauriInvoke("import_config_file");
+    if (config) installPortableConfig(config);
+  }));
+  bind("btnConfigPaste", () => exchangeAction(async () => {
+    const config = await tauriInvoke("validate_config", { text: $("configExchangeText").value });
+    installPortableConfig(config);
+  }));
+  bind("btnConfigCopy", () => exchangeAction(async () => {
+    const text = await currentPortableText();
+    $("configExchangeText").value = text;
+    try { await navigator.clipboard.writeText(text); }
+    catch {
+      $("configExchangeText").focus(); $("configExchangeText").select();
+      if (!document.execCommand("copy")) throw new Error("自动复制不可用，配置文本已选中，请按 Ctrl+C 复制");
+    }
+    toast("配置已复制", "ok");
+  }));
   bind("btnSave", () => saveOnly());
   bind("btnDel", () => {
     if (cur === "usr") { toast("内置预设不可删除", "err"); return; }

@@ -6,6 +6,21 @@
 
 ---
 
+## 4.7.0 起：桌面与 CLI 成对发布
+
+以 `.github/workflows/release.yml` 为正式自动发布流程：推送 `vX.Y.Z` 后，Windows x64、Linux x64、macOS Intel、macOS ARM 在各自原生 runner 上运行转换及 CLI 测试，构建已签名桌面包和不依赖 Tauri 的 CLI。
+
+只有四个平台全部通过，发布任务才会收集产物。发布前再次用应用内的公钥验证每个平台 updater 文件的签名，再创建两个草稿、上传全部资产及更新清单，最后按顺序公开：
+
+1. 桌面版 `vX.Y.Z`，设为 Latest。
+2. CLI `cli-vX.Y.Z`，明确不设为 Latest。
+
+两个标签必须指向同一提交、内部版本号相同。CLI 压缩包附 README、示例配置、SKILL.md；两类资产都附 SHA-256 校验清单。资产 slug 使用 ASCII，桌面资产的显示 label 保留产品中文名。任一平台失败，不会提前发布其他平台。
+
+发布完成后下载 Release 的 `latest.json`，提交到 master 并刷新 jsDelivr 缓存，再核对更新 URL、四个平台签名和 Release 标签。国内更新镜像仍按下文上传 Gitee 安装包并回读校验；更新清单使用实际可达的 Gitee URL，并保留 GitHub 回退地址。
+
+以下为签名密钥的一次性准备及本地补发操作。
+
 ## 一次性准备：生成签名密钥对（仅首次）
 
 ```powershell

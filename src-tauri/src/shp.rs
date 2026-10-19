@@ -635,7 +635,7 @@ pub fn write_prj(path: &Path, crs: &str, band: &str, zone: &str) -> Result<(), S
         geogcs_name, datum_name, spheroid_name, semi_major, inv_flattening,
         false_easting, central_meridian
     );
-    std::fs::write(path, wkt).map_err(|e| format!("写 PRJ 失败: {}", e))
+    crate::output::write(path, wkt).map_err(|e| format!("写 PRJ 失败: {}", e))
 }
 
 /// 写完整的 SHP 文件组
@@ -675,8 +675,9 @@ pub fn write_shapefile_structured(
 
     // 1. Write .shp + .shx
     let shp_path = output_dir.join(format!("{}.shp", stem));
-    let mut swriter = ShpShapeWriter::from_path(&shp_path)
-        .map_err(|e| format!("创建 SHP 写入器失败: {}", e))?;
+    let mut shp_bytes = std::io::Cursor::new(Vec::new());
+    let mut shx_bytes = std::io::Cursor::new(Vec::new());
+    let mut swriter = ShpShapeWriter::with_shx(&mut shp_bytes, &mut shx_bytes);
 
     for surface in geometries {
         let mut rings = Vec::new();
@@ -724,8 +725,13 @@ pub fn write_shapefile_structured(
             .write_shape(&poly)
             .map_err(|e| format!("写 SHP 图形失败: {}", e))?;
     }
+    swriter.finalize().map_err(|e| format!("完成 SHP 失败: {}", e))?;
     drop(swriter);
+    crate::output::write(&shp_path, shp_bytes.into_inner()).map_err(|e| e.to_string())?;
+    let shx_path = shp_path.with_extension("shx");
+    crate::output::write(&shx_path, shx_bytes.into_inner()).map_err(|e| e.to_string())?;
     shp_paths.push(shp_path.to_string_lossy().to_string());
+    shp_paths.push(shx_path.to_string_lossy().to_string());
 
     // 2. Write .dbf (manually)
     let dbf_path = output_dir.join(format!("{}.dbf", stem));
@@ -739,7 +745,7 @@ pub fn write_shapefile_structured(
 
     // 4. Write .cpg (UTF-8，与 ArcPy 官方输出一致，ArcMap 10.x 兼容)
     let cpg_path = output_dir.join(format!("{}.cpg", stem));
-    std::fs::write(&cpg_path, "UTF-8").ok();
+    crate::output::write(&cpg_path, "UTF-8").map_err(|e| format!("写 CPG 失败: {}", e))?;
     shp_paths.push(cpg_path.to_string_lossy().to_string());
 
     Ok(shp_paths)
@@ -853,7 +859,7 @@ fn write_dbf_manual(
         }
     }
     buf.push(0x1A);
-    std::fs::write(path, &buf).map_err(|e| format!("写 DBF 失败: {}", e))
+    crate::output::write(path, &buf).map_err(|e| format!("写 DBF 失败: {}", e))
 }
 
 #[cfg(test)]

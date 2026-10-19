@@ -1,18 +1,18 @@
-# 极思G界址点互转工具 - 正式发布工作流
-# 触发条件：推送 v* 格式的 tag（如 v3.2.0）
-
 name: Release
 
 on:
   push:
-    tags:
-      - 'v*'
+    tags: ['v*']
 
 permissions:
   contents: write
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
-  release:
+  build:
     strategy:
       fail-fast: false
       matrix:
@@ -21,11 +21,11 @@ jobs:
             target: x86_64-pc-windows-msvc
             label: windows-x64
             bundles: nsis
-          - platform: macos-latest
+          - platform: macos-15
             target: aarch64-apple-darwin
             label: macos-arm64
             bundles: dmg,app
-          - platform: macos-latest
+          - platform: macos-15-intel
             target: x86_64-apple-darwin
             label: macos-x64
             bundles: dmg,app
@@ -33,205 +33,77 @@ jobs:
             target: x86_64-unknown-linux-gnu
             label: linux-x64
             bundles: appimage,deb
-
     runs-on: ${{ matrix.platform }}
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      # Release 标题用短版本（v3.2.0 → V3.2），与历史 Release（V3.0/V2.1）命名一致
-      - name: Compute release title
-        id: rel
-        shell: bash
-        run: echo "title=V$(echo '${{ github.ref_name }}' | sed 's/^v//; s/\.[^.]*$//')" >> "$GITHUB_OUTPUT"
-
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
-
-      - name: Rust cache
-        uses: swatinem/rust-cache@v2
+      - uses: swatinem/rust-cache@v2
         with:
           workspaces: src-tauri -> target
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: 20
-
-      - name: Install dependencies (ubuntu only)
-        if: matrix.platform == 'ubuntu-22.04'
+          node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Install Linux desktop dependencies
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
-
-      - name: Install frontend dependencies
-        run: npm ci
-
-      - name: Build frontend
-        run: npm run build
-
-      # CI 配置处理：严禁改写 productName（NSIS 卸载键/安装目录/快捷方式名均派生自它，改写曾致 v3.2 更新安装目录漂移）；
-      # ASCII 产物名由下方构建后重命名步骤实现。此处仅按是否有私钥决定 updater 签名。
-      - name: Patch Tauri config for CI
+      - run: npm ci
+      - name: Validate versions and signing availability
         shell: bash
+        env:
+          SIGNING_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: |
-          if [ -z "${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}" ]; then
-            echo "::warning::TAURI_SIGNING_PRIVATE_KEY 未配置，禁用 updater 签名"
-            node -e "
-              const fs = require('fs');
-              const p = 'src-tauri/tauri.conf.json';
-              const c = JSON.parse(fs.readFileSync(p, 'utf8'));
-              if (c.bundle) c.bundle.createUpdaterArtifacts = false;
-              if (c.plugins && c.plugins.updater) delete c.plugins.updater.pubkey;
-              fs.writeFileSync(p, JSON.stringify(c, null, 2) + '\n');
-            "
-          else
-            echo "TAURI_SIGNING_PRIVATE_KEY 已配置，保留 updater 签名"
-          fi
-
-      - name: Build and Release Tauri app
+          test -n "$SIGNING_KEY" || { echo 'Missing updater signing key'; exit 1; }
+          node scripts/check-release-version.mjs
+      - name: Test portable configuration
+        run: node --test tests/config-exchange.test.mjs
+      - name: Run conversion and CLI tests natively
+        run: cargo test --locked --manifest-path src-tauri/Cargo.toml --no-default-features --target ${{ matrix.target }} --tests
+      - name: Build signed desktop packages
         uses: tauri-apps/tauri-action@v1
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: ${{ steps.rel.outputs.title }}
-          releaseBody: |
-            ## 极思G界址点互转工具 ${{ github.ref_name }}
-
-            ### 下载说明
-            - **Windows**: 下载 `.exe` 安装包或 `-portable.exe` 便携版
-            - **macOS**: 下载 `.dmg` 安装包（arm64 = Apple Silicon, x64 = Intel）
-            - **Linux**: 下载 `.AppImage` 或 `.deb`
-
-            ### 系统要求
-            - Windows 10/11 (64位)
-            - macOS 10.15+ (Catalina 或更新)
-            - Linux (需安装 WebKit2GTK)
-
-            ### 更新日志
-            请查看 [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/master/CHANGELOG.md)
-          releaseDraft: false
-          prerelease: false
           args: --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
+      - name: Build standalone CLI without desktop dependencies
+        run: cargo build --locked --manifest-path src-tauri/Cargo.toml --release --no-default-features --bin jisigg-cli --target ${{ matrix.target }}
+      - name: Package and smoke test binaries
+        run: python scripts/package-release.py --target ${{ matrix.target }} --label ${{ matrix.label }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.label }}
+          path: |
+            dist-release/${{ matrix.label }}/gui/
+            dist-release/${{ matrix.label }}/cli/
+            dist-release/${{ matrix.label }}/manifest.json
+          if-no-files-found: error
 
-      # Windows 便携版：复制裸 exe 上传。slug 与 label 交给后面的 Normalize 步骤统一处理。
-      - name: Upload portable executable (Windows only)
-        if: matrix.platform == 'windows-latest'
-        shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          VER=$(node -p "require('./src-tauri/tauri.conf.json').version")
-          EXE="src-tauri/target/${{ matrix.target }}/release/jisig-bpoint-converter.exe"
-          PORTABLE="src-tauri/target/${{ matrix.target }}/release/bundle/nsis/极思G界址点互转工具_${VER}_x64-portable.exe"
-          cp "$EXE" "$PORTABLE"
-          gh release upload "${{ github.ref_name }}" "$PORTABLE" --clobber
-          echo "已上传便携版: $PORTABLE"
-
-      # 全平台：规范化资产名——slug 换成品牌 ASCII（JisigG_*），中文原名放 label。
-      # 为什么要改：GitHub 服务端把 slug（name）里的非 ASCII 折叠掉（极思G界址点互转工具 → G.），
-      # 而 slug 同时决定下载链接和 Content-Disposition 的落盘文件名；label 只管 Release 列表显示。
-      # 不规范化，用户存盘拿到的就是 G._4.4.0_x64-setup.exe。只 PATCH 元数据、不重传，签名基于
-      # exe 字节故不受影响。必须在 Publish latest.json 之前跑（url 要用改后的 slug）。
-      - name: Normalize asset names (slug ASCII + Chinese label)
-        shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          node scripts/normalize-release-assets.mjs --repo "${{ github.repository }}" --tag "${{ github.ref_name }}"
-
-      # Gitee 附件不在 CI 里上传：本机发版时执行 scripts/publish-gitee.mjs（gitee CLI 登录 + 附件上传）。
-      # 这里只按约定拼出 Gitee 下载地址并探测；不可达就退回 GitHub 作为主 url，保证用户不会下不了。
-      - name: Resolve Gitee download URL (Windows only)
-        id: primary
-        if: matrix.platform == 'windows-latest'
-        continue-on-error: true
-        shell: bash
-        env:
-          GITEE_REPO: ${{ vars.GITEE_REPO || 'cdg_tools/polygon-txt' }}
-        run: |
-          VER=$(node -p "require('./src-tauri/tauri.conf.json').version")
-          URL="https://gitee.com/${GITEE_REPO}/releases/download/v${VER}/JisigG_${VER}_x64-setup.exe"
-          code=$(curl -sIL -o /dev/null -w "%{http_code}" --max-time 45 "$URL" || true)
-          echo "Gitee 通道探测 HTTP $code"
-          if [ "$code" = "200" ]; then
-            echo "primary_url=$URL" >> "$GITHUB_OUTPUT"
-          else
-            echo "::warning::Gitee 附件不可达（HTTP $code），latest.json 主 url 用 GitHub 直链"
-          fi
-
-      # Windows：生成 latest.json。url 必须取 API 的 browser_download_url（Normalize 之后的真实
-      # slug），绝不能再拼中文名——v4.4.0 就是拼了中文名导致 updater url 404。
-      - name: Publish latest.json (Windows only)
-        if: matrix.platform == 'windows-latest'
-        shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          VER=$(node -p "require('./src-tauri/tauri.conf.json').version")
-          D="src-tauri/target/${{ matrix.target }}/release/bundle/nsis"
-          REL_API="repos/${{ github.repository }}/releases/tags/${{ github.ref_name }}"
-          SETUP_URL=$(gh api "$REL_API" -q '.assets[] | select(.name | startswith("JisigG_")) | select(.name | endswith("_x64-setup.exe")) | .browser_download_url' | head -1)
-          if [ -z "$SETUP_URL" ]; then
-            echo "::error::Normalize 步骤后仍找不到 JisigG_*_x64-setup.exe，检查 normalize-release-assets.mjs 是否执行成功"; exit 1
-          fi
-          DUPES=$(gh api "$REL_API" -q '[.assets[] | select(.name | endswith("_x64-setup.exe"))] | length')
-          [ "$DUPES" -gt 1 ] && echo "::warning::Release 上有 $DUPES 份 setup（重复资产要清理），本次 updater 用 $SETUP_URL"
-          curl -sfIL --max-time 60 "$SETUP_URL" >/dev/null || { echo "::error::setup 下载链接不可达：$SETUP_URL"; exit 1; }
-          PRIMARY_ARGS=""
-          if [ -n "${{ steps.primary.outputs.primary_url }}" ]; then PRIMARY_ARGS="--gitee-url ${{ steps.primary.outputs.primary_url }}"; fi
-          node scripts/gen-latest-json.js --version "$VER" --tag "${{ github.ref_name }}" --nsis-dir "$D" --download-url "$SETUP_URL" $PRIMARY_ARGS
-          gh release upload "${{ github.ref_name }}" latest.json --clobber
-          echo "已上传: latest.json（url=$SETUP_URL，已实测可达）"
-
-      # Windows：用 CHANGELOG 具体更新内容替换 tauri-action 模板 notes（用户要求：Release 页直接展示更新内容）
-      - name: Update release notes from CHANGELOG (Windows only)
-        if: matrix.platform == 'windows-latest'
-        shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          VER=$(node -p "require('./src-tauri/tauri.conf.json').version")
-          node scripts/extract-changelog.js "$VER" > release-notes.md
-          gh release edit "${{ github.ref_name }}" --notes-file release-notes.md --repo ${{ github.repository }}
-          echo "Release notes 已更新为 CHANGELOG $VER 内容"
-
-  # 最后一步：用 CHANGELOG 对应版本段落替换 latest.json 的 notes。
-  # 根因：各平台 job 结束时 tauri-action 会合并平台条目并重传 latest.json，
-  # notes 用发布页模板正文，会覆盖 Windows job 里 gen-latest-json 的提取版——
-  # 本 job 在全部平台完成后运行，保证最终 notes = CHANGELOG 具体更新内容。
-  finalize-notes:
-    needs: release
+  publish:
+    needs: build
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: 20
-
-      - name: Replace latest.json notes with CHANGELOG content
+          node-version: 22
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: downloaded
+      - name: Collect validated platform artifacts
+        run: |
+          mkdir -p dist-release
+          for label in windows-x64 linux-x64 macos-x64 macos-arm64; do
+            mv "downloaded/release-$label" "dist-release/$label"
+          done
+      - name: Publish desktop then CLI
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          VER=$(node -p "require('./src-tauri/tauri.conf.json').version")
-          gh release download "${{ github.ref_name }}" --repo ${{ github.repository }} --pattern latest.json --clobber
-          node -e "
-            const fs = require('fs');
-            const { execSync } = require('child_process');
-            const notes = execSync('node scripts/extract-changelog.js ' + process.argv[1]).toString().trim();
-            const j = JSON.parse(fs.readFileSync('latest.json', 'utf8'));
-            j.notes = notes;
-            fs.writeFileSync('latest.json', JSON.stringify(j, null, 2) + '\n');
-            console.log('latest.json notes replaced with CHANGELOG', process.argv[1]);
-          " "$VER"
-          gh release upload "${{ github.ref_name }}" latest.json --clobber --repo ${{ github.repository }}
-          echo "finalize-notes done"
+        run: node scripts/publish-pair.mjs

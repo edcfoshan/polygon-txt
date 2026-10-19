@@ -1,7 +1,29 @@
 {
-  "version": "4.6.0",
-  "notes": "本版让应用内自动更新更快更稳，并把更新说明改成按版本分组的可折叠结构。\n\n### 新增\n\n- **表头可整段不输出**：中栏「表头」页签新增开关，勾选后输出的 TXT 完全不含表头（属性描述 + 项目信息），只留字段与坐标段。\n- **字段内容可整段不输出**：中栏「字段」页签新增开关，勾选后每个地块只输出坐标行，不含字段内容（默认仍按原规则回退 8 列标准行，行为不变）。\n- **可去掉「[地块坐标]」段标题**：「字段」页签再增一个独立开关，勾选后不输出该段标题。注意：去掉后本工具自身无法再解析这个 TXT（坐标行会被当成属性行丢弃），界面上会有醒目提示。\n- **表头属性行全部可删**：默认 7 行（坐标系/几度分带/投影类型/计量单位/带号/精度/转换参数）此前不可删除，现每一行都可删，需要时用「恢复默认」找回。\n- **字段映射行全部可删**：此前「坐标点个数」「图形属性」两行为锁定状态，现同样可删（源下拉仍为只读，因为那是自动列）。\n- **更新说明按版本分组**：自动更新弹窗改为按版本分组展示——比当前版本新的改动展开逐条列出，已装过的旧版本折叠收起（点标题即可展开查看）。条目前按「新增 / 修复 / 优化 / 其它」自动着色，数据直接取自本文件的分节，无需额外维护。\n- **Gitee 加速下载通道**：应用内更新主下载源改为 Gitee 附件（大陆直连实测约 1.9 MB/s，约为 GitHub 直链的 2.5 倍）；Gitee 不可达时自动回退 GitHub 直链，两条都失败才提示百度云手动下载。\n\n### 优化\n\n- **左栏可折叠、更紧凑**：左栏「导入数据」「输出与选项」两个区块改为可点击折叠（默认都展开，按需收起），默认占用高度由约 440px 降到 414px；同时收紧左栏内边距，把导入 6 个文件时的总高度从 614px 压到 594px，不再触发滚动。\n- **属性描述面板加高**：上限由 220px 放宽到 320px，默认 7 行不再一进来就需要滚动。\n- **更新弹窗信息更清晰**：弹窗只展示更新说明，不再混入「下载与安装」表格；新增「查看完整更新内容」入口跳转对应版本的 Release 页。\n\n### 修复\n\n- **更新说明不再串版本**：此前弹窗展示的是 Release 正文（含下载表），且只有单版本内容；现改为结构化数据，跨版本内容按各自版本正确归属。\n- **空载预览不跟随输出开关**：还没导入 SHP/GDB 时，右侧预览的骨架文本是前端硬编码的，勾「不输出表头」对它无效、`[地块坐标]` 也永远显示；现在骨架完全按当前开关生成，与真实导出口径一致。\n\n---\n\n### 下载与安装\n\n| 平台 | 文件 | 说明 |\n| --- | --- | --- |\n| Windows | `极思G界址点互转工具_4.6.0_x64-setup.exe` | **安装版（推荐）**：双击安装，写入开始菜单/桌面快捷方式，支持应用内自动更新 |\n| Windows | `极思G界址点互转工具_4.6.0_x64-portable.exe` | **便携版**：免安装，双击即用；换机器直接拷走 |\n| macOS | `极思G界址点互转工具_4.6.0_aarch64.dmg` / `_x64.dmg` | Intel 芯片选 `x64`，Apple Silicon 选 `aarch64` |\n| Linux | `极思G界址点互转工具_4.6.0_amd64.AppImage` / `_amd64.deb` | AppImage 免安装（`chmod +x` 后直接运行），deb 用系统包管理器安装 |\n\n> 上表是 Release 资产列表里的显示名；GitHub 会把下载链接与存盘文件名里的中文换成品牌前缀，实际存到磁盘的是 `JisigG_4.6.0_x64-setup.exe` 这类名字，二者是同一个文件。\n\n**Windows 安装步骤**（首次运行可能被 SmartScreen 拦下）：\n1. 下载 `极思G界址点互转工具_4.6.0_x64-setup.exe`\n2. 双击运行；若出现「Windows 已保护你的电脑」，点「更多信息」→「仍要运行」\n3. 按向导完成安装（勾选项含创建桌面快捷方式）\n\n**更新**：各平台均支持应用内自动更新——启动后静默检查，标题栏出现绿色箭头即为有新版本，点它按提示「立即更新」。自动更新失败时，可按弹窗内的百度云链接手动下载。\n国内下载慢时也可用百度云：https://pan.baidu.com/s/1xyW3-hyZrFDDG9ijYOf46g?pwd=e8vy （提取码 e8vy）\n\n### 系统要求\n\n- **Windows 10 / 11（64 位）**：需要 WebView2 运行时（Win11 与已更新的 Win10 已内置，缺失时安装程序会提示安装）\n- **macOS 10.15+**（Intel / Apple Silicon 均有独立产物）\n- **Linux**：需 WebKit2GTK（主流发行版仓库自带）\n\n> ⚠️ 本工具完全免费开源。**任何以「激活 / 解锁 / 代下载」为名收费的渠道均为假冒**，请只从本仓库 Releases 或上方百度云链接获取。",
+  "version": "4.7.0",
+  "notes": "QQ群：826861025\r\n\r\n### 新增\r\n\r\n- **原生 CLI**：与桌面版共用 Rust 转换核心，支持 SHP/GDB→TXT、TXT→SHP 及现有全部转换选项；提供 Windows x64、Linux x64、macOS Intel/Apple Silicon 四平台包。\r\n- **配置导入导出**：桌面版新增 JSON 文件与复制/粘贴交换，保存双向设置、字段映射、表头、投影和界址点布局；排除路径、具体地块勾选与主题，导入为新配置，重名自动编号。\r\n- **批处理与 AI 调用**：CLI 提供完整帮助、JSON 结果、数据检查、配置校验与不落盘的转换预检，附示例配置与 SKILL.md。\r\n- **默认保护已有文件**：CLI 转换前检查整批输出，遇同名文件停止，仅显式 --overwrite 才覆盖；字段映射不匹配时列出问题并停止。\r\n- **桌面与 CLI 分开发布**：相同产品版本、同一提交，分别使用 v4.7.0 / cli-v4.7.0 标签；四平台统一验收后桌面在前、CLI 在后，Latest 保持桌面版。\r\n\r\n### 优化\r\n\r\n- **关于弹窗支持信息更新**：关注与交流、赞赏支持改用两张统一青绿风格海报，分别展示公众号与讨论群、微信赞赏与爱发电；二维码保留原图并随软件内联。",
   "releases": [
+    {
+      "version": "4.7.0",
+      "date": "2026-10-19",
+      "kind": "新增",
+      "title": "新增",
+      "items": [
+        "原生 CLI：与桌面版共用 Rust 转换核心，支持 SHP/GDB→TXT、TXT→SHP 及现有全部转换选项；提供 Windows x64、Linux x64、macOS Intel/Apple Silicon 四平台包。",
+        "配置导入导出：桌面版新增 JSON 文件与复制/粘贴交换，保存双向设置、字段映射、表头、投影和界址点布局；排除路径、具体地块勾选与主题，导入为新配置，重名自动编号。",
+        "批处理与 AI 调用：CLI 提供完整帮助、JSON 结果、数据检查、配置校验与不落盘的转换预检，附示例配置与 SKILL.md。",
+        "默认保护已有文件：CLI 转换前检查整批输出，遇同名文件停止，仅显式 --overwrite 才覆盖；字段映射不匹配时列出问题并停止。",
+        "桌面与 CLI 分开发布：相同产品版本、同一提交，分别使用 v4.7.0 / cli-v4.7.0 标签；四平台统一验收后桌面在前、CLI 在后，Latest 保持桌面版。"
+      ]
+    },
+    {
+      "version": "4.7.0",
+      "date": "2026-10-19",
+      "kind": "优化",
+      "title": "优化",
+      "items": [
+        "关于弹窗支持信息更新：关注与交流、赞赏支持改用两张统一青绿风格海报，分别展示公众号与讨论群、微信赞赏与爱发电；二维码保留原图并随软件内联。"
+      ]
+    },
     {
       "version": "4.6.0",
       "date": "2026-10-14",
@@ -137,48 +159,30 @@
         "中栏文字可读性优化：页签、标签、输入框、按钮和界址点配置行整体提升字号，并同步调整控件宽度。",
         "折叠卡修复：字段映射卡此前始终无法收起（内容容器 card-b 不受折叠样式作用，且其 display:block 覆盖 display:none）；列内容超出高度时自动滚动兜底，最小窗口（800×540）下也可正常操作；左栏收起卡不再被拉伸出大片空白"
       ]
-    },
-    {
-      "version": "4.2.0",
-      "date": "2026-09-09",
-      "kind": "修复",
-      "title": "修复",
-      "items": [
-        "修复 37 带东侧数据换带/带号前缀开关坐标错误（揭阳类数据：带号 37、CM111，东侧点东坐标 38,057,383 = 37_500_000+557_383，以 38 开头）：换带与前缀开关按东坐标百万位推断带号会误判为 38 带。现以 PRJ/空间参考声明的带号（37）为权威，东坐标按声明带号剥/贴 million 块，换带、加前缀、剥前缀、换号全部正确",
-        "TXT→SHP 带号判定改为「TXT 声明 > 坐标前缀推断 > 表单值」：旧逻辑「提取值优先」在上述溢出数据上会覆盖正确的声明带号，导致 TXT 回转 SHP 时 PRJ 写错带号、位置漂移数百公里",
-        "修复 TXT→SHP 分带传参：\"6°带\" 文字直传写 PRJ 函数会解析失败并默认 3°，现统一规范化为数字",
-        "预览与导出合并为同一条管线：删除双路径实现，预览文本与导出文件从源头保证一致，并继承逐源权威带号修复",
-        "修复 GDB 导入不自动填写表头的问题：确认图层后按「勾选的第一个图层」的坐标系（PRJ 权威）自动填写 坐标系/几度分带/投影类型/计量单位/带号（此前一直停留在上次保存值）"
-      ]
-    },
-    {
-      "version": "4.2.0",
-      "date": "2026-09-09",
-      "kind": "新增",
-      "title": "新增",
-      "items": [
-        "TXT→SHP 往返范围一致性回归测试：37 带溢出数据经 keep/前缀开/前缀剥/换带（F/H）转换后，TXT 回转 SHP 的 WGS84 范围与原始一致（容差约 5 米）",
-        "图层选择确认时，若所选图层坐标系声明不一致会明确警告（如 ZSDK=37 带与 ZSDK38=38 带混选）",
-        "更新弹窗的更新说明改为 CHANGELOG 具体更新内容（此前会显示「下载说明/系统要求」模板正文）；后续版本由发布流程最后一步自动保证"
-      ]
-    },
-    {
-      "version": "4.2.0",
-      "date": "2026-09-09",
-      "kind": "修复",
-      "title": "修复",
-      "items": [
-        "修复发布流程竞态：其他平台构建收尾时会用发布页模板正文覆盖 latest.json 的更新说明（更新弹窗因此显示模板而非更新日志）"
-      ]
     }
   ],
   "releases_limit": 5,
-  "pub_date": "2026-10-14T06:13:57.252Z",
+  "pub_date": "2026-10-19T05:31:26.677Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUd3RYL0ovejhtb0ZBTk1EV0h6dGhLQUJTdFN3a3N1dlVCSHM0WkpWSzBmaXdQOSt3TFZ0V1VyMW1hZlRzSkdaTkRmUVpUN2xZTldSU1lkbXB2UDhJQzg2eVBoeGsybFF3PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkxOTU4NDE1CWZpbGU65p6B5oCdR+eVjOWdgOeCueS6kui9rOW3peWFt180LjYuMF94NjQtc2V0dXAuZXhlCnJPQ1hGWUxYZ0crRENGOU41dGZScnZubm1HZ3FWamxGTStQM2VhbEIvc2NhMkcxR2l3ZFROV01aakhkUmw4aERqb3ZObzdORDUwSFJGT0lJWThqdEN3PT0K",
-      "url": "https://gitee.com/cdg_tools/polygon-txt/releases/download/v4.6.0/JisigG_4.6.0_x64-setup.exe",
-      "github_url": "https://github.com/edcfoshan/polygon-txt/releases/download/v4.6.0/JisigG_4.6.0_x64-setup.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUd3RYL0ovejhtb0RmUitRQWw5RnhnalBBK1ZOeDJTUndEbG8yVUtCRmFyRGRtbWZ4MU9oVVZrV2p0SGQ4YTh5QWRxME1VRVBoQkpVd0JxbDdva1lWelRmbFFFOHl2SGcwPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyMzg3NTY0CWZpbGU65p6B5oCdR+eVjOWdgOeCueS6kui9rOW3peWFt180LjcuMF94NjQtc2V0dXAuZXhlCkJUMDNBbjltUkFMeWQxT3FJWHVycDRjeHVTbGNNZ1hyaVpKZVFkQWsxZDAzUW1MMEtzOUQxRG43eE55NmdYUUZ5THFKZjQyaUxtRkhMbFhoTGJWNkRRPT0K",
+      "url": "https://gitee.com/cdg_tools/polygon-txt/releases/download/v4.7.0/JisigG_4.7.0_x64-setup.exe",
+      "github_url": "https://github.com/edcfoshan/polygon-txt/releases/download/v4.7.0/JisigG_4.7.0_x64-setup.exe"
+    },
+    "linux-x86_64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUd3RYL0ovejhtb09sd2pSaG1GRlE5MW03TnByb2s1N2ZZeGRlcVErK3BSWFc4S29PNmNCS0x6TTdPRHk2R3Z1VVYrbHFSSWR3R2xXaXNlaTA5UEJFY0p3Y0dqc2xXNVFzPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyMzg3NjIxCWZpbGU65p6B5oCdR+eVjOWdgOeCueS6kui9rOW3peWFt180LjcuMF9hbWQ2NC5BcHBJbWFnZQpEQmVmOFFYUlFkQ2lXYTQzc3VudUVUK3gyRkl0RndFbHJydmxjcUZ4RTBra3FJcDZWTDlZMGpvMEhNd3hmOGZRVHN0eFhJaHlDeG8vSi83bWpaYStDdz09Cg==",
+      "url": "https://github.com/edcfoshan/polygon-txt/releases/download/v4.7.0/JisigG_4.7.0_amd64.AppImage",
+      "github_url": "https://github.com/edcfoshan/polygon-txt/releases/download/v4.7.0/JisigG_4.7.0_x64-setup.exe"
+    },
+    "darwin-x86_64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUd3RYL0ovejhtb0syWjhnUmRwdE9Ydk1YZm5DcnNCWVc5K0tIckt5aFV3VzBaK3czNTU0aSsyalhzNWZJY1JCMTRQUUdzRlRnVlRyVEFBZjZMT2dmTUhZNUxlSDNUcFFNPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyMzg3NjI1CWZpbGU65p6B5oCdR+eVjOWdgOeCueS6kui9rOW3peWFty5hcHAudGFyLmd6Cmt2cDBzTzVHam1peS9TMEs1QzJta1Q3RUpZZEI1UmcybE9Vck1zbEY1S3RBVko0VVM4S3cvVlNLUXdMRFZuUW1UU0Q2bjZyNGZ6WkVuK1FVa1IvS0RBPT0K",
+      "url": "https://github.com/edcfoshan/polygon-txt/releases/download/v4.7.0/JisigG_4.7.0_x64.app.tar.gz",
+      "github_url": "https://github.com/edcfoshan/polygon-txt/releases/download/v4.7.0/JisigG_4.7.0_x64-setup.exe"
+    },
+    "darwin-aarch64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUd3RYL0ovejhtb0NmNlRvWUdHSURvTURIeTg3VjA0QjdVcDlUTFRYRXptQkoxRGxMQmVZQmhTdTZ0OEJWUG9OeUFNRytFMHVNd1MvYUl3SlBhSlZFMDFNSUVKc3RDUXdVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyMzg3NjE4CWZpbGU65p6B5oCdR+eVjOWdgOeCueS6kui9rOW3peWFty5hcHAudGFyLmd6CmFOT01WNGh5Z2svUyt0VDEwZmVtU084c2lIVWhSdjhybnBHVjl4YVhOWWVGeTlQSmdVb3YzODRqYWkwbS9oaVRsQks4VGJlaWxkcmpSN20vYWhXMENnPT0K",
+      "url": "https://github.com/edcfoshan/polygon-txt/releases/download/v4.7.0/JisigG_4.7.0_aarch64.app.tar.gz",
+      "github_url": "https://github.com/edcfoshan/polygon-txt/releases/download/v4.7.0/JisigG_4.7.0_x64-setup.exe"
     }
   }
 }

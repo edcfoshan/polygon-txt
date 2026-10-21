@@ -1,3 +1,5 @@
+**QQ group: 826861025**
+
 <div align="center">
   <img src="./docs/brand/app-icon-source.png" width="112" alt="Boundary Point Converter icon">
   <h1>Boundary Point Converter</h1>
@@ -212,11 +214,11 @@ J1,1,2582988.976,38383243.971
 
 Scan to follow Jisig G Studio on WeChat or join the QQ group for tool updates and discussion:
 
-<img src="./content/求关注-极思G-20261014.png" width="720" alt="Follow Jisig G: WeChat account and QQ group" />
+<img src="./content/求关注-极思G-20261014.png" width="360" alt="Follow Jisig G: WeChat account and QQ group" />
 
 If these tools help with your work, you are welcome to support their development. Donations are entirely voluntary. Thank you for your support.
 
-<img src="./content/求赞赏-极思G-20261014.png" width="720" alt="Support Jisig G via WeChat or Afdian" />
+<img src="./content/求赞赏-极思G-20261014.png" width="360" alt="Support Jisig G via WeChat or Afdian" />
 
 Report issues and suggest features via [GitHub Issues](https://github.com/edcfoshan/polygon-txt/issues), or share usage tips in [Discussions](https://github.com/edcfoshan/polygon-txt/discussions).
 

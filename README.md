@@ -1,3 +1,5 @@
+**QQ 交流群：826861025**
+
 <div align="center">
   <img src="./docs/brand/app-icon-source.png" width="112" alt="极思G界址点互转工具图标">
   <h1>极思G界址点互转工具</h1>
@@ -223,11 +225,11 @@ J1,1,2582988.976,38383243.971
 
 扫码关注「极思G工作室」公众号、加入 QQ 交流群，获取工具更新、交流使用经验：
 
-<img src="./content/求关注-极思G-20261014.png" width="720" alt="关注极思G：公众号与 QQ 交流群" />
+<img src="./content/求关注-极思G-20261014.png" width="360" alt="关注极思G：公众号与 QQ 交流群" />
 
 如果这些工具对你有帮助，欢迎赞赏支持。赞赏完全自愿，感谢你的支持。
 
-<img src="./content/求赞赏-极思G-20261014.png" width="720" alt="支持极思G：微信赞赏与爱发电" />
+<img src="./content/求赞赏-极思G-20261014.png" width="360" alt="支持极思G：微信赞赏与爱发电" />
 
 也欢迎在 [GitHub Issues](https://github.com/edcfoshan/polygon-txt/issues) 提交问题与功能建议，或前往 [Discussions](https://github.com/edcfoshan/polygon-txt/discussions) 交流使用经验。
 

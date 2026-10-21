@@ -32,6 +32,10 @@ Input supports standard SHP and polygon features in OpenFileGDB. TXT can be conv
 - **Coordinate and projection settings**: recognize common PRJ information and configure CGCS2000, Xi'an 1980, Beijing 1954, WGS84, and related Gauss-Krüger 3° / 6° zone handling.
 - **Desktop builds for Windows, macOS, and Linux**: download an installer or portable build from GitHub Releases.
 
+## Sponsor
+
+Thanks to **jizhanai.top** for sponsoring this project! [Register through the invitation link](https://jizhanai.top/register?ref=PBUXGDHTFUAS) and enter invitation code **`PBUXGDHTFUAS`** to receive **CNY 5 off**.
+
 ## Feature Guide
 
 ### 1. Convert polygons to TXT and back
@@ -193,15 +197,15 @@ J1,1,2582988.976,38383243.971
 
 [MIT License](./LICENSE)
 
-## Community
+## Follow & Support
 
-Scan to join the discussion group, ask questions, and share feedback:
+Scan to follow Jisig G Studio on WeChat or join the QQ group for tool updates and discussion:
 
-![Discussion group](./content/讨论群.jpg)
+<img src="./content/求关注-极思G-20261014.png" width="720" alt="Follow Jisig G: WeChat account and QQ group" />
 
-If the tool helps with your work, you can support its development:
+If these tools help with your work, you are welcome to support their development. Donations are entirely voluntary. Thank you for your support.
 
-![Support the project](./content/关注、赞赏码.png)
+<img src="./content/求赞赏-极思G-20261014.png" width="720" alt="Support Jisig G via WeChat or Afdian" />
 
 Report issues and suggest features via [GitHub Issues](https://github.com/edcfoshan/polygon-txt/issues), or share usage tips in [Discussions](https://github.com/edcfoshan/polygon-txt/discussions).
 

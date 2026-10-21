@@ -31,6 +31,10 @@
 - **坐标与投影设置**：识别常见 PRJ 信息，支持 CGCS2000、1980 西安、1954 北京和 WGS84，以及高斯–克吕格 3° / 6° 分带相关处理。
 - **Windows、macOS、Linux 桌面版本**：从 GitHub Releases 获取对应安装包或便携版。
 
+## 赞助商
+
+感谢 **jizhanai.top** 赞助支持！通过[邀请链接注册开通](https://jizhanai.top/register?ref=PBUXGDHTFUAS)，填写邀请码 **`PBUXGDHTFUAS`** 可减 **5 元**。
+
 ## 核心功能详解
 
 ### 1. 面进 TXT，TXT 再回面：别让格式接力靠手工
@@ -204,15 +208,15 @@ J1,1,2582988.976,38383243.971
 
 [MIT License](./LICENSE)
 
-## 找同路人，也给工具加个油
+## 关注与赞赏
 
-扫码加入讨论群交流使用问题、反馈建议：
+扫码关注「极思G工作室」公众号、加入 QQ 交流群，获取工具更新、交流使用经验：
 
-![讨论群](./content/讨论群.jpg)
+<img src="./content/求关注-极思G-20261014.png" width="720" alt="关注极思G：公众号与 QQ 交流群" />
 
-如果这个工具对你的工作有帮助，欢迎赞赏支持：
+如果这些工具对你有帮助，欢迎赞赏支持。赞赏完全自愿，感谢你的支持。
 
-![赞赏码](./content/关注、赞赏码.png)
+<img src="./content/求赞赏-极思G-20261014.png" width="720" alt="支持极思G：微信赞赏与爱发电" />
 
 也欢迎在 [GitHub Issues](https://github.com/edcfoshan/polygon-txt/issues) 提交问题与功能建议，或前往 [Discussions](https://github.com/edcfoshan/polygon-txt/discussions) 交流使用经验。
 

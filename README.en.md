@@ -45,7 +45,7 @@ Input supports standard SHP and polygon features in OpenFileGDB. TXT can be conv
     <td width="24%" align="center">
       <a href="https://jizhanai.top/register?ref=PBUXGDHTFUAS"><img src="./content/sponsors/jizhan-wordmark.svg" width="180" alt="极栈 jizhanai.top，点击通过邀请链接注册" /></a>
     </td>
-    <td>Thanks to <a href="https://jizhanai.top/register?ref=PBUXGDHTFUAS"><b>Jizhan · jizhanai.top</b></a> for sponsoring this project! Jizhan offers <b>ChatGPT activation codes</b>, with instructions for redeeming them on Magang.<br><br><a href="https://jizhanai.top/register?ref=PBUXGDHTFUAS">Register through the invitation link</a> and enter invitation code <code>PBUXGDHTFUAS</code> to receive <b>CNY 5 off</b>.</td>
+    <td>Thanks to <a href="https://jizhanai.top/register?ref=PBUXGDHTFUAS"><b>Jizhan · jizhanai.top</b></a> for sponsoring this project! Jizhan provides <b>ChatGPT subscription top-ups</b> and accepts <b>Alipay</b>. Purchase a <b>ChatGPT activation code</b> and follow the site's instructions to redeem it on Magang.<br><br><a href="https://jizhanai.top/register?ref=PBUXGDHTFUAS">Register through the invitation link</a> and enter invitation code <code>PBUXGDHTFUAS</code> to receive <b>CNY 5 off</b>.</td>
   </tr>
 </table>
 

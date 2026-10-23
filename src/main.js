@@ -3559,11 +3559,9 @@ function initClickBindings() {
     toast("字号已恢复默认", "ok");
   });
   bind("btnUpdate", () => {
-    // available/skipped 态：打开弹窗；idle/loading 态：手动触发检查
+    // 手动点击必须重新联网检查；否则旧客户端会一直打开缓存里的 4.7.0 弹窗。
     const btn = $("btnUpdate");
-    if (btn && (btn.classList.contains("available") || btn.classList.contains("skipped"))) {
-      openUpdateModal();
-    } else if (btn && !btn.classList.contains("loading")) {
+    if (btn && !btn.classList.contains("loading")) {
       checkAppUpdate(true);
     }
   });

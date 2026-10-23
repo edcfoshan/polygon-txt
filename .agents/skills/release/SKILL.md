@@ -71,8 +71,9 @@ node scripts/gen-latest-json.js --notes "<本次更新内容>"
 自动读 `package.json` 版本号 + 扫描 `.sig` + 组装下载 URL，输出仓库根目录 `latest.json`。
 > 不传 `--notes` 则从 `CHANGELOG.md` 提取对应版本段落兜底。
 
-**download_url 组成**（v4.6.0 起）：CI 会把 Gitee 附件地址填进 `url`（先探测，返回 200 才用），
-GitHub 直链放进 `github_url`（客户端主通道失败时回退用）。Gitee 不可达时 CI 直接把 GitHub 直链当主 url。
+**download_url 组成**：tag CI 只能先生成 GitHub 主 URL；Gitee 上传成功后必须重新生成清单，
+把 Gitee 稳定地址填进 `url`，GitHub 直链放进 `github_url`。重新生成时保留 CI 清单中
+Linux/macOS 平台签名，避免只剩 Windows 一个更新目标。
 
 ### 4.6 上传附件到 Gitee（v4.6.0 起，必做）
 
@@ -88,6 +89,11 @@ node scripts/publish-gitee.mjs --version X.Y.Z `
 > 实测：Gitee 附件下载经两次 302 到签名 CDN，无需 Referer/Cookie，大陆约 1.9 MB/s（GitHub 约 0.78 MB/s）；
 > 但**不支持断点续传**（Range 被忽略），中断需重下，6MB 包无妨。
 > 漏传不会让用户下载失败：客户端会自动回退 `github_url`。
+
+Gitee 回读一致后，把 Release 里的 CI 清单先存为临时文件；用刚回传的 setup + `.sig` 重跑
+`gen-latest-json.js --download-url <GitHub URL> --gitee-url <Gitee URL>`，再把临时清单里的
+`linux-x86_64`、`darwin-x86_64`、`darwin-aarch64` 三项复制回新清单。随后上传同一 Release、
+提交 master 并 purge jsDelivr。
 
 ### 5. 集中产物到 `其他相关tbx放进去release/`
 此目录是**发布物的正式暂存地**（用户约定，目录名本身即指令"放进去 release"）。构建后把产物按下列命名规则放入（**注意重命名**，Tauri 默认产物名用完整 `X.Y.Z`，发布文件名用简短 `X.Y`）：

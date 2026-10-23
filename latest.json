@@ -162,11 +162,24 @@
     }
   ],
   "releases_limit": 5,
-  "pub_date": "2026-10-23T07:19:41.280Z",
+  "pub_date": "2026-10-23T07:55:56.860Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUd3RYL0ovejhtb0dzTEJkNnp5empEa0xEa1VoelczbGpoQ1lyMFZhS2Z0VXRqcW9qbGlwNmFqdXpQNmpxUWpPTFo4MUtuMTBLY084YkVDN2Y4MGdXSEN6Vndrc1Zna2dVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyNzM2NjE3CWZpbGU65p6B5oCdR+eVjOWdgOeCueS6kui9rOW3peWFt180LjcuMV94NjQtc2V0dXAuZXhlCjM5UDJITU1EbjdrM3J3ZVVjQWlmZWpjRVROR0IwU01STG95a1poRnVjaVFUWGc2T3MwbnIzTWZrQzYxMzJMMmpFWVJQQ3dpL2t2YXZxcXpqUEY5TUJ3PT0K",
-      "url": "https://github.com/edcfoshan/polygon-txt/releases/download/v4.7.1/JisigG_4.7.1_x64-setup.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUd3RYL0ovejhtb0dUVGk0MVRad05yaElwSnpDZ2FidGZJaHJpY1pTMzVrN3RLWGs0cmhRWTFPc0EwOWNkWVRSMUpKL3NWTDFFcEt4eWJNMGhDcCtweC9MTmErVUVtR1FJPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyNzQxMjA0CWZpbGU65p6B5oCdR+eVjOWdgOeCueS6kui9rOW3peWFt180LjcuMV94NjQtc2V0dXAuZXhlCjNNa1FadHVGTWQ5cHBPYkwwS3ZFRG9rTGdHQ3QyMGgzWUIvTStIN2NxN2FCK0ZxS0RrYXhPZ1lvcEl4dEw0VGc2eHhZdzdOVHlXYmtvNVhXSmpkcEJ3PT0K",
+      "url": "https://gitee.com/cdg_tools/polygon-txt/releases/download/v4.7.1/JisigG_4.7.1_x64-setup.exe",
+      "github_url": "https://github.com/edcfoshan/polygon-txt/releases/download/v4.7.1/JisigG_4.7.1_x64-setup.exe"
+    },
+    "linux-x86_64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUd3RYL0ovejhtb01NTTJsQnR4aHBRbDNuaVRKMVdmK21mWndJTitYbGNDc1dZUDZSa2FiS2lZRGk0Zm9FN0kzcnhra3lWN3VXcXpPcm85R2hTbG5VWTd3YU9lQ3BsUkFVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyNzQxMzQyCWZpbGU65p6B5oCdR+eVjOWdgOeCueS6kui9rOW3peWFt180LjcuMV9hbWQ2NC5BcHBJbWFnZQpJRlVrOVdPLzU5NG9BSC9LOU5UanU0WCs4OGNuRVJXMUZ3Z0N1V1FUK3paTFlOTWQ5eit5UXl6QTNldXRYa3NoZExDZFJDSlZ0MWNSc295dDhjYmxCZz09Cg==",
+      "url": "https://github.com/edcfoshan/polygon-txt/releases/download/v4.7.1/JisigG_4.7.1_amd64.AppImage"
+    },
+    "darwin-x86_64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUd3RYL0ovejhtb0pPOWtYSjZtTnYvK3JvZG5RRUhOY1VCdnBrU1VtSVJFNHJlMit5SktGWUtLM2t3Mnh1T2dQcUlnSlhIVnR1UFdOaDBHVmcwS3dxYjllYm9LV080T2dvPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyNzQxNjYzCWZpbGU65p6B5oCdR+eVjOWdgOeCueS6kui9rOW3peWFty5hcHAudGFyLmd6CkpKTElsSFJNK2tQUEV4dnZ3QVladmJ4REZuczJKOEo1aGtkYkZNTmp5VG1hZ0FoL0xxNUJqaU1idXg5dmdxL3JRY3c3elVoMldHTk9WMlRrNXJkTEN3PT0K",
+      "url": "https://github.com/edcfoshan/polygon-txt/releases/download/v4.7.1/JisigG_4.7.1_x64.app.tar.gz"
+    },
+    "darwin-aarch64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUd3RYL0ovejhtb0prWEJPN2hKVHhGMXBLYW5ScmlDUkhjeCtMMHFrZU1lNDJSWlFVRnFVQUFWRzNYVUplOGcrNWlIRVUrZ0loY29HY3F0Q1kxblArc2VEM3ZXVnVIT0FJPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyNzQxMjgwCWZpbGU65p6B5oCdR+eVjOWdgOeCueS6kui9rOW3peWFty5hcHAudGFyLmd6CjMxdWo3TnpGeHUvR0V1MWdyUjZ2UG5uVzFBMGk1dmtLYXBzNzg2WGtpbzQ3RklpTTRQQlVYdXdtZEVUZk9kZkY2UVBjdU9xbGtrT2Q4SStHQm5lNENRPT0K",
+      "url": "https://github.com/edcfoshan/polygon-txt/releases/download/v4.7.1/JisigG_4.7.1_aarch64.app.tar.gz"
     }
   }
 }

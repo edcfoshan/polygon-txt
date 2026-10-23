@@ -1,7 +1,16 @@
 {
-  "version": "4.7.2",
-  "notes": "### 修复\r\n\r\n- 手动检查更新不再读取缓存。",
+  "version": "4.7.3",
+  "notes": "### 修复\r\n\r\n- 更新弹窗可查看最近 15 个版本。",
   "releases": [
+    {
+      "version": "4.7.3",
+      "date": "2026-10-23",
+      "kind": "修复",
+      "title": "修复",
+      "items": [
+        "更新弹窗可查看最近 15 个版本。"
+      ]
+    },
     {
       "version": "4.7.2",
       "date": "2026-10-23",
@@ -112,27 +121,254 @@
         "调整开发预览入口：浏览器开发预览固定在 1000×700 画布中并随视口缩放，Tauri 与生产构建直接载入应用。",
         "扩展导出选项、TXT 编码和面积精度相关回归覆盖。"
       ]
+    },
+    {
+      "version": "4.4.0",
+      "date": "2026-09-25",
+      "kind": "其它",
+      "title": "品牌视觉与交互",
+      "items": [
+        "品牌视觉焕新：启用新 logo（青绿渐变底 + 米白「开口界址点环双追箭」图形），替换旧金黑「界址点环 + 横双箭头」；全套应用图标、标题栏/关于弹窗单色标记、GitHub social preview 同步替换。单色标记由新源图按亮度派生，mask 上色链路不变；资产再生成脚本见 docs/brand/make-brand-assets.ps1。",
+        "中栏四页签「恢复默认」：投影/表头/字段/界址点各加一键恢复出厂（投影 = 关动态投影 + 带号前缀回自然值；表头 = 7 行种子 + 空项目信息；字段 = 简单模式 + 标准字段方案；界址点 = 核心 4 列），重置结果立即落盘。",
+        "图标嵌入修复：exe 此前链接 cargo 缓存的旧图标资源、NSIS 安装包图标自 v4.3.0 起就回退 NSIS 默认图标；现 conf 显式 installerIcon 并触发资源重编译，exe 与安装包均用新 logo。"
+      ]
+    },
+    {
+      "version": "4.4.0",
+      "date": "2026-09-25",
+      "kind": "其它",
+      "title": "重点内容",
+      "items": [
+        "界面对比度全面达标：8 色系 × 明暗共 16 套主题的文字对比度此前多处不达标（表单标签与提示文字仅 2.6~3.4:1，暗色主题下选中的中栏页签、投影「应用」与要素类「确认」按钮白字压亮底几乎不可读），现全部 ≥4.5:1；导入区、输出模式、列排序补齐键盘操作，6 个弹窗补对话框语义与焦点管理。",
+        "导入与导出少做无用功：同一个 SHP 由完整解析 2~3 次降为 1 次，DBF 由最多 4 次降为 1 次；坐标变换与地图界址点标签不再对同一批顶点重复计算；TXT 输出不再为每个单元格分配临时字符串。",
+        "更稳：快速连续修改时预览不再被先发后到的旧响应覆盖；窗口缩放不再每帧触发三次 IPC；SHP 读取失败会在界面上明确提示文件与原因（此前只写日志）。"
+      ]
+    },
+    {
+      "version": "4.4.0",
+      "date": "2026-09-25",
+      "kind": "优化",
+      "title": "优化",
+      "items": [
+        "导入读取减负：同一个 SHP 此前会被完整解析 2~3 次（为了校验 100 字节文件头而载入整个文件、文件信息解析、坐标范围再算一遍），DBF 最多读 4 次。现在两者都只读一次：SHP 的要素随文件信息一并返回、坐标范围直接由已有要素计算；DBF 的编码探测与解析回退共用同一份字节。",
+        "坐标与投影只算一遍：动态投影与带号前缀调整改为以 rings 为唯一数据源（原实现同时遍历 coords 与 rings，同一批点算两遍）；地图界址点标签复用已投影坐标（原实现把同一批顶点反投影两遍）。",
+        "TXT 输出免逐格分配：标准 4 列与自定义列布局都改为直接写入输出缓冲，不再为每个单元格生成临时字符串再拼接。",
+        "预览更稳、窗口拖动更轻：快速连续改动时先发的慢响应可能后到并覆盖新结果，现按请求序号丢弃过期响应；窗口缩放改为停手后存一次（原实现每帧触发 3 个 IPC + 2 次本地存储读写）。",
+        "代码整理：init() 由 552 行拆为 7 个按职责划分的初始化函数；合并三处重复的拖拽排序实现、六处遮罩关闭、两处拖放导入接线；删除零引用代码、15 条死 CSS 规则与无用依赖。",
+        "测试可信度：依赖未入库外部数据的用例改标 #[ignore]（默认套件不再\"静默跳过\"式空转通过）；入库 fixture 缺失由静默返回改为直接失败；新增 TXT 字节基线、预览与导出一致性、GDB 读→写往返、DBF 编码探测四组回归测试。"
+      ]
+    },
+    {
+      "version": "4.4.0",
+      "date": "2026-09-25",
+      "kind": "修复",
+      "title": "修复",
+      "items": [
+        "主题对比度与无障碍：16 套主题的文字对比度全部达标（此前表单标签与提示文字仅 2.6~3.4:1；暗色主题下选中的中栏页签、投影「应用」与要素类「确认」按钮为白字压亮底，几乎不可读）；导入区、输出模式、列排序补齐键盘操作；6 个弹窗补 role=\"dialog\" 与焦点管理；结构图标统一为 SVG；数字列启用等宽数字。",
+        "导入失败可见：SHP 读取失败此前只写日志，界面上毫无反馈（用户只看到\"少了一个文件\"）；现在会明确提示哪个文件读取失败及原因。",
+        "「清空全部」改为二次确认；转换过程中禁用按钮并显示不确定进度条（原实现进度条停在 0% 直到完成）。"
+      ]
+    },
+    {
+      "version": "4.4.0",
+      "date": "2026-09-25",
+      "kind": "新增",
+      "title": "新增",
+      "items": [
+        "品牌资源：新应用图标（去白底、圆角外透明，任务栏不再出现白方块）、标题栏 22px 与关于弹窗 64px 的单色标记（随所选色系自动着色）、GitHub 社交预览图（1280×640）。"
+      ]
+    },
+    {
+      "version": "4.3.0",
+      "date": "2026-09-17",
+      "kind": "新增",
+      "title": "新增",
+      "items": [
+        "界址点坐标行列配置（面→TXT）：核心列为点号/环号/Y/X，可拖动调整列序；新增列支持固定值、源字段、点距离三种类型。每个点距离列可单独选择米/千米/厘米和 0~6 位小数。预览与三种输出模式（一对一/按地块拆分/全合并）共用同一布局；闭合点距离为 0，开口环计算回首点闭合边长，多部件和内环分别闭合计。",
+        "固定值独立编辑窗：点「编辑」打开窗口，先「开始修改」再输入，点「完成修改」才提交并刷新预览，避免实时预览重渲染打断输入。",
+        "TXT 导入解析天然兼容部备案 6 列文件（第 5/6 列自动忽略，不报错）"
+      ]
+    },
+    {
+      "version": "4.3.0",
+      "date": "2026-09-17",
+      "kind": "优化",
+      "title": "优化",
+      "items": [
+        "中栏页签化重排：左栏 = ①导入数据 + ②输出与选项（两卡固定展开）；中栏 = 页签切换「投影 / 表头 / 字段 / 界址点」（默认「字段」）；右栏预览恢复为第三列。修复改动中栏结构时引入的多余闭合标签导致右栏预览掉到底部的问题（.main 提前闭合）",
+        "中栏文字可读性优化：页签、标签、输入框、按钮和界址点配置行整体提升字号，并同步调整控件宽度。",
+        "折叠卡修复：字段映射卡此前始终无法收起（内容容器 card-b 不受折叠样式作用，且其 display:block 覆盖 display:none）；列内容超出高度时自动滚动兜底，最小窗口（800×540）下也可正常操作；左栏收起卡不再被拉伸出大片空白"
+      ]
+    },
+    {
+      "version": "4.2.0",
+      "date": "2026-09-09",
+      "kind": "修复",
+      "title": "修复",
+      "items": [
+        "修复 37 带东侧数据换带/带号前缀开关坐标错误（揭阳类数据：带号 37、CM111，东侧点东坐标 38,057,383 = 37_500_000+557_383，以 38 开头）：换带与前缀开关按东坐标百万位推断带号会误判为 38 带。现以 PRJ/空间参考声明的带号（37）为权威，东坐标按声明带号剥/贴 million 块，换带、加前缀、剥前缀、换号全部正确",
+        "TXT→SHP 带号判定改为「TXT 声明 > 坐标前缀推断 > 表单值」：旧逻辑「提取值优先」在上述溢出数据上会覆盖正确的声明带号，导致 TXT 回转 SHP 时 PRJ 写错带号、位置漂移数百公里",
+        "修复 TXT→SHP 分带传参：\"6°带\" 文字直传写 PRJ 函数会解析失败并默认 3°，现统一规范化为数字",
+        "预览与导出合并为同一条管线：删除双路径实现，预览文本与导出文件从源头保证一致，并继承逐源权威带号修复",
+        "修复 GDB 导入不自动填写表头的问题：确认图层后按「勾选的第一个图层」的坐标系（PRJ 权威）自动填写 坐标系/几度分带/投影类型/计量单位/带号（此前一直停留在上次保存值）"
+      ]
+    },
+    {
+      "version": "4.2.0",
+      "date": "2026-09-09",
+      "kind": "新增",
+      "title": "新增",
+      "items": [
+        "TXT→SHP 往返范围一致性回归测试：37 带溢出数据经 keep/前缀开/前缀剥/换带（F/H）转换后，TXT 回转 SHP 的 WGS84 范围与原始一致（容差约 5 米）",
+        "图层选择确认时，若所选图层坐标系声明不一致会明确警告（如 ZSDK=37 带与 ZSDK38=38 带混选）",
+        "更新弹窗的更新说明改为 CHANGELOG 具体更新内容（此前会显示「下载说明/系统要求」模板正文）；后续版本由发布流程最后一步自动保证"
+      ]
+    },
+    {
+      "version": "4.2.0",
+      "date": "2026-09-09",
+      "kind": "修复",
+      "title": "修复",
+      "items": [
+        "修复发布流程竞态：其他平台构建收尾时会用发布页模板正文覆盖 latest.json 的更新说明（更新弹窗因此显示模板而非更新日志）"
+      ]
+    },
+    {
+      "version": "4.1.0",
+      "date": "2026-09-09",
+      "kind": "新增",
+      "title": "新增",
+      "items": [
+        "属性表新增「显示字段别名」勾选项：勾选后表头显示字段别名（悬停可看原字段名）；GDB 优先使用文件内嵌的真实字段别名（图层字段区读取），SHP 使用内置的常见字段字典（DKMC→地块名称、DKBH→地块编号等 30 项）",
+        "属性表单元格内容超长被截断时，点击单元格弹出完整值气泡（点其他位置关闭）",
+        "地图新增「显示界址点」勾选项：界址点标注（黑字白底 J1/J2…）与 TXT 输出编号完全一致（受「点号前加J」「首末点重合」「闭合点编号」选项影响）；勾选后当前选中地块立即标注，所有地块在放大到 17 级后按视野显示标注",
+        "地图新增地块导航条：第一个 / 上一个 / 下一个 / 最后一个 + 位置计数，按当前筛选命中集遍历（无筛选 = 全部），到端点自动循环，导航时地图飞行定位 + 表格同步选中",
+        "地图最大缩放级别从 18 级放宽到 20 级（原始瓦片到 18 级，更大级别为放大显示，略模糊）",
+        "大幅提速 GDB 导入：导入时只读图层目录与文件头（要素数/几何类型/字段别名/范围/坐标系一应俱全），不再解码全部要素——几十万要素的大库图层选择框秒出；预览/导出时只解码所选图层（未勾选的图层完全跳过），多图层大库同步提速"
+      ]
+    },
+    {
+      "version": "4.1.0",
+      "date": "2026-09-09",
+      "kind": "其它",
+      "title": "变更",
+      "items": [
+        "属性表改为源数据字段视图：显示导入数据表中的全部源字段（含 OBJECTID、Shape_Length/Shape_Area 等），按字段区顺序排列，与 GIS 软件属性表习惯一致；字段别名切换与筛选语句的字段名同口径（源字段名）；GDB 图层按 OBJECTID 升序排列（属性表与导出顺序一致，此前按文件存储行序）",
+        "导入新要素（SHP 导入 / GDB 确认图层 / 清空全部）时自动清空筛选条件与地图选中状态——避免旧条件静默套在新数据上导致导出缺地块；跨启动的「恢复上次筛选」行为不变",
+        "修复勾选「显示界址点」或变更选项/筛选后地图视图被重置回全图的问题——同数据刷新现在保持用户当前的缩放与位置，仅导入新数据集时重新定位"
+      ]
+    },
+    {
+      "version": "4.1.0",
+      "date": "2026-09-09",
+      "kind": "修复",
+      "title": "修复",
+      "items": [
+        "GDB 字段别名读取（图层字段区解析），供属性表别名显示使用"
+      ]
+    },
+    {
+      "version": "4.0.1",
+      "date": "2026-09-08",
+      "kind": "修复",
+      "title": "修复",
+      "items": [
+        "修复勾选「保留安装包到桌面」时自动更新必然失败的问题（3.3.0 起引入）：下载完成后校验安装包签名时，未先把更新源下发的 base64 签名解码就交给验签器，导致进度到 100% 后必报「自动下载/安装失败」。现兼容 base64 与原文两种签名格式。临时规避：更新前取消勾选「保留安装包到桌面」即可正常更新"
+      ]
+    },
+    {
+      "version": "4.0.0",
+      "date": "2026-09-08",
+      "kind": "新增",
+      "title": "新增",
+      "items": [
+        "右栏新增「属性表」页签（面→TXT 模式）：表格查看每个地块的全部属性字段（源文件 + 序号 + 属性列），分页浏览（每页 100 条），点击行与地图双向联动高亮定位",
+        "右栏新增「地图」页签（面→TXT 模式）：天地图影像叠加注记，画出全部地块边界；表格点行 → 地图飞行定位 + 红色高亮闪烁，地图点地块 → 表格滚动定位选中；断网时自动降级为灰底 + 纯地块轮廓",
+        "新增筛选导出（所见即所得）：属性表上方结构化条件构建器，条件按行拆分、行间「且/或」连接（可混用，按行序组合）；运算符支持 = != > < >= <= LIKE IN 为空；IN 多选复选弹层（带搜索）、单值可从该字段数据值中点选；筛出来的行就是导出范围——TXT 预览与三种输出模式（一对一/按地块拆分/全合并）同步过滤；条件不完整/字段不存在即时标红并拦截导出；条件自动记忆、下次打开恢复",
+        "修复部分 GDB/SHP 在地图上位置错误的问题：带号以东坐标溢出时（如 37 带东侧点的东坐标达到 38,xxx,xxx）按数字前缀会误判为 38 带，现优先采用 PRJ/图层空间参考声明的中央经线/带号做逆投影，东坐标按声明带号重贴 million 块；同时修复 6° 带数据（前缀块与 3° 带网格不同）在地图上无法正确反算的问题",
+        "「按地块拆分」的文件名字段下拉从固定 4 项改为动态列出导入数据的全部字段（SHP 取多文件并集、GDB 取所选图层字段），不再受 DKMC/DKBH 限制",
+        "地图天地图 key 支持多 key 自动轮换：主 key 不可用（如浏览器端 key 域名白名单拒绝桌面应用，DataServer 403）时自动切换备用 key 重试，全部不可用才降级灰底",
+        "地图右下角署名改为灰色纯文字（原「Leaflet」为外链，应用内点击会把整个窗口导航到官网）",
+        "修复首次导入后打开地图页签未自动缩放到数据范围的问题（面板刚显示时容器尺寸未就绪，现尺寸稳定后补一次定位）"
+      ]
+    },
+    {
+      "version": "3.3.0",
+      "date": "2026-09-01",
+      "kind": "修复",
+      "title": "修复",
+      "items": [
+        "修复自动更新后打开仍是旧版本的问题：v3.2 安装包误将新版本装到了另一个目录，桌面/开始菜单快捷方式仍指向旧位置，导致更新后重开是旧版、电脑里出现两份软件。本次更新会装回原目录，首次启动自动清理多余的旧副本和残留安装信息（无需任何操作）",
+        "修复更新完成后快捷方式可能指向旧版本的问题：更新完成后自动把桌面和开始菜单快捷方式修正到最新版"
+      ]
+    },
+    {
+      "version": "3.3.0",
+      "date": "2026-09-01",
+      "kind": "新增",
+      "title": "新增",
+      "items": [
+        "更新弹窗新增「创建桌面快捷方式」勾选项（默认勾选）：更新完成后确保桌面和开始菜单的快捷方式都指向新版本，桌面没有图标的会自动补建",
+        "更新弹窗新增「保留安装包到桌面」勾选项：勾选后更新时会把安装包保留在桌面并自动打开所在位置，方便拷贝到其他电脑安装；安装包下载后经数字签名校验，校验通过才安装，失败会引导百度云手动下载"
+      ]
+    },
+    {
+      "version": "3.2.0",
+      "date": "2026-08-26",
+      "kind": "新增",
+      "title": "新增",
+      "items": [
+        "动态投影卡片新增坐标系识别状态行：导入后直接显示当前文件的坐标系 · 分带 · 带号 · 中央经线（如 CGCS2000 · 3°带 · 带号40 · CM120°），无需打开投影弹窗；投影应用后自动切换显示目标坐标系",
+        "新增「带号前缀」独立开关（与动态投影互不影响）：开启 = 输出东坐标自动加带号前缀（如 3°带 CM120 自动加 40,xxx,xxx），关闭 = 输出自然值（剥离前缀），不用打开动态投影即可生效；导入时智能默认——标了带号或坐标本身是 8 位数（自带前缀）默认开，无带号坐标系（如仅标中央经线）默认关、可手动开（按中央经线÷分带推算带号），大地坐标（度）不可用",
+        "GDB 导入支持坐标系识别：读取图层内嵌空间参考（此前只识别单位，坐标系/分带/带号一直为空），SHP 与 GDB 识别能力对齐，「带号前缀」开关同样适用于 GDB 图层",
+        "GDB 单图层导入时左栏显示完整的「库名.gdb\\图层名」"
+      ]
+    },
+    {
+      "version": "3.2.0",
+      "date": "2026-08-26",
+      "kind": "其它",
+      "title": "变更",
+      "items": [
+        "动态投影弹窗只负责真投影（大地↔投影、换带）：目标与当前坐标系相同时提示\"无需投影\"，输出要不要带号前缀一律由「带号前缀」开关统一处理（原\"同带仅调前缀\"路径并入开关）",
+        "修复无带号坐标系（.prj 为 GK_CM_117E 等中央经线版、坐标自然值）被误识别为有带号：此类文件带号前缀默认关闭，识别行显示「无带号 · CM117°」；带带号版（GK_Zone_39）识别不受影响",
+        "修复部分工具导出的 .prj 参数名为全小写（central_meridian）导致带号/分带/中央经线识别失败的问题",
+        "4号动态投影卡片布局紧凑化：动态投影在前、带号前缀在后（小字号），两开关并排一行"
+      ]
+    },
+    {
+      "version": "3.1.0",
+      "date": "2026-08-19",
+      "kind": "新增",
+      "title": "新增",
+      "items": [
+        "字段映射高级模式：左侧字段名改为可编辑输入框（自绘候选弹层列出 14 项标准字段，也可自由输入自定义字段名如「权利人」）；手输恰好命中标准字段名（如「图斑面积」）时该行自动恢复占位/平方米/公顷等专属选项",
+        "锁定能力与字段名解耦：「坐标点个数」「图形属性」改名后仍自动统计点数/固定「面」（锁定判定改按映射源，后端点数重算改为哨兵传递，改名后点数列不再恒为 0）",
+        "用户字段方案增删改查：预设下拉动态追加自定义方案——「存为方案」输入名称保存（同名确认覆盖即更新）、下拉选中即载入整套字段清单、选中自定义方案时可删除；方案存于本机，改动任何行后自动回到「自定义」态",
+        "设置面板：主题/色系、显示比例、三区字号缩放（标题栏+弹窗 / 折叠卡内容 / 预览文本）统一收纳进一个「设置」弹窗，标题栏主题按钮简化为一键明暗切换",
+        "赞赏与关于弹窗合并：点「关于」一个弹窗依次展示赞赏码、交流群、功能介绍与更新日志（原独立赞赏弹窗移除）"
+      ]
     }
   ],
-  "releases_limit": 5,
-  "pub_date": "2026-10-23T08:28:54.716Z",
+  "releases_limit": 15,
+  "pub_date": "2026-10-23T12:42:46.989Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUd3RYL0ovejhtb1BLZko1YTJaQ3VTK2NKYU1ZQ2RmK1ZYUDVvNzdHbzVsMFNsN2tiSWZMMjBkWkxua29reU54ZHZCQjRieFZWN1RhbWw2ajB6Y1NrVU1MRWFnUGdFVWdVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyNzQzMTYzCWZpbGU65p6B5oCdR+eVjOWdgOeCueS6kui9rOW3peWFt180LjcuMl94NjQtc2V0dXAuZXhlCm9IQWlxbTZtdllpT2lYUnBJdkpjRWxBZG1hajBzY1JuVERDUkxzL2VUN2M3QWJaNU9wSG40ZE9CanBxMi9Eblc1QWVzS0syUUV0dFdNZFlYYWdrL0FRPT0K",
-      "url": "https://gitee.com/cdg_tools/polygon-txt/releases/download/v4.7.2/JisigG_4.7.2_x64-setup.exe",
-      "github_url": "https://github.com/edcfoshan/polygon-txt/releases/download/v4.7.2/JisigG_4.7.2_x64-setup.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUd3RYL0ovejhtb05KVFZiK2RzOEViRVRnb3k0SE16QUFkWnJ3SGR5c3BtZ3NmY0xxdThVU3ZHS1N4bG41MkROWEtESytibWNVS3hHZWM0cGJNOGJBUVhrVDJOL1FMeGdnPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyNzU4NDk0CWZpbGU65p6B5oCdR+eVjOWdgOeCueS6kui9rOW3peWFt180LjcuM194NjQtc2V0dXAuZXhlCmRaT3Q0N2ZmNkhyd3FvR3FZc296a2xCTG1PdUI0cG1HdjE5d20zN3lLVWNBL0lEY1FXbTdIYVZVd2NoUXlVNzhIWEZ1N1puZXZ0RWoxcVZDbjZwTkNBPT0K",
+      "url": "https://gitee.com/cdg_tools/polygon-txt/releases/download/v4.7.3/JisigG_4.7.3_x64-setup.exe",
+      "github_url": "https://github.com/edcfoshan/polygon-txt/releases/download/v4.7.3/JisigG_4.7.3_x64-setup.exe"
     },
     "linux-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUd3RYL0ovejhtb0dLZkRIY1VoRU56M29MOGZmUkV5OFI0WHBxdHY0WmVCbGVRNzhwQ1prQkhzWmRPUjJQMjVZckVaZkUwME1DdThQM09TcmVUU1FCODBNN0JpM0VKZWc0PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyNzQzMjA2CWZpbGU65p6B5oCdR+eVjOWdgOeCueS6kui9rOW3peWFt180LjcuMl9hbWQ2NC5BcHBJbWFnZQozNmFmMzJ3MHNEVzd3OWFGMVFIaTk5emF0QVJCQ0hqOUU1dUYxWmZtUHJmNWV3eXJRTDRjb0ZORHY4RGlUM1RjanQ1bEVuVU5CVVhHdUE2VTNEbmNBZz09Cg==",
-      "url": "https://github.com/edcfoshan/polygon-txt/releases/download/v4.7.2/JisigG_4.7.2_amd64.AppImage"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUd3RYL0ovejhtb0V2ZEF6cVV1MWZ1QllEYkJ0dTROUnk5TmsyeVdqRFZ2UFVKVmRHNXNSaC9oTmZmdE92dlN3VUZIcjQvZTgvQ29Sd3EvOUdIeithWWNjVnNUWnVUbUFZPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyNzU4NDg4CWZpbGU65p6B5oCdR+eVjOWdgOeCueS6kui9rOW3peWFt180LjcuM19hbWQ2NC5BcHBJbWFnZQpOTSttRThUQXF2bDBTc0lKQ2NMSXY2Qk0zUnlNNmJncVdycEtvQWh0THUvYWdaZVVlZjJxVGVHVDJQRzZwa3kzdFRmdHBZOFltdGZ1S3BPV2FRbkpBQT09Cg==",
+      "url": "https://github.com/edcfoshan/polygon-txt/releases/download/v4.7.3/JisigG_4.7.3_amd64.AppImage"
     },
     "darwin-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUd3RYL0ovejhtb0JFNlZCcTlCbi95Y2F3OEpYT2YvVG52MDI1alRreTJ4OU9HbEhuWm0zRmxXMURyMUhRQVB3M2dLbnNnaldBYlljS1BxcUpSUVQ1N1p6dGg3bXRVckFvPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyNzQzNjA2CWZpbGU65p6B5oCdR+eVjOWdgOeCueS6kui9rOW3peWFty5hcHAudGFyLmd6CjJiUG9SMHVIZHFzVnoyemF3MS93WE80TVMxZVBlanV6ekJ1THRQZHBGWFlxNDMzOTNwQWZQVmY0YWJ5Q3BSNUtLb0s1dTZIZW1NOTFKb0VYNGlPb0NBPT0K",
-      "url": "https://github.com/edcfoshan/polygon-txt/releases/download/v4.7.2/JisigG_4.7.2_x64.app.tar.gz"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUd3RYL0ovejhtb09oMUNMQklGYTgwN2UwV0VVeEQ0T2lYN1lYSE1oS3dPMVlWRDFMUzlsQW92amtTWUFjU2Y3WnNOOWRwU21ZZndCOHErVFpvSjNiVXJnd293dTZnZmd3PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyNzU4ODk1CWZpbGU65p6B5oCdR+eVjOWdgOeCueS6kui9rOW3peWFty5hcHAudGFyLmd6Ci9objNIVGNhYjkxQ1MyNGxYRjh3MHdKZDQxa3A1NEwzSEFIdTdMRTRYamdkSFJiOENPWEZYQksxdW5meU9GVDFvOHBrSHdYYkVnMWUrNU1uQmNWakJBPT0K",
+      "url": "https://github.com/edcfoshan/polygon-txt/releases/download/v4.7.3/JisigG_4.7.3_x64.app.tar.gz"
     },
     "darwin-aarch64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUd3RYL0ovejhtb1A0U0EvOFNKVTFNNnlwY3J5MndHSDBGS0NRQU1ydUJmWDRLQ0JxcVBkSUVWV0dhUXd2Wk5NUU9ra0xSc2tJMXQvV2JaZXZxclM1NkxRV2xHY0VjU0FBPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyNzQzMTk3CWZpbGU65p6B5oCdR+eVjOWdgOeCueS6kui9rOW3peWFty5hcHAudGFyLmd6CktyZU5iZGd4V2F0UEdCSjM4eklsV0RNMitndzM5YVd3TnN2VXpnRlljOFZid1lCaXRieHVxWGl0TEVueVpGelJyNU9ZcW5FU0NnalBUYWNuWlQyTkJRPT0K",
-      "url": "https://github.com/edcfoshan/polygon-txt/releases/download/v4.7.2/JisigG_4.7.2_aarch64.app.tar.gz"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUd3RYL0ovejhtb0JaL1lUT0NTOXd5d0NiWUdnUFpjZmRjM3lMdjBwUU9DckZsK3YwbmhsNkVJVkgraitDN0MxZVIzb1lmSlR6TTVDanY5MmxFb1hPQllud05WV2x1U3dZPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyNzU4NTEwCWZpbGU65p6B5oCdR+eVjOWdgOeCueS6kui9rOW3peWFty5hcHAudGFyLmd6CmpybjEvMWtkcVpmdXY2QXBUNFVuNHQrNVFBaUpPdVRZeFpqcU1nb0NIR2IvOCtyaXJ2QlU4MzBKQlhPSHJCSkppdXU3RFBhMExISzRYZnlVV0hrWUFBPT0K",
+      "url": "https://github.com/edcfoshan/polygon-txt/releases/download/v4.7.3/JisigG_4.7.3_aarch64.app.tar.gz"
     }
   }
 }

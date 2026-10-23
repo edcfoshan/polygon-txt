@@ -89,7 +89,7 @@ if (!explicitUrl && /[^\x20-\x7E]/.test(publishedExeName)) {
 // ── 结构化更新说明（供弹窗按版本分组）────────────────────────────────
 // 从 CHANGELOG.md 抽取：## [x.y.z] 分版本，### 小节 → 分类，- 条目 → 内容。
 // 分类归并成 4 类，与弹窗徽标色一一对应；未识别的归入「其它」。
-const HISTORY_LIMIT = 5;
+const HISTORY_LIMIT = 15;
 const KIND_MAP = [
   ['新增', ['新增', '新功能', 'feature', 'feat', 'new']],
   ['修复', ['修复', 'fix', 'bug']],

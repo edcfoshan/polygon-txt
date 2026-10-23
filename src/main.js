@@ -2734,6 +2734,35 @@ async function checkAppUpdate(manual = false) {
 // 比当前版本新的版本：展开并逐条列出；已装过的版本：<details> 折叠，点开可看。
 // 数据来自 latest.json 的 releases（gen-latest-json.js 从 CHANGELOG 抽取）。
 const KIND_CLASS = { 新增: 'k-add', 修复: 'k-fix', 优化: 'k-opt', 提示: 'k-etc' };
+const MAX_UPDATE_VERSIONS = 15;
+const UPDATE_MANIFEST_URLS = [
+  "https://cdn.jsdelivr.net/gh/edcfoshan/polygon-txt@master/latest.json",
+  "https://github.com/edcfoshan/polygon-txt/releases/latest/download/latest.json",
+];
+let updateManifestCache = null;
+
+// updater 未把 releases 带进 rawJson 时，直接读同一份最新清单补齐历史。
+const fetchUpdateManifest = async function () {
+  if (updateManifestCache) return updateManifestCache;
+  for (const url of UPDATE_MANIFEST_URLS) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 4000);
+    try {
+      const res = await fetch(`${url}${url.includes("?") ? "&" : "?"}t=${Date.now()}`, { cache: "no-store", signal: ctrl.signal });
+      if (!res.ok) continue;
+      const data = await res.json();
+      if (data && Array.isArray(data.releases) && data.releases.length) {
+        updateManifestCache = data;
+        return data;
+      }
+    } catch (e) {
+      console.warn("update manifest fetch:", url, e);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  return null;
+};
 
 const renderReleases = function (releases, currentVer, latestVer) {
   const box = $("updateReleases");
@@ -2752,7 +2781,7 @@ const renderReleases = function (releases, currentVer, latestVer) {
 
   const cur = currentVer || "0.0.0";
   const latest = latestVer || cur;
-  for (const ver of order) {
+  for (const ver of order.slice(0, MAX_UPDATE_VERSIONS)) {
     const g = byVer.get(ver);
     let count = 0;
     for (const s of g.segs) count += s.items.length;
@@ -2811,7 +2840,7 @@ const renderReleases = function (releases, currentVer, latestVer) {
 };
 
 // 打开更新模态框：填充版本号 / 更新说明 / 重置进度条 / 跳过按钮显隐
-const openUpdateModal = function () {
+const openUpdateModal = async function () {
   // 没有 pendingUpdate 时，从 localStorage 恢复一份给弹窗展示（用于"已跳过态"重新打开）
   if (!pendingUpdate) {
     const known = readKnown();
@@ -2823,8 +2852,17 @@ const openUpdateModal = function () {
   const vEl = $("updateVersion");
   if (vEl) vEl.textContent = pendingUpdate.version || "";
   const nEl = $("updateNotes");
-  // 优先用结构化 releases 渲染；老 latest.json 没有该字段时退回 notes markdown。
-  const rel = pendingUpdate.rawJson?.releases;
+  // 优先用 updater 返回的 releases；缺失时直接读更新清单补齐历史版本。
+  let rel = pendingUpdate.rawJson?.releases;
+  if (!Array.isArray(rel) || !rel.length) {
+    const box = $("updateReleases");
+    if (box) box.textContent = "正在加载更新记录…";
+    const manifest = await fetchUpdateManifest();
+    if (manifest) {
+      pendingUpdate.rawJson = { ...(pendingUpdate.rawJson || {}), ...manifest };
+      rel = manifest.releases;
+    }
+  }
   renderReleases(rel, currentAppVersion(), pendingUpdate.version);
   const hasReleases = Array.isArray(rel) && rel.length > 0;
   if (nEl) {

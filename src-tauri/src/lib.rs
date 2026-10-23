@@ -786,7 +786,7 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
-            // 启动静默自愈：清漂移残留 + 修快捷方式（独立线程，不阻塞启动）
+            // 启动静默自愈：仅注册安装版修快捷方式（独立线程，不阻塞启动）
             let handle = app.handle().clone();
             std::thread::spawn(move || {
                 std::thread::sleep(std::time::Duration::from_secs(2));
@@ -813,7 +813,6 @@ pub fn run() {
             close_window,
             apply_dynamic_projection,
             toggle_maximize,
-            selfheal::ensure_shortcuts,
             selfheal::restart_into_updated_app,
             selfheal::download_and_run_setup,
         ])

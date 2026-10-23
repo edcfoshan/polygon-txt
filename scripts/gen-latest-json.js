@@ -94,6 +94,7 @@ const KIND_MAP = [
   ['新增', ['新增', '新功能', 'feature', 'feat', 'new']],
   ['修复', ['修复', 'fix', 'bug']],
   ['优化', ['优化', '改进', 'improve', 'perf', '性能']],
+  ['提示', ['提示', '注意', 'note']],
 ];
 
 function classifyKind(title) {

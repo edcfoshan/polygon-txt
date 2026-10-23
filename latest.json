@@ -1,7 +1,29 @@
 {
-  "version": "4.7.0",
-  "notes": "QQ群：826861025\r\n\r\n### 新增\r\n\r\n- **原生 CLI**：与桌面版共用 Rust 转换核心，支持 SHP/GDB→TXT、TXT→SHP 及现有全部转换选项；提供 Windows x64、Linux x64、macOS Intel/Apple Silicon 四平台包。\r\n- **配置导入导出**：桌面版新增 JSON 文件与复制/粘贴交换，保存双向设置、字段映射、表头、投影和界址点布局；排除路径、具体地块勾选与主题，导入为新配置，重名自动编号。\r\n- **批处理与 AI 调用**：CLI 提供完整帮助、JSON 结果、数据检查、配置校验与不落盘的转换预检，附示例配置与 SKILL.md。\r\n- **默认保护已有文件**：CLI 转换前检查整批输出，遇同名文件停止，仅显式 --overwrite 才覆盖；字段映射不匹配时列出问题并停止。\r\n- **桌面与 CLI 分开发布**：相同产品版本、同一提交，分别使用 v4.7.0 / cli-v4.7.0 标签；四平台统一验收后桌面在前、CLI 在后，Latest 保持桌面版。\r\n\r\n### 优化\r\n\r\n- **关于弹窗支持信息更新**：关注与交流、赞赏支持改用两张统一青绿风格海报，分别展示公众号与讨论群、微信赞赏与爱发电；二维码保留原图并随软件内联。",
+  "version": "4.7.1",
+  "notes": "### 修复\r\n\r\n- 便携版不再误删安装版或改快捷方式。\r\n- 启动只修复安装版自身入口。\r\n- 安装版支持自定义安装目录。\r\n- 升级后从注册安装目录重启。\r\n- 取消桌面入口时不再强行补建。\r\n\r\n### 提示\r\n\r\n- 旧版便携仍有问题，请换用 4.7.1 便携版。",
   "releases": [
+    {
+      "version": "4.7.1",
+      "date": "2026-10-23",
+      "kind": "修复",
+      "title": "修复",
+      "items": [
+        "便携版不再误删安装版或改快捷方式。",
+        "启动只修复安装版自身入口。",
+        "安装版支持自定义安装目录。",
+        "升级后从注册安装目录重启。",
+        "取消桌面入口时不再强行补建。"
+      ]
+    },
+    {
+      "version": "4.7.1",
+      "date": "2026-10-23",
+      "kind": "提示",
+      "title": "提示",
+      "items": [
+        "旧版便携仍有问题，请换用 4.7.1 便携版。"
+      ]
+    },
     {
       "version": "4.7.0",
       "date": "2026-10-19",
@@ -137,49 +159,14 @@
       "items": [
         "品牌资源：新应用图标（去白底、圆角外透明，任务栏不再出现白方块）、标题栏 22px 与关于弹窗 64px 的单色标记（随所选色系自动着色）、GitHub 社交预览图（1280×640）。"
       ]
-    },
-    {
-      "version": "4.3.0",
-      "date": "2026-09-17",
-      "kind": "新增",
-      "title": "新增",
-      "items": [
-        "界址点坐标行列配置（面→TXT）：核心列为点号/环号/Y/X，可拖动调整列序；新增列支持固定值、源字段、点距离三种类型。每个点距离列可单独选择米/千米/厘米和 0~6 位小数。预览与三种输出模式（一对一/按地块拆分/全合并）共用同一布局；闭合点距离为 0，开口环计算回首点闭合边长，多部件和内环分别闭合计。",
-        "固定值独立编辑窗：点「编辑」打开窗口，先「开始修改」再输入，点「完成修改」才提交并刷新预览，避免实时预览重渲染打断输入。",
-        "TXT 导入解析天然兼容部备案 6 列文件（第 5/6 列自动忽略，不报错）"
-      ]
-    },
-    {
-      "version": "4.3.0",
-      "date": "2026-09-17",
-      "kind": "优化",
-      "title": "优化",
-      "items": [
-        "中栏页签化重排：左栏 = ①导入数据 + ②输出与选项（两卡固定展开）；中栏 = 页签切换「投影 / 表头 / 字段 / 界址点」（默认「字段」）；右栏预览恢复为第三列。修复改动中栏结构时引入的多余闭合标签导致右栏预览掉到底部的问题（.main 提前闭合）",
-        "中栏文字可读性优化：页签、标签、输入框、按钮和界址点配置行整体提升字号，并同步调整控件宽度。",
-        "折叠卡修复：字段映射卡此前始终无法收起（内容容器 card-b 不受折叠样式作用，且其 display:block 覆盖 display:none）；列内容超出高度时自动滚动兜底，最小窗口（800×540）下也可正常操作；左栏收起卡不再被拉伸出大片空白"
-      ]
     }
   ],
   "releases_limit": 5,
-  "pub_date": "2026-10-19T06:12:42.850Z",
+  "pub_date": "2026-10-23T07:19:41.280Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUd3RYL0ovejhtb1BZQS8rdE96SGV4WWZ4eWZhKzVWYnVQOHVWemswemR1RWNxaTRNU2daU1d5cWFrbkUvbDIvUDZKNCtCRE0vTVdiYmVMMXNCS09vNHFUbzFYemwxckFvPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyMzkwMjk2CWZpbGU65p6B5oCdR+eVjOWdgOeCueS6kui9rOW3peWFt180LjcuMF94NjQtc2V0dXAuZXhlCllZVWg5ZmFacFc4dmxXdWE1N1JaU1hicVR4SHF6eXMzVDk0YmdVa3o4T2Y5TVBlaXFBcjRtZWczYnZzNU9ncUQ1OG1hVkhOMU9LQU1mVTNqckRpc0R3PT0K",
-      "url": "https://gitee.com/cdg_tools/polygon-txt/releases/download/v4.7.0/JisigG_4.7.0_x64-setup.exe",
-      "github_url": "https://github.com/edcfoshan/polygon-txt/releases/download/v4.7.0/JisigG_4.7.0_x64-setup.exe"
-    },
-    "linux-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUd3RYL0ovejhtb09sd2pSaG1GRlE5MW03TnByb2s1N2ZZeGRlcVErK3BSWFc4S29PNmNCS0x6TTdPRHk2R3Z1VVYrbHFSSWR3R2xXaXNlaTA5UEJFY0p3Y0dqc2xXNVFzPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyMzg3NjIxCWZpbGU65p6B5oCdR+eVjOWdgOeCueS6kui9rOW3peWFt180LjcuMF9hbWQ2NC5BcHBJbWFnZQpEQmVmOFFYUlFkQ2lXYTQzc3VudUVUK3gyRkl0RndFbHJydmxjcUZ4RTBra3FJcDZWTDlZMGpvMEhNd3hmOGZRVHN0eFhJaHlDeG8vSi83bWpaYStDdz09Cg==",
-      "url": "https://github.com/edcfoshan/polygon-txt/releases/download/v4.7.0/JisigG_4.7.0_amd64.AppImage"
-    },
-    "darwin-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUd3RYL0ovejhtb0syWjhnUmRwdE9Ydk1YZm5DcnNCWVc5K0tIckt5aFV3VzBaK3czNTU0aSsyalhzNWZJY1JCMTRQUUdzRlRnVlRyVEFBZjZMT2dmTUhZNUxlSDNUcFFNPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyMzg3NjI1CWZpbGU65p6B5oCdR+eVjOWdgOeCueS6kui9rOW3peWFty5hcHAudGFyLmd6Cmt2cDBzTzVHam1peS9TMEs1QzJta1Q3RUpZZEI1UmcybE9Vck1zbEY1S3RBVko0VVM4S3cvVlNLUXdMRFZuUW1UU0Q2bjZyNGZ6WkVuK1FVa1IvS0RBPT0K",
-      "url": "https://github.com/edcfoshan/polygon-txt/releases/download/v4.7.0/JisigG_4.7.0_x64.app.tar.gz"
-    },
-    "darwin-aarch64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUd3RYL0ovejhtb0NmNlRvWUdHSURvTURIeTg3VjA0QjdVcDlUTFRYRXptQkoxRGxMQmVZQmhTdTZ0OEJWUG9OeUFNRytFMHVNd1MvYUl3SlBhSlZFMDFNSUVKc3RDUXdVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyMzg3NjE4CWZpbGU65p6B5oCdR+eVjOWdgOeCueS6kui9rOW3peWFty5hcHAudGFyLmd6CmFOT01WNGh5Z2svUyt0VDEwZmVtU084c2lIVWhSdjhybnBHVjl4YVhOWWVGeTlQSmdVb3YzODRqYWkwbS9oaVRsQks4VGJlaWxkcmpSN20vYWhXMENnPT0K",
-      "url": "https://github.com/edcfoshan/polygon-txt/releases/download/v4.7.0/JisigG_4.7.0_aarch64.app.tar.gz"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUd3RYL0ovejhtb0dzTEJkNnp5empEa0xEa1VoelczbGpoQ1lyMFZhS2Z0VXRqcW9qbGlwNmFqdXpQNmpxUWpPTFo4MUtuMTBLY084YkVDN2Y4MGdXSEN6Vndrc1Zna2dVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyNzM2NjE3CWZpbGU65p6B5oCdR+eVjOWdgOeCueS6kui9rOW3peWFt180LjcuMV94NjQtc2V0dXAuZXhlCjM5UDJITU1EbjdrM3J3ZVVjQWlmZWpjRVROR0IwU01STG95a1poRnVjaVFUWGc2T3MwbnIzTWZrQzYxMzJMMmpFWVJQQ3dpL2t2YXZxcXpqUEY5TUJ3PT0K",
+      "url": "https://github.com/edcfoshan/polygon-txt/releases/download/v4.7.1/JisigG_4.7.1_x64-setup.exe"
     }
   }
 }

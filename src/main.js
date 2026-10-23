@@ -2733,7 +2733,7 @@ async function checkAppUpdate(manual = false) {
 // ═══ 更新说明渲染（按版本分组，cc-switch 式结构）═══
 // 比当前版本新的版本：展开并逐条列出；已装过的版本：<details> 折叠，点开可看。
 // 数据来自 latest.json 的 releases（gen-latest-json.js 从 CHANGELOG 抽取）。
-const KIND_CLASS = { 新增: 'k-add', 修复: 'k-fix', 优化: 'k-opt' };
+const KIND_CLASS = { 新增: 'k-add', 修复: 'k-fix', 优化: 'k-opt', 提示: 'k-etc' };
 
 const renderReleases = function (releases, currentVer, latestVer) {
   const box = $("updateReleases");
@@ -2868,7 +2868,7 @@ const skipCurrentVersion = function () {
 };
 
 // 下载并安装：监听进度 → 更新进度条 → 重启进新装目录。失败兜底百度云。
-// 「保留安装包到桌面」勾选时：绕过插件自管下载到桌面（验签 + 资源管理器定位 + 静默安装）。
+// Windows 统一自管下载/验签，并把快捷方式选项交给安装器；不留包时使用临时目录。
 const doUpdate = async function () {
   // restored 态（从 localStorage 恢复的）没有真实 update 对象，需重新检查拿真实句柄
   if (pendingUpdate?.__restored) {
@@ -2902,14 +2902,14 @@ const doUpdate = async function () {
         if (pct && total > 0) pct.textContent = Math.round((downloaded / total) * 100) + "%";
       }
     };
-    if (keepSave) {
-      // 留包模式：插件下载的是临时文件拿不到句柄，改为自管下载到桌面
+    if (keepSave || navigator.userAgent.includes("Windows")) {
+      // Windows 插件安装时会直接退出，安装后的前端修复无法执行，选项须传给安装器。
       const plat = pendingUpdate.rawJson?.platforms?.["windows-x86_64"];
       if (!plat?.url || !plat?.signature) throw new Error("latest.json 缺少下载地址或签名");
       const un = await listen("upd-dl-progress", (ev) => onProg(ev.payload));
       try {
         try {
-          await tauriInvoke("download_and_run_setup", { url: plat.url, signature: plat.signature, version: pendingUpdate.version });
+          await tauriInvoke("download_and_run_setup", { url: plat.url, signature: plat.signature, version: pendingUpdate.version, keepSave, createShortcuts: fixLnk });
         } catch (err) {
           // Gitee 通道失败（网络/限流/附件缺失）→ 回退 GitHub 直链；两条都失败才走外层百度云兜底。
           if (!plat.github_url || plat.github_url === plat.url) throw err;
@@ -2917,7 +2917,7 @@ const doUpdate = async function () {
           downloaded = 0; total = 0;
           if (prog) prog.value = 0;
           if (pct) pct.textContent = "0%";
-          await tauriInvoke("download_and_run_setup", { url: plat.github_url, signature: plat.signature, version: pendingUpdate.version });
+          await tauriInvoke("download_and_run_setup", { url: plat.github_url, signature: plat.signature, version: pendingUpdate.version, keepSave, createShortcuts: fixLnk });
         }
       } finally {
         un();
@@ -2943,6 +2943,8 @@ const doUpdate = async function () {
             url: plat.github_url,
             signature: plat.signature,
             version: pendingUpdate.version,
+            keepSave,
+            createShortcuts: fixLnk,
           });
         } finally {
           un();
@@ -2951,8 +2953,6 @@ const doUpdate = async function () {
         await exitApp();
         return;
       }
-      // 修复/补建快捷方式（失败不阻塞重启）
-      try { await tauriInvoke("ensure_shortcuts"); } catch (e) { console.warn("ensure_shortcuts:", e); }
       if (doBtn) doBtn.textContent = "安装完成，即将重启…";
       // 重启进刚装好的目录：relaunch 会重启旧 exe——更新装进不同目录时（漂移修复场景）用户会看到旧版
       try {

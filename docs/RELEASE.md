@@ -38,6 +38,12 @@ npm run tauri signer generate -- -w $env:USERPROFILE\.tauri\bpoint-converter.key
 
 ## 每次发版：在原 release skill 基础上追加 3 步
 
+### 0. 先用 grill-with-docs 收敛更新说明
+
+每次发版必须先运行 `.agents/skills/grill-with-docs/SKILL.md`，把变更内容收敛成用户视角的短句：一条只写一个结果，默认不超过 40 个汉字，最多 6 条；不写内部实现。CHANGELOG、Release notes 和 `latest.json.releases` 使用同一口径。生成清单后检查：最新版默认展开，最近旧版可折叠。
+
+> **不要从 Codex、MSIX 或虚拟化 shell 直接运行安装器。** 这些进程的 `%LOCALAPPDATA%` 和 HKCU 写入可能进入 `Packages\...\LocalCache`，真实快捷方式会指向不存在或不可见的路径，桌面/开始菜单因此显示为损坏图标。安装验收必须在沙盒外运行，或请用户手动执行；检查 `.lnk` 目标和图标路径均不得含 `Packages` 或 `LocalCache`。
+
 ### A. 设置签名环境变量（构建前）
 
 **前提：** `tauri.conf.json` 的 `bundle.createUpdaterArtifacts` 必须为 `true`（已配置）。否则 tauri build 不会生成 `.sig`，老用户收不到更新提醒。

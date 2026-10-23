@@ -1837,7 +1837,7 @@ dependencies = [
 
 [[package]]
 name = "jisig-bpoint-converter"
-version = "4.7.0"
+version = "4.7.1"
 dependencies = [
  "base64 0.22.1",
  "chrono",
